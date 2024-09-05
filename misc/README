@@ -1,0 +1,130 @@
+{TOOL_NAME}
+--------------------------
+
+This tool wrapper was created with the NGArgumentParser Framework. This framework
+is intended to help standardize the workflow for running NG standalone tools and
+allow for more rapid and distributed development.
+
+A tool created with this framework has three subcommands:
+1. preprocess -- split an input JSON file into atomic units that can each be sent
+   through the 'predict' command and create a file that includes a description
+   of each of the commands to run.
+2. predict -- performs a prediction given a JSON file.
+3. postprocess -- collects results from all 'predict' commands into a single file.
+
+The 'src' directory contains several template files that may need to be filled in
+to incorporate your tool:
+1. run_{tool_name}.py -- This is the main script a user would call and handles the
+   various sub-commands.
+2. {TOOL_NAME}ArgumentParser.py -- This is the main argument parser class, where
+   developers will add custom flags/parameters for the 'predict' sub-command.
+3. preprocess.py -- This file will contain logic on how to split the input JSON
+   file into atomic job units.
+4. postprocess.py -- This file will combine all the results from the atomic job
+   units into a single file.
+
+
+Contributing a standalone
+-------------------------
+
+The IEDB team is eager for assistance in implementing new functionality for our
+site.  External developers have several options for contributing tools, which are
+listed below.  Additional effort by external developers will help to implement
+tools on the IEDB next-gen tools website in a shorter time frame.  **NOTE** that
+all tools must be pre-approved by the IEDB team before development is started.
+Providing the IEDB with a standalone tool does not guarantee that it will be incorporated
+into the website.
+
+* 1. Hand off source code or binary (low effort, longest time to completion)
+* 2. Create a package with NGArugmentParser and implement the 'predict' method (medium effort, medium time to completion)
+* 3. Create a package with NGArgumentParser and implement all methods (high effort, shortest time to completion)
+
+**NOTE**
+---
+One of the requirements for the 'predict' command is an option to produce output
+in JSON format that conforms to the NG tools output format specifications.  Examples
+of this format can be found in the 'examples' directory and more details on
+can be found here: {link to IEDB-AR documentation}
+---
+
+Once the CLI tool is able to run basic prediction given a JSON file, the next step
+is to implement preprocessing.
+
+Preprocess
+----------
+This stage is where inputs must be split into multiple job units that are efficient
+for processing. Each tool may have different ways of preprocessing jobs to run
+more efficiently. This is a guideline, so that at least all CLI tools will have
+similar file structure and a way of parsing arguments.
+
+In preprocess.py, the code for the following logic should be implemented.
+* Create an output directory for the prediction, with the following file structure:
+  @hkim to fill in
+  @hkim this can be added to the preproces template script, so no need for the external dev to fill in
+* Parse main input data (e.g., protein sequences) from the input JSON file. Split the input if needed, and store them under: '{output_folder}/preprocess_job/input_units' folder.
+* Parse the remaining parameters from the input JSON file, and split them into an atomic job units.
+    * Make sure for each atomic job units has a key/value pair pointing to the input sequence files under '{output_folder}/preprocess_job/input_units'.
+    * Each job units should be stored under 'preprocess_job/parameter_units'.
+* Create a 'job_descriptions.json' file (Example: @hkim link to the example)
+    * This file will have list of commands to run, one 'predict' command for each job unit.
+    * The last command in the description file will use 'postprocess' subcommand.
+
+
+@jgbaum - think about the output directory structure and resume from here
+
+Postprocess
+-----------
+This stage is where the results of the individual job units are aggregated into a
+single JSON file.
+
+In postprocess.py, the code for the following logic should be implemented.
+* Read in all the results files created (under '{output_directory}/results/') from
+  each job unit.
+* Combine all the results into single JSON file named '{output_directory}/aggregated_result.json'.
+
+In order to better visualize the file structure to understand the framework,
+please view the 'example-app'.
+
+The 'example-app' can be created by running the following command:
+> cli g example
+
+Example App (Amino Acid Counter) - Single Prediction
+----------------------------------------------------
+For single prediction given a TSV file, user must provide '--amino-acid'/'-a'
+flag to indicate which amino acid to count.
+>> python src/run_aacounter.py predict \
+-t examples/example.tsv \
+-a L \
+-o examples/postprocess_job/result.1 \
+-f json
+
+For single prediction given a JSON file,
+>> python src/run_aacounter.py predict \
+-j examples/example.json \
+-o examples/postprocess_job/result.2 \
+-f json
+
+Example App (Amino Acid Counter) - Preprocess
+---------------------------------------------
+This stage is where inputs must be split into multiple job units. Every tools will have different ways of preprocessing
+their jobs. This is a guideline, so that at least all CLI tools will have similar file structure and a way of parsing arguments.
+>> python src/run_aacounter.py preprocess -j examples/example.json
+
+This will split the input into multiple parameter files and input files, both saved under 'preprocess_job/input_units' and 'preprocess_job/parameter_units' respectively.
+In addition, it should create a 'job_description.json' file that has descriptions of each job.
+
+Please, from top to bottom, run each command one by one. Also, notice the last command is calling 'postprocess' command, which
+is collecting all the results from individual jobs.
+
+The commands will look something similar to this.
+>> "ABSOLUTE/PATH/TO/src/run_aacounter.py predict -j ABSOLUTE/PATH/TO/preprocess_job/parameter_units/0.json -o ABSOLUTE/PATH/TO/preprocess_job/results/0 -f json
+
+Example App (Amino Acid Counter) - Postprocess
+----------------------------------------------
+The last command of the 'job_descriptions.json' will look like this, which aggregates all the results into one.
+>> ABSOLUTE/PATH/TO/src/run_aacounter.py postprocess --job-desc-file=ABSOLUTE/PATH/TO/preprocess_job/job_descriptions.json --postprocess-input-dir=ABSOLUTE/PATH/TO/preprocess_job/results --postprocess-result-dir=ABSOLUTE/PATH/TO/postprocess_job
+
+Starting Custom APP
+-------------------
+To start a custom app, please use the following command to begin.
+>> cli g CUSTOM-APP-NAME

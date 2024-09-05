@@ -1,0 +1,5 @@
+{
+    "peptide": ["ADMGHLKY", "ELDDTLKY", "FMDHVLRYP", "FSDLPLRPTV", "FSDNIEPGFY", "FTELAILY", "GLDEPLLK", "GLDQPLLK", "HPIDFAIQY"],  
+    "length": ["8", "8", "9", "10", "10", "8", "8", "8", "9"],
+    "amino_acid": "L"
+}
