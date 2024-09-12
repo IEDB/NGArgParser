@@ -99,7 +99,6 @@ The 'example-app' can be created by running the following command:
 Example App (Amino Acid Counter) - Predict
 ----------------------------------------------------
 
-
 For single prediction given a JSON file,
 >> python src/run_aacounter.py predict \
 -j examples/example.json \
@@ -118,30 +117,41 @@ specifying more on the command line.  For example:
 
 Here, in addition to the TSV file, we need to specify the '-a' option.
 
-
-@jgbaum resume from here
-
 Example App (Amino Acid Counter) - Preprocess
 ---------------------------------------------
-This stage is where inputs must be split into multiple job units. Every tools will have different ways of preprocessing
-their jobs. This is a guideline, so that at least all CLI tools will have similar file structure and a way of parsing arguments.
+
+Starting from an input file that contains many peptides, create smaller input
+files, divided up by peptide length.
+
+@hkim, can you also please remove the 'length' parameter from the JSON file.  It seems unnecessary.
+
 >> python src/run_aacounter.py preprocess -j examples/example.json
 
-This will split the input into multiple parameter files and input files, both saved under 'preprocess_job/input_units' and 'preprocess_job/parameter_units' respectively.
-In addition, it should create a 'job_description.json' file that has descriptions of each job.
+This will split the input into multiple parameter files and data files, saved under
+'inputs/json' and 'inputs/data' respectively.
 
-Please, from top to bottom, run each command one by one. Also, notice the last command is calling 'postprocess' command, which
-is collecting all the results from individual jobs.
+In addition, it will create a 'job_description.json' file that has details on
+how to run the individual jobs including the specific command lines, job dependencies
+and expected outputs.  An example job desription file can be found (@hkim
+please add one to the examples directory).  In addition to the 'predict' jobs,
+the a 'postprocess' job is also defined in the job_descriptions file.
 
-The commands will look something similar to this.
->> "ABSOLUTE/PATH/TO/src/run_aacounter.py predict -j ABSOLUTE/PATH/TO/preprocess_job/parameter_units/0.json -o ABSOLUTE/PATH/TO/preprocess_job/results/0 -f json
 
 Example App (Amino Acid Counter) - Postprocess
 ----------------------------------------------
-The last command of the 'job_descriptions.json' will look like this, which aggregates all the results into one.
->> ABSOLUTE/PATH/TO/src/run_aacounter.py postprocess --job-desc-file=ABSOLUTE/PATH/TO/preprocess_job/job_descriptions.json --postprocess-input-dir=ABSOLUTE/PATH/TO/preprocess_job/results --postprocess-result-dir=ABSOLUTE/PATH/TO/postprocess_job
+The last command of the 'job_descriptions.json' will look like this, whic
+ aggregates all the results into one file.
 
-Starting Custom APP
--------------------
-To start a custom app, please use the following command to begin.
->> cli g CUSTOM-APP-NAME
+>> python src/run_aacounter.py postprocess \
+--job-desc-file=output_directory/job_descriptions.json \
+--postprocess-input-dir=ouptut_directory/predict-outputs \
+--postprocess-result-dir=output_directory
+
+Creating a new app within this framework
+----------------------------------------
+To create a new app that makes us of this framework, use the following command:
+
+>> cli g {APP_NAME}
+
+This will create a new directory structure, similar to that of the example
+app, and will include templates with logic that needs to be filled in.
