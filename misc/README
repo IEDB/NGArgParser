@@ -57,29 +57,37 @@ for processing. Each tool may have different ways of preprocessing jobs to run
 more efficiently. This is a guideline, so that at least all CLI tools will have
 similar file structure and a way of parsing arguments.
 
-In preprocess.py, the code for the following logic should be implemented.
+In preprocess.py, the code for the following logic should be implemented. Note that this example
+assumes the inputs are protein sequences, but the logic should be similar for any type of input.
 * Create an output directory for the prediction, with the following file structure:
-  @hkim to fill in
+output_directory/
+    |-predict-inputs/
+        |-json/
+        |-data/
+    |-predict-outputs/
   @hkim this can be added to the preproces template script, so no need for the external dev to fill in
-* Parse main input data (e.g., protein sequences) from the input JSON file. Split the input if needed, and store them under: '{output_folder}/preprocess_job/input_units' folder.
+* Parse main input data (e.g., protein sequences) from the input JSON file. Split the input if needed, and store them under: '{output_folder}/predict-inputs/json' folder.
 * Parse the remaining parameters from the input JSON file, and split them into an atomic job units.
-    * Make sure for each atomic job units has a key/value pair pointing to the input sequence files under '{output_folder}/preprocess_job/input_units'.
-    * Each job units should be stored under 'preprocess_job/parameter_units'.
+    * Make sure for each atomic job unit has a key/value pair pointing to the input sequence files under '{output_folder}/predict-inputs/data'.
+    * Each job unit should be stored under '{output_folder}/predict-inputs/json'.
 * Create a 'job_descriptions.json' file (Example: @hkim link to the example)
     * This file will have list of commands to run, one 'predict' command for each job unit.
     * The last command in the description file will use 'postprocess' subcommand.
 
-
-@jgbaum - think about the output directory structure and resume from here
+Predict
+-------
+This stage is essentially a wrapper around the tool and its implementation is
+mostly up to the developer.  The only requirements here are that:
+* It should accept inputs in JSON format
+* It should include an option to produce JSON format outputs
 
 Postprocess
 -----------
-This stage is where the results of the individual job units are aggregated into a
+This stage is where the results of the individual jobs are aggregated into a
 single JSON file.
 
 In postprocess.py, the code for the following logic should be implemented.
-* Read in all the results files created (under '{output_directory}/results/') from
-  each job unit.
+* Read in all the results files created (under '{output_directory}/predict-outputs/')
 * Combine all the results into single JSON file named '{output_directory}/aggregated_result.json'.
 
 In order to better visualize the file structure to understand the framework,
@@ -88,21 +96,30 @@ please view the 'example-app'.
 The 'example-app' can be created by running the following command:
 > cli g example
 
-Example App (Amino Acid Counter) - Single Prediction
+Example App (Amino Acid Counter) - Predict
 ----------------------------------------------------
-For single prediction given a TSV file, user must provide '--amino-acid'/'-a'
-flag to indicate which amino acid to count.
->> python src/run_aacounter.py predict \
--t examples/example.tsv \
--a L \
--o examples/postprocess_job/result.1 \
--f json
+
 
 For single prediction given a JSON file,
 >> python src/run_aacounter.py predict \
 -j examples/example.json \
 -o examples/postprocess_job/result.2 \
 -f json
+
+The app can also provide support to take in alternative inputs, such as TSV.  These formats
+will not be used in the NG workflow, but it might be valuable for users who prefer
+specifying more on the command line.  For example:
+
+>> python src/run_aacounter.py predict \
+-t examples/example.tsv \
+-a L \
+-o examples/postprocess_job/result.1 \
+-f json
+
+Here, in addition to the TSV file, we need to specify the '-a' option.
+
+
+@jgbaum resume from here
 
 Example App (Amino Acid Counter) - Preprocess
 ---------------------------------------------
