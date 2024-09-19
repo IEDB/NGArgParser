@@ -3,13 +3,13 @@ from distutils.core import setup
 setup(
   name = 'ngargparser',         
   packages = ['ngargparser'],  
-  version = '0.1',      
+  version = '0.1.1',      
   license='MIT',
   description = 'This is a standardized parser framework for CLI tools. This class will enforce certain properties or abstract methods to be implemented to properly create an Argument Parser class for other CLI tools.',   # Give a short description about your library
   author = 'Haeuk Kim',                 
   author_email = 'hkim@lji.org',
   url = 'https://github.com/IEDB/NGArgParser',
-  download_url = 'https://github.com/user/reponame/archive/v_01.tar.gz',
+  download_url = 'https://github.com/IEDB/NGArgParser/archive/refs/tags/v0.1.tar.gz',
   keywords = ['iedb', 'nextgen', 'argumentparser', 'iedb tools'], 
   install_requires=[],
   classifiers=[
