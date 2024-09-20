@@ -44,7 +44,6 @@ def countAA(jcontent):
     occurences of the amino acid.
     {
         "peptide": ["ADMGHLKY", ...],
-        "length": ["8", "8", ...],
         "amino_acid": "L"
     }   
     '''
@@ -112,7 +111,6 @@ def convert_tsv_to_json(tfile, aa):
     This function will convert TSV formatted data to the following JSON.
     {
         "peptide": ["ADMGHLKY", "ELDDTLKY", ...],  
-        "length": ["8", "8", ...],
         "amino_acid": "L"
     }
     '''
@@ -126,8 +124,9 @@ def convert_tsv_to_json(tfile, aa):
     content_dict['amino_acid'] = aa
 
     for row in content:
-        content_dict['peptide'].append(row[0])
-        content_dict['length'].append(row[1])
+        pep = row[0]
+        content_dict['peptide'].append(pep)
+        content_dict['length'].append(len(pep))
 
     content = json.dumps(content_dict)
 
@@ -195,7 +194,7 @@ def main():
         splitted_jobs = split_by_length(json_input)
 
         # 3. Create job description file
-        create_job_descriptions_file('./examples/job_descriptions.json', splitted_jobs, __file__)
+        create_job_descriptions_file(splitted_jobs, __file__)
 
 
     if args.subcommand == 'postprocess':

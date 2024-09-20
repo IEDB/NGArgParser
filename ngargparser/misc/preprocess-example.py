@@ -23,7 +23,8 @@ def split_by_length(jdata):
     job_files = []
     data = json.loads(jdata)
     peptides = data['peptide']
-    pep_lengths = data['length']
+    # pep_lengths = data['length']
+    pep_lengths = [len(p) for p in peptides]
     aa = data['amino_acid']
 
     # -------------------------------------------------------------------
@@ -50,8 +51,14 @@ def split_by_length(jdata):
     # -------------------------------------------------------------------
     # STEP 2. Create temp dir where the splitted jobs can be stored
     # -------------------------------------------------------------------
-    input_dir = Path('./examples/preprocess_job/input_units/')
-    param_dir = Path('./examples/preprocess_job/parameter_units/')
+    PROJ_ROOT = str(Path(__file__).parent.parent)
+    input_dir = str(PROJ_ROOT) + '/examples/preprocess_job/input_units/'
+    param_dir = str(PROJ_ROOT) + '/examples/preprocess_job/parameter_units/'
+    # input_dir = Path('./examples/preprocess_job/input_units/')
+    # param_dir = Path('./examples/preprocess_job/parameter_units/')
+
+
+
     # temp_dir = tempfile.mkdtemp(dir='./examples/preprocess_job/', prefix='inputs-')
 
     # for i, each_input in enumerate(splitted_input_params):
@@ -76,7 +83,9 @@ def split_by_length(jdata):
     return job_files
 
 
-def create_job_descriptions_file(path, splitted_jobs, exec_filename):
+def create_job_descriptions_file(splitted_jobs, exec_filename):
+    PROJ_ROOT = str(Path(__file__).parent.parent)
+    path = str(PROJ_ROOT) + '/examples/job_descriptions.json'
     with open(path, 'w') as f :
         exec_file = Path(exec_filename).resolve()
         contents = []
