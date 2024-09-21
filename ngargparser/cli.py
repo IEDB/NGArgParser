@@ -10,7 +10,7 @@ def format_project_name(name):
 
 def create_example_structure():
     try:
-        project_name = 'aa-counter'
+        project_name = 'aa3-counter'
 
         # Create directory structure
         os.makedirs(project_name)
@@ -24,7 +24,8 @@ def create_example_structure():
 
         # Create necessary files
         parser_file = 'AACounterArgumentParser.py'
-        shutil.copy('./misc/README', f'{project_name}/README')
+        update_and_place_readme('./misc/README', project_name)
+        # shutil.copy('./misc/README', f'{project_name}/README')
         shutil.copy('./misc/example.json', f'{project_name}/examples/example.json')
         shutil.copy('./misc/example.tsv', f'{project_name}/examples/example.tsv')
         shutil.copy('./misc/run_aacounter.py', f'{project_name}/src/run_aacounter.py')
@@ -53,7 +54,8 @@ def create_project_structure(project_name):
         exec_file = f'run_{project_name}.py'
         parser_file = f'{project_name.capitalize()}ArgumentParser.py'
         parser_name = f'{project_name.capitalize()}ArgumentParser'
-        shutil.copy('./misc/README', f'{project_name}/README')
+        update_and_place_readme('./misc/README', project_name)
+        # shutil.copy('./misc/README', f'{project_name}/README')
         shutil.copy('./misc/run_app.py', f'{project_name}/src/{exec_file}')
         shutil.copy('./misc/ChildArgumentParser.py', f'{project_name}/src/{parser_file}')
         shutil.copy('./misc/preprocess.py', f'{project_name}/src/preprocess.py')
@@ -68,6 +70,22 @@ def create_project_structure(project_name):
     except Exception as e:
         print(f"Error: {e}")
 
+
+def update_and_place_readme(file_path, app_name):
+    # Copy over the README blueprint
+    app_readme_path = f'{app_name}/README'
+    shutil.copy(file_path, app_readme_path)
+
+    with open(app_readme_path, 'r') as file:
+        content = file.read()
+    
+    # Replace {NAME} with 'hello'
+    updated_content = content.replace("{TOOL_NAME}", app_name)
+
+    # Write the updated content back to the file
+    with open(app_readme_path, 'w') as file:
+        file.write(updated_content)
+    
 
 def replace_text_in_place(file_path, old_text, new_text):
     """
