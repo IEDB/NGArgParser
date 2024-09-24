@@ -48,19 +48,25 @@ In this stage, inputs are split into multiple job units optimized for efficient 
 In "preprocess.py", the following logic should be implemented. While this example assumes the inputs are protein sequences, the approach should be adaptable to any type of input data.
 
 * Create an output directory for the prediction, with the following file structure:
-output_directory/
-    |-predict-inputs/
-        |-json/
-        |-data/
-    |-predict-outputs/
-  @hkim this can be added to the preprocess template script, so no need for the external dev to fill in
-* Parse main input data (e.g., protein sequences) from the input JSON file. Split the input if needed, and store them under: '{output_folder}/predict-inputs/json' folder.
+   ```
+   .
+   ├── output-directory/
+   │   ├── predict-inputs/
+   │   │   ├── data/
+   │   │   └── params/
+   │   └── predict-outputs/
+   └── src/
+      ├── run_test.py
+      ├── preprocess.py
+      └── postprocess.py
+   ```
+* Parse main input data (e.g., protein sequences) from the input JSON file. Split the input if needed, and store them under: "output-directory/predict-inputs/params" folder.
 * Parse the remaining parameters from the input JSON file, and split them into an atomic job units.
-    * Make sure for each atomic job unit has a key/value pair pointing to the input sequence files under '{output_folder}/predict-inputs/data'.
-    * Each job unit should be stored under '{output_folder}/predict-inputs/json'.
-* Create a 'job_descriptions.json' file (Example: @hkim link to the example)
-    * This file will have list of commands to run, one 'predict' command for each job unit.
-    * The last command in the description file will use 'postprocess' subcommand.
+    * Make sure for each atomic job unit has a key/value pair pointing to the input sequence files under "output-directory/predict-inputs/data".
+    * Each job unit should be stored under "output-directory/predict-inputs/params".
+* Create a "job_descriptions.json" file (Example file can be found in "ngargparser/misc/example_job_descriptions.json")
+    * This file will have list of commands to run, one "predict" command for each job unit.
+    * The last command in the description file will use "postprocess" subcommand.
 
 Predict
 -------
@@ -74,8 +80,8 @@ Postprocess
 This stage is where the results of the individual jobs are aggregated into a single JSON file.
 
 In "postprocess.py", the code for the following logic should be implemented.
-* Read in all the results files created (under '{output_directory}/predict-outputs/')
-* Combine all the results into single JSON file named '{output_directory}/aggregated_result.json'.
+* Read in all the results files created (under "output-directory/predict-outputs/")
+* Combine all the results into single JSON file named "output-directory/final-result.json'.
 
 
 Example App (Amino Acid Counter)
@@ -89,16 +95,16 @@ Example App - Predict
 -------
 For single prediction given a JSON file,
 > python src/run_aacounter.py predict \
--j examples/example.json \
--o examples/postprocess_job/result.2 \
+-j output-directory/example.json \
+-o output-directory/predict-outputs/result.1 \
 -f json
 
 The app can also provide support to take in alternative inputs, such as TSV.  These formats will not be used in the NG workflow, but it might be valuable for users who prefer to specify more options directly on the command line. For example:
 
 > python src/run_aacounter.py predict \
--t examples/example.tsv \
+-t output-directory/example.tsv \
 -a L \
--o examples/postprocess_job/result.1 \
+-o output-directory/predict-outputs/result.1 \
 -f json
 
 Here, in addition to the TSV file, we need to specify the "-a" option.
@@ -107,9 +113,9 @@ Example App - Preprocess
 ------------------------
 Starting from an input file that contains many peptides, create smaller input files, divided up by peptide length.
 
-> python src/run_aacounter.py preprocess -j examples/example.json
+> python src/run_aacounter.py preprocess -j output-directory/example.json
 
-This will split the input into multiple parameter files and data files, saved under "inputs/json" and "inputs/data" respectively.
+This will split the input into multiple parameter files and data files, saved under "predict-inputs/data" and "predict-inputs/params" respectively.
 
 In addition, it will create a "job_description.json" file that has details on how to run the individual jobs including the specific command lines, job dependencies and expected outputs.  
 
@@ -122,9 +128,9 @@ The last command of the "job_descriptions.json" will look like this, whic
  aggregates all the results into one file.
 
 > python src/run_aacounter.py postprocess \
---job-desc-file=output_directory/job_descriptions.json \
---postprocess-input-dir=ouptut_directory/predict-outputs \
---postprocess-result-dir=output_directory
+--job-desc-file=output-directory/job_descriptions.json \
+--postprocess-input-dir=ouptut-directory/predict-outputs \
+--postprocess-result-dir=output-directory
 
 Creating a new app within this framework
 ----------------------------------------
