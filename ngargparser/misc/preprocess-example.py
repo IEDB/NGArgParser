@@ -52,8 +52,8 @@ def split_by_length(jdata):
     # STEP 2. Create temp dir where the splitted jobs can be stored
     # -------------------------------------------------------------------
     PROJ_ROOT = str(Path(__file__).parent.parent)
-    input_dir = str(PROJ_ROOT) + '/examples/preprocess_job/input_units/'
-    param_dir = str(PROJ_ROOT) + '/examples/preprocess_job/parameter_units/'
+    input_dir = str(PROJ_ROOT) + '/output-directory/predict-inputs/data/'
+    param_dir = str(PROJ_ROOT) + '/output-directory/predict-inputs/params/'
     # input_dir = Path('./examples/preprocess_job/input_units/')
     # param_dir = Path('./examples/preprocess_job/parameter_units/')
 
@@ -85,18 +85,18 @@ def split_by_length(jdata):
 
 def create_job_descriptions_file(splitted_jobs, exec_filename):
     PROJ_ROOT = str(Path(__file__).parent.parent)
-    path = str(PROJ_ROOT) + '/examples/job_descriptions.json'
+    path = str(PROJ_ROOT) + '/output-directory/job_descriptions.json'
     with open(path, 'w') as f :
         exec_file = Path(exec_filename).resolve()
         contents = []
 
         for i, job in enumerate(splitted_jobs):
             # example folder -> job.parent.parent
-            shell_cmd = f'{exec_file} predict -j {job} -o {job.parent.parent}/results/result.{i} -f json'
+            shell_cmd = f'{exec_file} predict -j {job} -o {job.parent.parent.parent}/predict-outputs/result.{i} -f json'
             job_id = i
             job_type = 'prediction'
             expected_outputs = [
-                f'{job.parent.parent}/results/result.{i}.json'
+                f'{job.parent.parent.parent}/predict-outputs/result.{i}.json'
             ]
 
             jd: JobDescriptionDict = {
@@ -111,12 +111,12 @@ def create_job_descriptions_file(splitted_jobs, exec_filename):
 
         # Add command for postprocessing
         i += 1
-        shell_cmd = f'{exec_file} postprocess --job-desc-file={exec_file.parent.parent}/examples/job_descriptions.json -o {exec_file.parent.parent}/examples/postprocess_job/final-result -f json'
+        shell_cmd = f'{exec_file} postprocess --job-desc-file={exec_file.parent.parent}/output-directory/job_descriptions.json -o {exec_file.parent.parent}/output-directory/final-result -f json'
         job_id = i
         job_type = 'postprocess'
         depends_on_job_ids = list(range(i))
         expected_outputs = [
-            f'{job.parent.parent}/final-result.json'
+            f'{exec_file.parent.parent}/output-directory/final-result'
         ]
 
         jd: JobDescriptionDict = {

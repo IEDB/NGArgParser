@@ -10,24 +10,23 @@ def format_project_name(name):
 
 def create_example_structure():
     try:
-        project_name = 'aa3-counter'
+        project_name = 'aa-counter'
 
         # Create directory structure
         os.makedirs(project_name)
         os.makedirs(os.path.join(project_name, 'src'))
-        os.makedirs(os.path.join(project_name, 'examples'))
-        os.makedirs(os.path.join(project_name, 'examples', 'preprocess_job', 'input_units'))
-        os.makedirs(os.path.join(project_name, 'examples', 'preprocess_job', 'results'))
-        os.makedirs(os.path.join(project_name, 'examples', 'preprocess_job', 'parameter_units'))
-        os.makedirs(os.path.join(project_name, 'examples', 'postprocess_job'))
-
+        os.makedirs(os.path.join(project_name, 'output-directory'))
+        os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'data'))
+        os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'params'))
+        os.makedirs(os.path.join(project_name, 'output-directory', 'predict-outputs'))
+        
 
         # Create necessary files
         parser_file = 'AACounterArgumentParser.py'
         update_and_place_readme('./misc/README', project_name)
         # shutil.copy('./misc/README', f'{project_name}/README')
-        shutil.copy('./misc/example.json', f'{project_name}/examples/example.json')
-        shutil.copy('./misc/example.tsv', f'{project_name}/examples/example.tsv')
+        shutil.copy('./misc/example.json', f'{project_name}/output-directory/example.json')
+        shutil.copy('./misc/example.tsv', f'{project_name}/output-directory/example.tsv')
         shutil.copy('./misc/run_aacounter.py', f'{project_name}/src/run_aacounter.py')
         shutil.copy(f'./misc/{parser_file}', f'{project_name}/src/{parser_file}')
         shutil.copy('./misc/preprocess-example.py', f'{project_name}/src/preprocess.py')
