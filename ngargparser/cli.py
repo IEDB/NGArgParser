@@ -43,12 +43,11 @@ def create_project_structure(project_name):
         # Create directory structure
         os.makedirs(project_name)
         os.makedirs(os.path.join(project_name, 'src'))
-        os.makedirs(os.path.join(project_name, 'examples'))
-        os.makedirs(os.path.join(project_name, 'examples', 'preprocess_job', 'input_units'))
-        os.makedirs(os.path.join(project_name, 'examples', 'preprocess_job', 'results'))
-        os.makedirs(os.path.join(project_name, 'examples', 'preprocess_job', 'parameter_units'))
-        os.makedirs(os.path.join(project_name, 'examples', 'postprocess_job'))
-
+        os.makedirs(os.path.join(project_name, 'output-directory'))
+        os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'data'))
+        os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'params'))
+        os.makedirs(os.path.join(project_name, 'output-directory', 'predict-outputs'))
+        
         # Create necessary files
         exec_file = f'run_{project_name}.py'
         parser_file = f'{project_name.capitalize()}ArgumentParser.py'
@@ -117,7 +116,7 @@ def startapp_command(args):
         create_project_structure(args.project_name)
 
 def main():
-    parser = argparse.ArgumentParser(description='Loki Framework')
+    parser = argparse.ArgumentParser(description='NG Argument Parser Framework')
     subparsers = parser.add_subparsers(dest='command')
 
     # Create 'startapp' sub-command
