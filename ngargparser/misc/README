@@ -124,7 +124,7 @@ An example job desription file can be found (@hkim please add one to the example
 
 Example App - Postprocess
 ----------------------------------------------
-The last command of the "job_descriptions.json" will look like this, whic
+The last command of the "job_descriptions.json" will look like this, which
  aggregates all the results into one file.
 
 > python src/run_aacounter.py postprocess \

@@ -193,7 +193,7 @@ if __name__=='__main__':
 
 ## Filling in the logic
 
-The logic for each of the run modes (`preprocess`, `predict`, `postprocess`) needs
+The logic for each of the run modes (`predict`, `preprocess`, `postprocess`) needs
 to be fleshed out separately.  We aim to include as much of the common logic as
 possible in future releases of NGArgumentParser.
 
@@ -222,19 +222,15 @@ to be executed in order to complete the prediction as well as any expected outpu
 files.
 
 It is essentially creating the following filestructure, where we set the following parameters:
-1. `params-dir=splitted_parameters`
-2. `inputs-dir=inputs_units`
-
+1. `params-dir="./output-directory/predict-inputs/params"`
+2. `inputs-dir="./output-directory/predict-inputs/data"`
 ```bash
 .
-├── inputs_units/
-│   └── tmp_pqgszjz_
-├── results/
-│   └── sequence_peptide_index.json
-├── splitted_parameters/
-│   ├── 0.json
-│   └── 1.json
-└── job_descriptions.json
+└── output-directory/
+    ├── predict-inputs/
+    │   ├── data/
+    │   └── params/
+    └── predict-outputs/
 ```
 
 `inputs-dir`: This directory will hold a temporary file that has all the inputs.
@@ -246,7 +242,8 @@ KMKGDYFRYF
 ```
 
 `params-dir`: This directory will have multiple json files where each json file will have parameters for single prediction.
-The `preprocess` will break down `example.json` into 2 small units (`0.json`, `1.json`).
+The `preprocess` will break down `example.json` into 2 small units (`0.json`, `1.json`) by splitting the alleles, and
+place them under the `params-dir`.
 ```json
 // file: 0.json
 {
@@ -257,8 +254,8 @@ The `preprocess` will break down `example.json` into 2 small units (`0.json`, `1
       "method": "netmhcpan_ba"
     }
   ],
-  // This should point to the `inputs-dir` (i.e. inputs_units/tmppqgszjz_)
-  "peptide_file_path": "/PATH/TO/CLI-TOOL-PROJECT-ROOT/inputs_units/tmppqgszjz_",
+  // This should point to the `inputs-dir` (i.e. output-directory/predict-inputs/data/tmppqgszjz_)
+  "peptide_file_path": "/PATH/TO/CLI-TOOL-PROJECT-ROOT/output-directory/predict-inputs/data/tmppqgszjz_",
   "peptide_length_range": [
     10,
     10
@@ -276,15 +273,137 @@ The `preprocess` will break down `example.json` into 2 small units (`0.json`, `1
       "method": "netmhcpan_ba"
     }
   ],
-  // This should point to the `inputs-dir` (i.e. inputs_units/tmppqgszjz_)
-  "peptide_file_path": "/PATH/TO/CLI-TOOL-PROJECT-ROOT/inputs_units/tmppqgszjz_",
+  // This should point to the `inputs-dir` (i.e. output-directory/predict-inputs/data/tmppqgszjz_)
+  "peptide_file_path": "/PATH/TO/CLI-TOOL-PROJECT-ROOT/output-directory/predict-inputs/data/tmppqgszjz_",
   "peptide_length_range": [
     10,
     10
   ]
 }
 ```
-`results`: This folder will hold a single file called `sequence_peptide_index.json`. The file should consist of the following:
+
+The preprocessing step should also include creation of `job_descriptions.json` file. 
+
+`job_descriptions.json`: This is a file that has a list of job descriptions where each job descriptions will have a command that needs to be run in order to create the resulting output.
+
+The function to create this file may be implmented from scratch, or the `NGArgumentParser` can create one given the `params-dir`.
+
+Following snippet should create the `job_descriptions` file.
+```python
+# child argument parser that extens from NGArgumentParser
+parser = ChildArgumentParser()
+.
+.
+.
+# steps to split the files
+.
+.
+.
+# Provide path to the "params-dir"
+# By default, it creates the file in the app root directory.
+parser.create_job_descriptions_file(param_dir)
+```
+At this point, the file structure should look like the following:
+```bash
+.
+├── output-directory/
+│   ├── predict-inputs/
+│   │   ├── data/
+│   │   │   └── tmp_pqgszjz_
+│   │   └── params/
+│   │       ├── 0.json
+│   │       └── 1.json
+│   └── predict-outputs/
+└── job_descriptions.json
+```
+Inside the `job_descriptions` file, it should look like the following:
+```json
+// file: job_descriptions.json
+[
+    {
+        "shell_cmd": "/ABSOLUTE/PATH/TO/EXECUTABLE_FILE predict -j /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-inputs/params/0.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-outputs/result.0 -f json",
+        "job_id": "0",
+        "job_type": "prediction",
+        "depends_on_job_ids": [],
+        "expected_outputs": [
+            "/ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-outputs/result.0.json"
+        ]
+    },
+    {
+        "shell_cmd": "/ABSOLUTE/PATH/TO/EXECUTABLE_FILE predict -j /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-inputs/params/1.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-outputs/result.1 -f json",
+        "job_id": "1",
+        "job_type": "prediction",
+        "depends_on_job_ids": [],
+        "expected_outputs": [
+            "/ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-outputs/result.1.json"
+        ]
+    },
+    {
+        "shell_cmd": "/ABSOLUTE/PATH/TO/EXECUTABLE_FILE postprocess --job-desc-file=/ABSOLUTE/PATH/TO/APP/ROOT/job_descriptions.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/final-result -f json",
+        "job_id": "2",
+        "job_type": "postprocess",
+        "depends_on_job_ids": [
+            "0",
+            "1",
+        ],
+        "expected_outputs": [
+            "/ABSOLUTE/PATH/TO/APP/ROOT/output-directory/final-result"
+        ]
+    }
+]
+```
+
+From the above example, note that the first two are individual predictions, whereas the last command is a postprocessing step
+that gathers all the result files.
+
+### Predict
+
+In this step, a prediction is run using one of the JSON input files created in the
+preprocessing step.  Output should include a JSON file of the results.  The developer
+is free to add any other options to this subparser.  The only requirement is that
+there is a way to run a JSON input through and receive a JSON output in the format specified
+below.
+
+```bash
+>> python /ABSOLUTE/PATH/TO/EXECUTABLE_FILE predict \
+-j /PATH/TO/JSON-INPUT-FILE \
+-o /PATH/TO/PREDICTION-RESULT-FILE \
+-f json
+```
+
+Going back the example, running the first two `predict` commands in order will create result file, and save it under `predict-outputs` folder.
+```bash
+>> python /ABSOLUTE/PATH/TO/EXECUTABLE_FILE predict -j /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-inputs/params/0.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-outputs/result.0 -f json
+
+>> python /ABSOLUTE/PATH/TO/EXECUTABLE_FILE predict -j /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-inputs/params/1.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-outputs/result.1 -f json
+```
+
+The file structure should look like the following:
+```bash
+.
+├── output-directory/
+│   ├── predict-inputs/
+│   │   ├── data/
+│   │   │   └── tmp_pqgszjz_
+│   │   └── params/
+│   │       ├── 0.json
+│   │       └── 1.json
+│   └── predict-outputs/
+│       ├── result.0.json
+│       └── result.1.json
+└── job_descriptions.json
+```
+
+### Postprocess
+The last command of the `job_descriptions.json` will look like this, which aggregates all the results from the
+individual predictions into a single file.
+```bash
+>> /ABSOLUTE/PATH/TO/EXECUTABLE_FILE postprocess --job-desc-file=/ABSOLUTE/PATH/TO/APP/ROOT/job_descriptions.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/final-result -f json
+```
+Using the above example, the last command should take the two individual prediction result files 
+(`result.0.json`, `result.1.json`) and combine them into a single file.
+
+This step will create a single file called  `final-result.json`, which will look like the following:
 ```json
 {
   "warnings": [],
@@ -360,107 +479,3 @@ The `preprocess` will break down `example.json` into 2 small units (`0.json`, `1
   ]
 }
 ```
-
-`job_descriptions.json`: This is a file that has a list of job descriptions where each job descriptions will have a command that needs to be run in order to create the resulting output.
-```json
-[
-  {
-    "shell_cmd": "/PATH/TO/CLI-TOOL-PROJECT-ROOT/src/run_test.py -j /PATH/TO/CLI-TOOL-PROJECT-ROOT/splitted_parameters/0.json -o /PATH/TO/CLI-TOOL-PROJECT-ROOT/results/0 -f json",
-    "job_id": 0,
-    "job_type": "prediction",
-    "depends_on_job_ids": [],
-    "expected_outputs": [
-      "/PATH/TO/CLI-TOOL-PROJECT-ROOT/results/0.json"
-    ]
-  },
-  {
-    "shell_cmd": "/PATH/TO/CLI-TOOL-PROJECT-ROOT/src/run_test.py -j /PATH/TO/CLI-TOOL-PROJECT-ROOT/splitted_parameters/1.json -o /PATH/TO/CLI-TOOL-PROJECT-ROOT/results/1 -f json",
-    "job_id": 1,
-    "job_type": "prediction",
-    "depends_on_job_ids": [],
-    "expected_outputs": [
-      "/PATH/TO/CLI-TOOL-PROJECT-ROOT/results/1.json"
-    ]
-  },
-  {
-    "shell_cmd": "/PATH/TO/CLI-TOOL-PROJECT-ROOT/src/run_test.py --postprocess --job-desc-file=/PATH/TO/CLI-TOOL-PROJECT-ROOT/job_descriptions.json --input-results-dir=/PATH/TO/CLI-TOOL-PROJECT-ROOT/results --postprocessed-results-dir=/PATH/TO/CLI-TOOL-PROJECT-ROOT/aggregate",
-    "job_id": 2,
-    "job_type": "aggregate",
-    "depends_on_job_ids": [
-      0,
-      1
-    ],
-    "expected_outputs": [
-      "/PATH/TO/CLI-TOOL-PROJECT-ROOT/aggregate/aggregated_result.json"
-    ]
-  }
-]
-```
-
-Run each `shell_cmd` described in `job_descriptions.json` from top to bottom.
-```bash
->> python /PATH/TO/CLI-TOOL-PROJECT-ROOT/src/run_test.py -j /PATH/TO/CLI-TOOL-PROJECT-ROOT/splitted_parameters/0.json -o /PATH/TO/CLI-TOOL-PROJECT-ROOT/results/0 -f json
-
->> python /PATH/TO/CLI-TOOL-PROJECT-ROOT/src/run_test.py -j /PATH/TO/CLI-TOOL-PROJECT-ROOT/splitted_parameters/1.json -o /PATH/TO/CLI-TOOL-PROJECT-ROOT/results/1 -f json
-
->> python /PATH/TO/CLI-TOOL-PROJECT-ROOT/src/run_test.py --postprocess --job-desc-file=/PATH/TO/CLI-TOOL-PROJECT-ROOT/job_descriptions.json --input-results-dir=/PATH/TO/CLI-TOOL-PROJECT-ROOT/results --postprocessed-results-dir=/PATH/TO/CLI-TOOL-PROJECT-ROOT/aggregate
-```
-
-Now, the full project structure should look something like this.
-```
-.
-├── output-directory/
-│   ├── predict-inputs/
-│   │   ├── data/
-│   │   └── params/
-│   └── predict-outputs/
-├── src/
-│   ├── run_test.py
-│   ├── preprocess.py
-│   └── postprocess.py
-├── examples.json
-└── job_descriptions.json
-```
-
-
-Also, if the user chooses not to provide those parameters, then the code should create the filestructure for the user.
-```bash
-python src/run_test.py preprocess -j examples/example.json
-```
-The above command will create the below filestructure:
-```
-.
-└── job_NX1bAC/
-    ├── splitted_parameters/
-    │   ├── 0.json
-    │   ├── 1.json
-    │   └── 2.json
-    ├── results/
-    └── job_descriptions.json
-```
-
-
-* @hkim, please add a description of what needs to happen in this step, including an example input JSON,
-output split JSONs, job_description.json, etc. as well as snippets of code (or links to code) that accomplish 
-this.
-
-
-
-### Predict
-
-In this step, a prediction is run using one of the JSON input files created in the
-preprocessing step.  Output should include a JSON file of the results.  The developer
-is free to add any other options to this subparser.  The only requirement is that
-there is a way to run a JSON input through and receive a JSON output in the format specified
-below.
-
-* @hkim, please include an example of what the JSON format for output should look
-like, with an example of multiple tables.
-
-### Postprocess
-
-Here, the individual results from the predictions are aggregated together into a single
-JSON output.
-
-* @hkim, please include an example of the aggregated output as well as a code snippet
-or link to example code for aggregation.
