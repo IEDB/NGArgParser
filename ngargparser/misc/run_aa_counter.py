@@ -17,7 +17,7 @@ def format_result_json(data):
     table_data = []
     for i in range(len(data['peptide'])):
         pep = data['peptide'][i]
-        length = data['length'][i]
+        length = len(pep)
         count = data[counter_col_name][i]
         table_data.append([pep, length, count])
 

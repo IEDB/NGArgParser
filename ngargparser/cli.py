@@ -3,10 +3,16 @@ import textwrap
 import os
 import shutil
 
-def format_project_name(name):
-    pname = name.replace('_', '-').split('-')
-    pname = [_.capitalize() for _ in pname]
-    return ''.join(pname)
+
+def format_project_name(name, capitalize=False):
+    name = name.replace('-', '_')
+
+    if capitalize:
+        name = name.split('_')
+        name = [_.capitalize() for _ in name]
+        name = ''.join(name)
+
+    return name
 
 def create_example_structure():
     try:
@@ -23,7 +29,7 @@ def create_example_structure():
 
         # Create necessary files
         parser_file = 'AACounterArgumentParser.py'
-        update_and_place_readme('./misc/README', project_name)
+        update_and_place_readme('./misc/README', project_name, is_example=True)
         # shutil.copy('./misc/README', f'{project_name}/README')
         shutil.copy('./misc/example.json', f'{project_name}/output-directory/example.json')
         shutil.copy('./misc/example.tsv', f'{project_name}/output-directory/example.tsv')
@@ -49,11 +55,10 @@ def create_project_structure(project_name):
         os.makedirs(os.path.join(project_name, 'output-directory', 'predict-outputs'))
         
         # Create necessary files
-        exec_file = f'run_{project_name}.py'
-        parser_file = f'{project_name.capitalize()}ArgumentParser.py'
-        parser_name = f'{project_name.capitalize()}ArgumentParser'
+        exec_file = f'run_{format_project_name(project_name)}.py'
+        parser_file = f'{format_project_name(project_name, capitalize=True)}ArgumentParser.py'
+        parser_name = f'{format_project_name(project_name, capitalize=True)}ArgumentParser'
         update_and_place_readme('./misc/README', project_name)
-        # shutil.copy('./misc/README', f'{project_name}/README')
         shutil.copy('./misc/run_app.py', f'{project_name}/src/{exec_file}')
         shutil.copy('./misc/ChildArgumentParser.py', f'{project_name}/src/{parser_file}')
         shutil.copy('./misc/preprocess.py', f'{project_name}/src/preprocess.py')
@@ -69,17 +74,21 @@ def create_project_structure(project_name):
         print(f"Error: {e}")
 
 
-def update_and_place_readme(file_path, app_name):
+def update_and_place_readme(file_path, app_name, is_example=False):
     # Copy over the README blueprint
     app_readme_path = f'{app_name}/README'
     shutil.copy(file_path, app_readme_path)
 
     with open(app_readme_path, 'r') as file:
         content = file.read()
-    
+
     # Replace variables in README
     content = content.replace("{TOOL_NAME}", app_name)
-    updated_content = content.replace("{TOOL_NAME_CAP}", app_name.capitalize())
+    content = content.replace("{TOOL_EXEC_NAME}", format_project_name(app_name))
+    if is_example:
+        updated_content = content.replace("{TOOL_NAME_CAP}", 'AACounter')
+    else:
+        updated_content = content.replace("{TOOL_NAME_CAP}", format_project_name(app_name, capitalize=True))
 
     # Write the updated content back to the file
     with open(app_readme_path, 'w') as file:

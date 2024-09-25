@@ -16,7 +16,7 @@ A tool created with this framework has three subcommands:
    Aggregates the results from all predict commands into a consolidated output file.
 
 The "src" directory contains several template files that may need to be filled in to incorporate your tool:
-1. **run_{TOOL_NAME}.py**\
+1. **run_{TOOL_EXEC_NAME}.py**\
    This is the primary script that users execute, responsible for managing and executing the various sub-commands.
 2. **{TOOL_NAME_CAP}ArgumentParser.py**\
    This is the primary argument parser class, where developers can define and customize flags and parameters for the "predict" sub-command.
