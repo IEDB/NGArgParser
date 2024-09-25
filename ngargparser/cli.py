@@ -77,8 +77,9 @@ def update_and_place_readme(file_path, app_name):
     with open(app_readme_path, 'r') as file:
         content = file.read()
     
-    # Replace {NAME} with 'hello'
-    updated_content = content.replace("{TOOL_NAME}", app_name)
+    # Replace variables in README
+    content = content.replace("{TOOL_NAME}", app_name)
+    updated_content = content.replace("{TOOL_NAME_CAP}", app_name.capitalize())
 
     # Write the updated content back to the file
     with open(app_readme_path, 'w') as file:
