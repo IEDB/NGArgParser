@@ -16,11 +16,11 @@
 import json
 import tempfile
 from pathlib import Path
-from NGArgumentParser import JobDescriptionDict
+from NGArgumentParser import JobDescriptionParams
 
 
 def split_by_length(jdata):
-    job_files = []
+    # job_files = []
     data = json.loads(jdata)
     peptides = data['peptide']
     # pep_lengths = data['length']
@@ -63,7 +63,7 @@ def split_by_length(jdata):
 
     # for i, each_input in enumerate(splitted_input_params):
     for i in range(len(splitted_input_params)):
-        abs_path_param_tmpfile = None
+        # abs_path_param_tmpfile = None
         abs_path_seqs_tmpfile = None
         # create temporary file to store each input
         with tempfile.NamedTemporaryFile(dir=input_dir, prefix=f'{i}-', suffix='.txt', mode='w', delete=False) as tmpfile:
@@ -75,59 +75,9 @@ def split_by_length(jdata):
 
         with tempfile.NamedTemporaryFile(dir=param_dir, prefix=f'{i}-', suffix='.json', mode='w', delete=False) as tmpfile:
             json.dump(splitted_input_params[i], tmpfile, indent=4)
-            abs_path_param_tmpfile = Path(tmpfile.name).resolve()
+            # abs_path_param_tmpfile = Path(tmpfile.name).resolve()
 
 
-        job_files.append(abs_path_param_tmpfile)
+    #     job_files.append(abs_path_param_tmpfile)
 
-    return job_files
-
-
-def create_job_descriptions_file(splitted_jobs, exec_filename):
-    PROJ_ROOT = str(Path(__file__).parent.parent)
-    path = str(PROJ_ROOT) + '/output-directory/job_descriptions.json'
-    with open(path, 'w') as f :
-        exec_file = Path(exec_filename).resolve()
-        contents = []
-
-        for i, job in enumerate(splitted_jobs):
-            # example folder -> job.parent.parent
-            shell_cmd = f'{exec_file} predict -j {job} -o {job.parent.parent.parent}/predict-outputs/result.{i} -f json'
-            job_id = i
-            job_type = 'prediction'
-            expected_outputs = [
-                f'{job.parent.parent.parent}/predict-outputs/result.{i}.json'
-            ]
-
-            jd: JobDescriptionDict = {
-                'shell_cmd': shell_cmd,
-                'job_id': job_id,
-                'job_type': job_type,
-                'depends_on_job_ids': [],
-                'expected_outputs': expected_outputs,
-            }
-
-            contents.append(jd)
-
-        # Add command for postprocessing
-        i += 1
-        shell_cmd = f'{exec_file} postprocess --job-desc-file={exec_file.parent.parent}/output-directory/job_descriptions.json -o {exec_file.parent.parent}/output-directory/final-result -f json'
-        job_id = i
-        job_type = 'postprocess'
-        depends_on_job_ids = list(range(i))
-        expected_outputs = [
-            f'{exec_file.parent.parent}/output-directory/final-result'
-        ]
-
-        jd: JobDescriptionDict = {
-            'shell_cmd': shell_cmd,
-            'job_id': job_id,
-            'job_type': job_type,
-            'depends_on_job_ids': depends_on_job_ids,
-            'expected_outputs': expected_outputs,
-        }
-
-        contents.append(jd)
-
-        # Write the entire list of jobs to job description file
-        json.dump(contents, f, indent=4)
+    # return job_files

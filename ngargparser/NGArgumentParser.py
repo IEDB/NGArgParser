@@ -1,18 +1,17 @@
 import argparse
 import textwrap
-import os
+import json
+from pathlib import Path
 from typing import TypedDict, List
 
-# get the current directory and define some defaults
-cwd = os.getcwd()
-
 # defaults for preprocessing
-default_params_dir = os.path.join(cwd, 'preprocessing')
-default_inputs_dir = default_params_dir
+PROJECT_ROOT_PATH = str(Path(__file__).parent)
+OUTPUT_DIR_PATH = PROJECT_ROOT_PATH + '/output-directory'
+DEFAULT_PARAMS_DIR = OUTPUT_DIR_PATH + '/predict-inputs/params'
+DEFAULT_INPUTS_DIR = OUTPUT_DIR_PATH + '/predict-inputs/data'
 
 # defaults for postprocessing
-default_results_dir = os.path.join(cwd, 'results')
-default_postprocessed_results_dir = os.path.join(cwd, 'postprocessing')
+DEFAULT_RESULTS_DIR = OUTPUT_DIR_PATH + '/predict-outputs'
 
 
 class NGArgumentParser(argparse.ArgumentParser):
@@ -65,12 +64,12 @@ class NGArgumentParser(argparse.ArgumentParser):
         
         parser_preprocess.add_argument("--params-dir",
                                         dest="preprocess_parameters_dir",
-                                        default=default_params_dir,
+                                        default=DEFAULT_PARAMS_DIR,
                                         help="a directory to store preprocessed JSON input files")
         
         parser_preprocess.add_argument("--inputs-dir",
                                         dest="preprocess_inputs_dir",
-                                        default=default_inputs_dir,
+                                        default=DEFAULT_INPUTS_DIR,
                                         help="a directory to store other, non-JSON inputs (e.g., fasta files)")
         
         parser_preprocess.add_argument("--assume-valid",
@@ -88,17 +87,17 @@ class NGArgumentParser(argparse.ArgumentParser):
 
         parser_postprocess.add_argument("--input-results-dir",
                                         dest="postprocess_input_dir",
-                                        default=default_results_dir,
+                                        default=DEFAULT_RESULTS_DIR,
                                         help="directory containing the result files to postprocess")
 
         parser_postprocess.add_argument("--postprocessed-results-dir",
                                         dest="postprocess_result_dir",
-                                        default=default_postprocessed_results_dir,
+                                        default=OUTPUT_DIR_PATH,
                                         help="a directory to contain the post-processed results")
         
         parser_postprocess.add_argument("--job-desc-file",
                                         dest="job_desc_file",
-                                        default=default_postprocessed_results_dir,
+                                        default=PROJECT_ROOT_PATH,
                                         help="Path to job description file.")
         
         parser_postprocess.add_argument("--output-prefix", "-o",
@@ -133,9 +132,124 @@ class NGArgumentParser(argparse.ArgumentParser):
         #                                 help="flag to indicate validation can be skipped")
         
         return self.parser_predict
+    
+    def format_exec_name(self, name):
+        pname = name.replace('-', '_')
+        # pname = [_.capitalize() for _ in pname]
+        # return ''.join(pname)
+        return pname
+
+    def create_job_descriptions_file(self, params_dir):
+        # project root
+        PROJ_ROOT_PATH = str(Path(__file__).parent.parent)
+        
+        # output path
+        OUTPUT_DIR_PATH = PROJ_ROOT_PATH + '/output-directory'
+        PREDICT_OUTPUT_DIR = OUTPUT_DIR_PATH + '/predict-outputs'
+
+        # job description file path
+        JD_PATH = PROJ_ROOT_PATH + '/job_descriptions.json'
+
+        # exec file path
+        PROJ_NAME = PROJ_ROOT_PATH.split('/')[-1]
+        PROJ_NAME = self.format_exec_name(PROJ_NAME)
+        EXEC_FILE_PATH = str(Path(__file__).parent) + f'/run_{PROJ_NAME}.py'
+        files_with_ctime = []
+
+        for file_path in Path(params_dir).iterdir():
+            if file_path.is_file():
+                # Get the creation time of the file
+                creation_time = file_path.stat().st_ctime
+                
+                # Store the file path and its creation time as a tuple
+                files_with_ctime.append((file_path, creation_time))
+
+        # Sort files by creation time
+        files_with_ctime.sort(key=lambda x: x[1])
+
+        '''
+        In case user forgets to or doesn't want to remove previous input files
+        in the directory, then group the files by timeframe, then
+        create job_description file by taking only the last group.
+        '''
+        grouped_files = []
+        current_group = []
+        timeframe_seconds=0.1
+
+        for i, (file, ctime) in enumerate(files_with_ctime):
+            if not current_group:
+                current_group.append(file)  # Start a new group
+            else:
+                # Check if the current file's creation time is within the timeframe
+                if ctime - files_with_ctime[i - 1][1] <= timeframe_seconds:
+                    current_group.append(file)
+                else:
+                    grouped_files.append(current_group)  # Save the current group
+                    current_group = [file]  # Start a new group
+
+        # Add the last group if it exists
+        if current_group:
+            grouped_files.append(current_group)
+
+        # for i, gfiles in enumerate(grouped_files):
+        #     print('========================')
+        #     print(f'GROUP {i+1}:')
+        #     print('========================')
+        #     for file in gfiles:
+        #         print(str(file))
+
+        '''
+        Take the last group that was newly created, and create
+        job_description file out of it.
+        '''
+        job_files = grouped_files[-1]
+        with open(JD_PATH, 'w') as f :
+            jd_cmds = []
+            for i, job in enumerate(job_files):
+                param_file_path = str(job)
+                
+                shell_cmd = f'{EXEC_FILE_PATH} predict -j {param_file_path} -o {PREDICT_OUTPUT_DIR}/result.{i} -f json'
+                job_id = i
+                job_type = 'prediction'
+                expected_outputs = [
+                    f'{PREDICT_OUTPUT_DIR}/result.{i}.json'
+                ]
+
+                jd: JobDescriptionParams = {
+                    'shell_cmd': shell_cmd,
+                    'job_id': job_id,
+                    'job_type': job_type,
+                    'depends_on_job_ids': [],
+                    'expected_outputs': expected_outputs,
+                }
+
+                jd_cmds.append(jd)
+
+            # Add command for postprocessing
+            i += 1
+            shell_cmd = f'{EXEC_FILE_PATH} postprocess --job-desc-file={JD_PATH} -o {OUTPUT_DIR_PATH}/final-result -f json'
+            job_id = i
+            job_type = 'postprocess'
+            depends_on_job_ids = list(range(i))
+            expected_outputs = [
+                f'{OUTPUT_DIR_PATH}/final-result.json'
+            ]
+
+            jd: JobDescriptionParams = {
+                'shell_cmd': shell_cmd,
+                'job_id': job_id,
+                'job_type': job_type,
+                'depends_on_job_ids': depends_on_job_ids,
+                'expected_outputs': expected_outputs,
+            }
+
+            jd_cmds.append(jd)
+
+            # Write the entire list of jobs to job description file
+            json.dump(jd_cmds, f, indent=4)
 
 
-class JobDescriptionDict(TypedDict):
+class JobDescriptionParams(TypedDict):
     # Blueprint for creating job description file
     shell_cmd: str
     job_id: int

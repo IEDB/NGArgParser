@@ -407,25 +407,18 @@ Run each `shell_cmd` described in `job_descriptions.json` from top to bottom.
 ```
 
 Now, the full project structure should look something like this.
-```bash
+```
 .
-├── aggregate/
-│   └── aggregated_result.json
-├── examples/
-│   └── example.json
-├── inputs_units/
-│   └── tmp_pqgszjz_
-├── results/
-│   ├── 0.json
-│   ├── 1.json
-│   └── sequence_peptide_index.json
-├── splitted_parameters/
-│   ├── 0.json
-│   └── 1.json
+├── output-directory/
+│   ├── predict-inputs/
+│   │   ├── data/
+│   │   └── params/
+│   └── predict-outputs/
 ├── src/
 │   ├── run_test.py
 │   ├── preprocess.py
 │   └── postprocess.py
+├── examples.json
 └── job_descriptions.json
 ```
 

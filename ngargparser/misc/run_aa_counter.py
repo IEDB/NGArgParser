@@ -1,6 +1,7 @@
 import json
 import re
-from preprocess import split_by_length, create_job_descriptions_file
+from pathlib import Path
+from preprocess import split_by_length
 from postprocess import collect_all_job_results, save_results_to
 from AACounterArgumentParser import AACounterArgumentParser
 
@@ -191,11 +192,11 @@ def main():
             raise parser.error("Counter app preprocess command only accepts JSON file.")
 
         # 2. Logic to split the inputs by length
-        splitted_jobs = split_by_length(json_input)
+        split_by_length(json_input)
 
         # 3. Create job description file
-        create_job_descriptions_file(splitted_jobs, __file__)
-
+        param_dir = str(Path(__file__).parent.parent) + '/output-directory/predict-inputs/params'
+        parser.create_job_descriptions_file(param_dir)
 
     if args.subcommand == 'postprocess':
         # 1. Parse arguments to get the job description data

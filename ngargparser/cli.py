@@ -27,7 +27,7 @@ def create_example_structure():
         # shutil.copy('./misc/README', f'{project_name}/README')
         shutil.copy('./misc/example.json', f'{project_name}/output-directory/example.json')
         shutil.copy('./misc/example.tsv', f'{project_name}/output-directory/example.tsv')
-        shutil.copy('./misc/run_aacounter.py', f'{project_name}/src/run_aacounter.py')
+        shutil.copy('./misc/run_aa_counter.py', f'{project_name}/src/run_aa_counter.py')
         shutil.copy(f'./misc/{parser_file}', f'{project_name}/src/{parser_file}')
         shutil.copy('./misc/preprocess-example.py', f'{project_name}/src/preprocess.py')
         shutil.copy('./misc/postprocess-example.py', f'{project_name}/src/postprocess.py')
