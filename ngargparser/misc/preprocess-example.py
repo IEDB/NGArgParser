@@ -16,14 +16,11 @@
 import json
 import tempfile
 from pathlib import Path
-from NGArgumentParser import JobDescriptionParams
 
 
 def split_by_length(jdata):
-    # job_files = []
     data = json.loads(jdata)
     peptides = data['peptide']
-    # pep_lengths = data['length']
     pep_lengths = [len(p) for p in peptides]
     aa = data['amino_acid']
 
@@ -54,16 +51,8 @@ def split_by_length(jdata):
     PROJ_ROOT = str(Path(__file__).parent.parent)
     input_dir = str(PROJ_ROOT) + '/output-directory/predict-inputs/data/'
     param_dir = str(PROJ_ROOT) + '/output-directory/predict-inputs/params/'
-    # input_dir = Path('./examples/preprocess_job/input_units/')
-    # param_dir = Path('./examples/preprocess_job/parameter_units/')
-
-
-
-    # temp_dir = tempfile.mkdtemp(dir='./examples/preprocess_job/', prefix='inputs-')
-
-    # for i, each_input in enumerate(splitted_input_params):
+    
     for i in range(len(splitted_input_params)):
-        # abs_path_param_tmpfile = None
         abs_path_seqs_tmpfile = None
         # create temporary file to store each input
         with tempfile.NamedTemporaryFile(dir=input_dir, prefix=f'{i}-', suffix='.txt', mode='w', delete=False) as tmpfile:
@@ -75,9 +64,3 @@ def split_by_length(jdata):
 
         with tempfile.NamedTemporaryFile(dir=param_dir, prefix=f'{i}-', suffix='.json', mode='w', delete=False) as tmpfile:
             json.dump(splitted_input_params[i], tmpfile, indent=4)
-            # abs_path_param_tmpfile = Path(tmpfile.name).resolve()
-
-
-    #     job_files.append(abs_path_param_tmpfile)
-
-    # return job_files
