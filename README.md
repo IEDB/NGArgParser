@@ -51,6 +51,18 @@ Let's now try to create a child class that builds off of this parser framework.
 > These are subject to change in the future.
 
 
+## Getting Started
+To create an app, run the following command:
+```
+# if NgArgParser is installed
+cli g <app-name>
+
+# else
+cli.py g <app-name>
+```
+
+
+
 ## Create a child class
 Let's create an example class that extends from this parser class.
 ```python
