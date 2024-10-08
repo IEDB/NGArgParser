@@ -12,6 +12,11 @@ setup(
   download_url = 'https://github.com/IEDB/NGArgParser/archive/refs/tags/v0.1.tar.gz',
   keywords = ['iedb', 'nextgen', 'argumentparser', 'iedb tools'], 
   install_requires=['ngargparser'],
+  entry_points={
+    'console_scripts': [
+          'cli = ngargparser.cli:main',
+      ],
+  },
   classifiers=[
     # How mature is this project? Common values are
     #   3 - Alpha
