@@ -1,4 +1,6 @@
 from CHILDPARSER import CHILDPARSER
+import preprocess, postprocess
+
 
 def main():
     parser = CHILDPARSER()
@@ -10,11 +12,11 @@ def main():
 
     if args.subcommand == 'preprocess':
         # ADD CODE LOGIC ON HOW TO SPLIT JOBS.
-        pass
+        preprocess.run(**vars(args))
 
     if args.subcommand == 'postprocess':
         # ADD CODE LOGIC TO COMBINE RESULTS.
-        pass
+        postprocess.run(**vars(args))
 
 if __name__=='__main__':
     main()

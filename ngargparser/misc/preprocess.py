@@ -8,3 +8,6 @@
 #     * This file will have list of descriptions for each job units.
 #     * Each description will contain a command that runs single prediction (utilizes 'predict' subcommand).
 #     * Note that the last command in the description file will use 'postprocess' subcommand.
+
+def run(**kwargs):
+    pass

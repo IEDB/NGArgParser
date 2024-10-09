@@ -2,6 +2,12 @@ import argparse
 import textwrap
 import os
 import shutil
+# Get the absolute path of the current file (aidencli.py)
+CURR_FILE_PATH = os.path.abspath(__file__)
+
+# Get the directory where the file is located
+NGPARSER_DIR = os.path.dirname(CURR_FILE_PATH)
+MISC_DIR = NGPARSER_DIR + '/ngargparser/misc/'
 
 
 def format_project_name(name, capitalize=False):
@@ -29,15 +35,15 @@ def create_example_structure():
 
         # Create necessary files
         parser_file = 'AACounterArgumentParser.py'
-        update_and_place_readme('./misc/README', project_name, is_example=True)
+        update_and_place_readme(f'{MISC_DIR}README', project_name, is_example=True)
         # shutil.copy('./misc/README', f'{project_name}/README')
-        shutil.copy('./misc/example.json', f'{project_name}/output-directory/example.json')
-        shutil.copy('./misc/example.tsv', f'{project_name}/output-directory/example.tsv')
-        shutil.copy('./misc/run_aa_counter.py', f'{project_name}/src/run_aa_counter.py')
-        shutil.copy(f'./misc/{parser_file}', f'{project_name}/src/{parser_file}')
-        shutil.copy('./misc/preprocess-example.py', f'{project_name}/src/preprocess.py')
-        shutil.copy('./misc/postprocess-example.py', f'{project_name}/src/postprocess.py')
-        shutil.copy('./NGArgumentParser.py', f'{project_name}/src/NGArgumentParser.py')
+        shutil.copy(f'{MISC_DIR}example.json', f'{project_name}/output-directory/example.json')
+        shutil.copy(f'{MISC_DIR}example.tsv', f'{project_name}/output-directory/example.tsv')
+        shutil.copy(f'{MISC_DIR}run_aa_counter.py', f'{project_name}/src/run_aa_counter.py')
+        shutil.copy(f'{MISC_DIR}{parser_file}', f'{project_name}/src/{parser_file}')
+        shutil.copy(f'{MISC_DIR}preprocess.py', f'{project_name}/src/preprocess.py')
+        shutil.copy(f'{MISC_DIR}postprocess.py', f'{project_name}/src/postprocess.py')
+        shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/NGArgumentParser.py')
 
         print(f"Created '{project_name}' project structure successfully.")
     except Exception as e:
@@ -58,12 +64,12 @@ def create_project_structure(project_name):
         exec_file = f'run_{format_project_name(project_name)}.py'
         parser_file = f'{format_project_name(project_name, capitalize=True)}ArgumentParser.py'
         parser_name = f'{format_project_name(project_name, capitalize=True)}ArgumentParser'
-        update_and_place_readme('./misc/README', project_name)
-        shutil.copy('./misc/run_app.py', f'{project_name}/src/{exec_file}')
-        shutil.copy('./misc/ChildArgumentParser.py', f'{project_name}/src/{parser_file}')
-        shutil.copy('./misc/preprocess.py', f'{project_name}/src/preprocess.py')
-        shutil.copy('./misc/postprocess.py', f'{project_name}/src/postprocess.py')        
-        shutil.copy('./NGArgumentParser.py', f'{project_name}/src/NGArgumentParser.py')
+        update_and_place_readme(f'{MISC_DIR}README', project_name)
+        shutil.copy(f'{MISC_DIR}run_app.py', f'{project_name}/src/{exec_file}')
+        shutil.copy(f'{MISC_DIR}ChildArgumentParser.py', f'{project_name}/src/{parser_file}')
+        shutil.copy(f'{MISC_DIR}preprocess.py', f'{project_name}/src/preprocess.py')
+        shutil.copy(f'{MISC_DIR}postprocess.py', f'{project_name}/src/postprocess.py')        
+        shutil.copy(f'{NGPARSER_DIR}NGArgumentParser.py', f'{project_name}/src/NGArgumentParser.py')
 
         # Add default content to all the files
         replace_text_in_place(f'{project_name}/src/{exec_file}', 'CHILDPARSER', parser_name)

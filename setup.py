@@ -1,8 +1,8 @@
-from distutils.core import setup
+from setuptools import setup
+
 
 setup(
   name = 'ngargparser',         
-  packages = ['ngargparser'],  
   version = '0.1.1',      
   license='MIT',
   description = 'This is a standardized parser framework for CLI tools. This class will enforce certain properties or abstract methods to be implemented to properly create an Argument Parser class for other CLI tools.',   # Give a short description about your library
@@ -10,14 +10,23 @@ setup(
   author_email = 'hkim@lji.org',
   url = 'https://github.com/IEDB/NGArgParser',
   download_url = 'https://github.com/IEDB/NGArgParser/archive/refs/tags/v0.1.tar.gz',
-  keywords = ['iedb', 'nextgen', 'argumentparser', 'iedb tools'], 
-  install_requires=['ngargparser'],
-  entry_points={
+  keywords = ['iedb', 'nextgen', 'argumentparser', 'iedb tools'],
+  packages = [
+      'ngargparser', 
+      'ngargparser.misc',
+      ],  
+  package_data = {
+      # Include everything inside the misc/ in the package.
+      'ngargparser.misc': ['**/*'],
+  },
+  include_package_data = True,
+  install_requires = ['ngargparser'],
+  entry_points = {
     'console_scripts': [
           'cli = ngargparser.cli:main',
       ],
   },
-  classifiers=[
+  classifiers = [
     # How mature is this project? Common values are
     #   3 - Alpha
     #   4 - Beta
