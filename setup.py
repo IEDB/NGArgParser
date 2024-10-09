@@ -13,11 +13,11 @@ setup(
   keywords = ['iedb', 'nextgen', 'argumentparser', 'iedb tools'],
   packages = [
       'ngargparser', 
-      'ngargparser.misc',
+      'ngargparser.templates',
       ],  
   package_data = {
       # Include everything inside the misc/ in the package.
-      'ngargparser.misc': ['**/*'],
+      'ngargparser.templates': ['**/*'],
   },
   include_package_data = True,
   install_requires = ['ngargparser'],
