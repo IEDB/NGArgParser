@@ -6,8 +6,8 @@ import shutil
 CURR_FILE_PATH = os.path.abspath(__file__)
 
 # Get the directory where the file is located
-NGPARSER_DIR = os.path.dirname(CURR_FILE_PATH)
-TEMPLATE_DIR = NGPARSER_DIR + '/' + 'templates/'
+NGPARSER_DIR = os.path.dirname(CURR_FILE_PATH) + '/'
+TEMPLATE_DIR = NGPARSER_DIR + 'templates/'
 EXAMPLE_DIR = TEMPLATE_DIR + 'example-app/'
 
 def format_project_name(name, capitalize=False):
