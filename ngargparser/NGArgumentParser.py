@@ -4,17 +4,18 @@ import json
 from pathlib import Path
 from typing import TypedDict, List
 
-# defaults for preprocessing
-PROJECT_ROOT_PATH = str(Path(__file__).parent)
-OUTPUT_DIR_PATH = PROJECT_ROOT_PATH + '/output-directory'
-DEFAULT_PARAMS_DIR = OUTPUT_DIR_PATH + '/predict-inputs/params'
-DEFAULT_INPUTS_DIR = OUTPUT_DIR_PATH + '/predict-inputs/data'
-
-# defaults for postprocessing
-DEFAULT_RESULTS_DIR = OUTPUT_DIR_PATH + '/predict-outputs'
-
 
 class NGArgumentParser(argparse.ArgumentParser):
+    ''' Setting default paths '''
+    # defaults for preprocessing
+    PROJECT_ROOT_PATH = Path(__file__).resolve().parent
+    OUTPUT_DIR_PATH = PROJECT_ROOT_PATH / 'output-directory'
+    DEFAULT_PARAMS_DIR = OUTPUT_DIR_PATH / 'predict-inputs' / 'params'
+    DEFAULT_INPUTS_DIR = OUTPUT_DIR_PATH / 'predict-inputs' / 'data'
+
+    # defaults for postprocessing
+    DEFAULT_RESULTS_DIR = OUTPUT_DIR_PATH / 'predict-outputs'
+
     def __init__(self):
         '''
         It is the developer's responsibility to customize these parameters.
@@ -64,12 +65,12 @@ class NGArgumentParser(argparse.ArgumentParser):
         
         parser_preprocess.add_argument("--params-dir",
                                         dest="preprocess_parameters_dir",
-                                        default=DEFAULT_PARAMS_DIR,
+                                        default=self.DEFAULT_PARAMS_DIR,
                                         help="a directory to store preprocessed JSON input files")
         
         parser_preprocess.add_argument("--inputs-dir",
                                         dest="preprocess_inputs_dir",
-                                        default=DEFAULT_INPUTS_DIR,
+                                        default=self.DEFAULT_INPUTS_DIR,
                                         help="a directory to store other, non-JSON inputs (e.g., fasta files)")
         
         parser_preprocess.add_argument("--assume-valid",
@@ -87,21 +88,22 @@ class NGArgumentParser(argparse.ArgumentParser):
 
         parser_postprocess.add_argument("--input-results-dir",
                                         dest="postprocess_input_dir",
-                                        default=DEFAULT_RESULTS_DIR,
+                                        default=self.DEFAULT_RESULTS_DIR,
                                         help="directory containing the result files to postprocess")
 
         parser_postprocess.add_argument("--postprocessed-results-dir",
                                         dest="postprocess_result_dir",
-                                        default=OUTPUT_DIR_PATH,
+                                        default=self.OUTPUT_DIR_PATH,
                                         help="a directory to contain the post-processed results")
         
         parser_postprocess.add_argument("--job-desc-file",
                                         dest="job_desc_file",
-                                        default=PROJECT_ROOT_PATH,
+                                        default=self.PROJECT_ROOT_PATH,
                                         help="Path to job description file.")
         
         parser_postprocess.add_argument("--output-prefix", "-o",
                                 dest="output_prefix",
+                                default=self.DEFAULT_RESULTS_DIR,
                                 help="prediction result output prefix.",
                                 metavar="OUTPUT_PREFIX")
         

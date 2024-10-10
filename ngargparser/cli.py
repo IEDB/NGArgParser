@@ -2,13 +2,18 @@ import argparse
 import textwrap
 import os
 import shutil
-# Get the absolute path of the current file (aidencli.py)
-CURR_FILE_PATH = os.path.abspath(__file__)
+from pathlib import Path
 
-# Get the directory where the file is located
-NGPARSER_DIR = os.path.dirname(CURR_FILE_PATH) + '/'
-TEMPLATE_DIR = NGPARSER_DIR + 'templates/'
-EXAMPLE_DIR = TEMPLATE_DIR + 'example-app/'
+# Get the absolute path of the followings
+CURR_FILE_PATH = Path(__file__).resolve()
+NGPARSER_DIR = CURR_FILE_PATH.parent
+TEMPLATE_DIR = CURR_FILE_PATH / 'templates'
+EXAMPLE_DIR = TEMPLATE_DIR / 'example-app'
+# print(CURR_FILE_PATH, type(CURR_FILE_PATH))
+# print(NGPARSER_DIR, type(NGPARSER_DIR))
+# print(TEMPLATE_DIR, type(TEMPLATE_DIR))
+# print(EXAMPLE_DIR, type(EXAMPLE_DIR))
+
 
 def format_project_name(name, capitalize=False):
     name = name.replace('-', '_')
