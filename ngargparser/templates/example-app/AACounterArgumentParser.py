@@ -45,6 +45,6 @@ class AACounterArgumentParser(NGArgumentParser):
                                 metavar="OUTPUT_PREFIX")
         pred_parser.add_argument("--output-format", "-f",
                                 dest="output_format",
-                                default="tsv",
+                                default="json",
                                 help="prediction result output format (Default=tsv)",
                                 metavar="OUTPUT_FORMAT")
