@@ -108,16 +108,9 @@ The command outputs the results to the terminal by default. To specify an output
 -o output-directory/predict-outputs/result \
 -f json
 
+*__NOTE__*: By default, `-f` is set to `json` format.
 
-The app can also provide support to take in alternative inputs, such as TSV.  These formats will not be used in the NG workflow, but it might be valuable for users who prefer to specify more options directly on the command line. For example:
-
-> python src/run_aa_counter.py predict \
--t output-directory/example.tsv \
--a L \
--o output-directory/predict-outputs/result.1 \
--f json
-
-Here, in addition to the TSV file, we need to specify the "-a" option.
+These formats will not be used in the NG workflow, but it might be valuable for users who prefer to specify more options directly on the command line. 
 
 Example App - Preprocess
 ------------------------
@@ -127,7 +120,7 @@ Starting from an input file that contains many peptides, create smaller input fi
 
 This will split the input into multiple parameter files and data files, saved under "predict-inputs/data" and "predict-inputs/params" respectively.
 
-In addition, it will create a "job_description.json" file that has details on how to run the individual jobs including the specific command lines, job dependencies and expected outputs.  
+In addition, it will create a `job_description.json` file that has details on how to run the individual jobs including the specific command lines, job dependencies and expected outputs.  
 
 An example job desription file can be found (@hkim please add one to the examples directory). In addition to the "predict" jobs, the a "postprocess" job is also defined in the job_descriptions file.
 
