@@ -69,12 +69,12 @@ def create_project_structure(project_name):
         exec_file = f'run_{format_project_name(project_name)}.py'
         parser_file = f'{format_project_name(project_name, capitalize=True)}ArgumentParser.py'
         parser_name = f'{format_project_name(project_name, capitalize=True)}ArgumentParser'
-        update_and_place_readme(f'{TEMPLATE_DIR}README', project_name)
-        shutil.copy(f'{TEMPLATE_DIR}run_app.py', f'{project_name}/src/{exec_file}')
-        shutil.copy(f'{TEMPLATE_DIR}ChildArgumentParser.py', f'{project_name}/src/{parser_file}')
-        shutil.copy(f'{TEMPLATE_DIR}preprocess.py', f'{project_name}/src/preprocess.py')
-        shutil.copy(f'{TEMPLATE_DIR}postprocess.py', f'{project_name}/src/postprocess.py')        
-        shutil.copy(f'{NGPARSER_DIR}NGArgumentParser.py', f'{project_name}/src/NGArgumentParser.py')
+        update_and_place_readme(f'{TEMPLATE_DIR}/README', project_name)
+        shutil.copy(f'{TEMPLATE_DIR}/run_app.py', f'{project_name}/src/{exec_file}')
+        shutil.copy(f'{TEMPLATE_DIR}/ChildArgumentParser.py', f'{project_name}/src/{parser_file}')
+        shutil.copy(f'{TEMPLATE_DIR}/preprocess.py', f'{project_name}/src/preprocess.py')
+        shutil.copy(f'{TEMPLATE_DIR}/postprocess.py', f'{project_name}/src/postprocess.py')        
+        shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/NGArgumentParser.py')
 
         # Add default content to all the files
         replace_text_in_place(f'{project_name}/src/{exec_file}', 'CHILDPARSER', parser_name)
