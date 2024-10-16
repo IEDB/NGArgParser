@@ -1,5 +1,7 @@
 import argparse
 import textwrap
+import string
+import random
 import json
 from pathlib import Path
 from typing import TypedDict, List
@@ -8,7 +10,7 @@ from typing import TypedDict, List
 class NGArgumentParser(argparse.ArgumentParser):
     ''' Setting default paths '''
     # defaults for preprocessing
-    PROJECT_ROOT_PATH = Path(__file__).resolve().parent
+    PROJECT_ROOT_PATH = Path(__file__).resolve().parents[1]
     OUTPUT_DIR_PATH = PROJECT_ROOT_PATH / 'output-directory'
     DEFAULT_PARAMS_DIR = OUTPUT_DIR_PATH / 'predict-inputs' / 'params'
     DEFAULT_INPUTS_DIR = OUTPUT_DIR_PATH / 'predict-inputs' / 'data'
@@ -103,7 +105,7 @@ class NGArgumentParser(argparse.ArgumentParser):
         
         parser_postprocess.add_argument("--output-prefix", "-o",
                                 dest="output_prefix",
-                                default=self.DEFAULT_RESULTS_DIR,
+                                default=self.DEFAULT_RESULTS_DIR / self.generate_random_filename(),
                                 help="prediction result output prefix.",
                                 metavar="OUTPUT_PREFIX")
         
@@ -140,6 +142,14 @@ class NGArgumentParser(argparse.ArgumentParser):
         # pname = [_.capitalize() for _ in pname]
         # return ''.join(pname)
         return pname
+    
+    def generate_random_filename(self, length=10):
+    """Generates a random filename with the specified length and extension."""
+
+    letters = string.ascii_letters
+    filename = ''.join(random.choice(letters) for i in range(length))
+    return filename
+
 
     def create_job_descriptions_file(self, params_dir):
         # project root
