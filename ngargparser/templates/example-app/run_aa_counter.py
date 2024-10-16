@@ -181,7 +181,8 @@ def main():
             with open(result_file_path, 'w') as f :
                 json.dump(result_json, f, indent=4)
         else:
-            raise parser.error("Please define the output file using the '-o' flag.")
+            # raise parser.error("Please define the output file using the '-o' flag.")
+            print(json.dumps(result_json, indent=4))
 
 
     if args.subcommand == 'preprocess':
