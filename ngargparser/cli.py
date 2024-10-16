@@ -40,7 +40,7 @@ def create_example_structure():
 
         # Create necessary files
         parser_file = 'AACounterArgumentParser.py'
-        update_and_place_readme(f'{TEMPLATE_DIR}README', project_name, is_example=True)
+        update_and_place_readme(f'{EXAMPLE_DIR}/README', project_name, is_example=True)
         # shutil.copy('./misc/README', f'{project_name}/README')
         shutil.copy(f'{EXAMPLE_DIR}example.json', f'{project_name}/output-directory/example.json')
         shutil.copy(f'{EXAMPLE_DIR}example.tsv', f'{project_name}/output-directory/example.tsv')
