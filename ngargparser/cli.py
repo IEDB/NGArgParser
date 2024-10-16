@@ -7,7 +7,7 @@ from pathlib import Path
 # Get the absolute path of the followings
 CURR_FILE_PATH = Path(__file__).resolve()
 NGPARSER_DIR = CURR_FILE_PATH.parent
-TEMPLATE_DIR = CURR_FILE_PATH / 'templates'
+TEMPLATE_DIR = NGPARSER_DIR / 'templates'
 EXAMPLE_DIR = TEMPLATE_DIR / 'example-app'
 # print(CURR_FILE_PATH, type(CURR_FILE_PATH))
 # print(NGPARSER_DIR, type(NGPARSER_DIR))
