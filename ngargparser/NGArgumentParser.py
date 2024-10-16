@@ -144,11 +144,11 @@ class NGArgumentParser(argparse.ArgumentParser):
         return pname
     
     def generate_random_filename(self, length=10):
-    """Generates a random filename with the specified length and extension."""
+        """Generates a random filename with the specified length and extension."""
 
-    letters = string.ascii_letters
-    filename = ''.join(random.choice(letters) for i in range(length))
-    return filename
+        letters = string.ascii_letters
+        filename = ''.join(random.choice(letters) for i in range(length))
+        return filename
 
 
     def create_job_descriptions_file(self, params_dir):

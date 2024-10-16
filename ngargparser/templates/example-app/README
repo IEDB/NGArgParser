@@ -100,6 +100,7 @@ For single prediction given a JSON file,
 For single prediction given a TSV file,
 > python src/run_aa_counter.py predict \
 -t output-directory/example.tsv \
+-a L
 
 The command outputs the results to the terminal by default. To specify an output file (`-o`), including the desired path, or to change the file extension (`-f`), use the corresponding flags:
 > python src/run_aa_counter.py predict \
