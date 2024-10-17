@@ -94,29 +94,33 @@ class NGArgumentParser(argparse.ArgumentParser):
 
         parser_postprocess.add_argument("--input-results-dir",
                                         dest="postprocess_input_dir",
+                                        type=validators.validate_directory,
                                         default=self.DEFAULT_RESULTS_DIR,
                                         help="directory containing the result files to postprocess")
 
         parser_postprocess.add_argument("--postprocessed-results-dir",
                                         dest="postprocess_result_dir",
+                                        type=validators.validate_directory,
                                         default=self.OUTPUT_DIR_PATH,
                                         help="a directory to contain the post-processed results")
         
         parser_postprocess.add_argument("--job-desc-file",
                                         dest="job_desc_file",
+                                        type=validators.validate_directory_given_filename,
                                         default=self.PROJECT_ROOT_PATH,
                                         help="Path to job description file.")
         
         parser_postprocess.add_argument("--output-prefix", "-o",
                                 dest="output_prefix",
+                                type=validators.validate_directory_given_filename,
                                 default=self.DEFAULT_RESULTS_DIR / self.generate_random_filename(),
                                 help="prediction result output prefix.",
                                 metavar="OUTPUT_PREFIX")
         
         parser_postprocess.add_argument("--output-format", "-f",
                                 dest="output_format",
-                                default="tsv",
-                                help="prediction result output format (Default=tsv)",
+                                default="json",
+                                help="prediction result output format (Default=json)",
                                 metavar="OUTPUT_FORMAT")
 
 

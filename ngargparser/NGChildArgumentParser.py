@@ -28,6 +28,7 @@ class ClusterArgumentParser(NGArgumentParser):
         # -----------------------------------------------------
         pred_parser.add_argument("--output-prefix", "-o",
                                  dest="output_prefix",
+                                 type=validators.validate_directory_given_filename,
                                  default=self.DEFAULT_RESULTS_DIR / self.generate_random_filename(),
                                  help="prediction result output prefix.",
                                  metavar="OUTPUT_PREFIX")
