@@ -135,9 +135,10 @@ def convert_tsv_to_json(tfile, aa):
 
 
 def read_json(jfile):
-    with open(jfile, 'r') as f :
-        content = json.load(f)
-
+    # with open(jfile, 'r') as f :
+    #     content = json.load(f)
+    print(jfile)
+    content = json.load(jfile)
     return json.dumps(content)
 
 
@@ -192,6 +193,9 @@ def main():
         else:
             raise parser.error("Counter app preprocess command only accepts JSON file.")
 
+        # 1.1 Validate arguments
+        parser.validate_args(**vars(args))
+
         # 2. Logic to split the inputs by length
         split_by_length(json_input)
 
@@ -213,7 +217,7 @@ def main():
 
         # 3. Write to the final output file.
         if args.output_prefix:
-            result_file_path = args.output_prefix + '.' + args.output_format
+            result_file_path = args.output_prefix.stem + '.' + args.output_format
         else:
             raise parser.error("Please provide output file name.")
 

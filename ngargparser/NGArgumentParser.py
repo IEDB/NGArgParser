@@ -3,8 +3,8 @@ import textwrap
 import string
 import random
 import json
+import os
 import validators
-import sys
 from pathlib import Path
 from typing import TypedDict, List
 
@@ -111,14 +111,15 @@ class NGArgumentParser(argparse.ArgumentParser):
         
         self.parser_postprocess.add_argument("--job-desc-file",
                                         dest="job_desc_file",
-                                        type=validators.validate_directory_given_filename,
-                                        default=self.PROJECT_ROOT_PATH,
+                                        type=argparse.FileType('r'),
+                                        # default=self.PROJECT_ROOT_PATH,
+                                        required=True,
                                         help="Path to job description file.")
         
         self.parser_postprocess.add_argument("--output-prefix", "-o",
                                 dest="output_prefix",
                                 type=validators.validate_directory_given_filename,
-                                default=self.DEFAULT_RESULTS_DIR / self.generate_random_filename(),
+                                # default=self.DEFAULT_RESULTS_DIR / self.generate_random_filename(),
                                 help="prediction result output prefix.",
                                 metavar="OUTPUT_PREFIX")
         
@@ -175,7 +176,10 @@ class NGArgumentParser(argparse.ArgumentParser):
         if kwargs.get('preprocess_parameters_dir') and kwargs.get('preprocess_inputs_dir'):
             self.use_default_fs=False
 
-        if self.use_default_fs: self.generate_output_file_structure()
+        if self.use_default_fs: 
+            # TODO: Set default attributes values to 'preprocess_parameters_dir' and
+            # 'preprocess_inputs_dir'.
+            self.generate_output_file_structure()
 
 
     
@@ -185,6 +189,30 @@ class NGArgumentParser(argparse.ArgumentParser):
 
     def generate_output_file_structure(self):
         print("Creating default output file structure")
+        output_dir = self.PROJECT_ROOT_PATH / 'output-directory'
+        predict_inputs_dir = output_dir / 'predict-inputs'
+        params_dir = predict_inputs_dir / 'params'
+        data_dir = predict_inputs_dir / 'data'
+        predict_outputs_dir = output_dir / 'predict-outputs'
+        output_fs = [
+            output_dir,
+            predict_inputs_dir,
+            predict_outputs_dir,
+            params_dir,
+            data_dir
+        ]
+
+        missing_dir = 0
+        for each_path in output_fs:
+            if each_path.exists() and each_path.is_dir():
+                continue
+            
+            os.makedirs(each_path)
+            print(f'Creating missing folder: {each_path}')
+            missing_dir = missing_dir + 1
+        
+        if missing_dir == 0 :
+            print('The \'output-directory\' already exists with the correct structure. This app will continue to use that directory.')
 
     def format_exec_name(self, name):
         pname = name.replace('-', '_')

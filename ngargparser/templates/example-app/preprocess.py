@@ -15,6 +15,9 @@
 #     * Note that the last command in the description file will use 'postprocess' subcommand.
 import json
 import tempfile
+import string
+import random
+from datetime import datetime
 from pathlib import Path
 
 
@@ -51,16 +54,17 @@ def split_by_length(jdata):
     PROJ_ROOT = str(Path(__file__).parent.parent)
     input_dir = str(PROJ_ROOT) + '/output-directory/predict-inputs/data/'
     param_dir = str(PROJ_ROOT) + '/output-directory/predict-inputs/params/'
-    
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
     for i in range(len(splitted_input_params)):
         abs_path_seqs_tmpfile = None
         # create temporary file to store each input
-        with tempfile.NamedTemporaryFile(dir=input_dir, prefix=f'{i}-', suffix='.txt', mode='w', delete=False) as tmpfile:
+        with tempfile.NamedTemporaryFile(dir=input_dir, prefix=f'{i}-{timestamp}-', suffix='.txt', mode='w', delete=False) as tmpfile:
             tmpfile.write('\n'.join(splitted_input_seqs[i]))
             abs_path_seqs_tmpfile = Path(tmpfile.name).resolve()
 
         # Update peptide_file_path
         splitted_input_params[i]['peptide_file_path'] = str(abs_path_seqs_tmpfile)
 
-        with tempfile.NamedTemporaryFile(dir=param_dir, prefix=f'{i}-', suffix='.json', mode='w', delete=False) as tmpfile:
+        with tempfile.NamedTemporaryFile(dir=param_dir, prefix=f'{i}-{timestamp}-', suffix='.json', mode='w', delete=False) as tmpfile:
             json.dump(splitted_input_params[i], tmpfile, indent=4)

@@ -32,23 +32,24 @@ def create_example_structure():
         # Create directory structure
         os.makedirs(project_name)
         os.makedirs(os.path.join(project_name, 'src'))
-        os.makedirs(os.path.join(project_name, 'output-directory'))
-        os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'data'))
-        os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'params'))
-        os.makedirs(os.path.join(project_name, 'output-directory', 'predict-outputs'))
+        # os.makedirs(os.path.join(project_name, 'output-directory'))
+        # os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'data'))
+        # os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'params'))
+        # os.makedirs(os.path.join(project_name, 'output-directory', 'predict-outputs'))
         
 
         # Create necessary files
         parser_file = 'AACounterArgumentParser.py'
         update_and_place_readme(f'{EXAMPLE_DIR}/README', project_name, is_example=True)
         # shutil.copy('./misc/README', f'{project_name}/README')
-        shutil.copy(f'{EXAMPLE_DIR}/example.json', f'{project_name}/output-directory/example.json')
-        shutil.copy(f'{EXAMPLE_DIR}/example.tsv', f'{project_name}/output-directory/example.tsv')
+        shutil.copy(f'{EXAMPLE_DIR}/example.json', f'{project_name}/src/example.json')
+        shutil.copy(f'{EXAMPLE_DIR}/example.tsv', f'{project_name}/src/example.tsv')
         shutil.copy(f'{EXAMPLE_DIR}/run_aa_counter.py', f'{project_name}/src/run_aa_counter.py')
         shutil.copy(f'{EXAMPLE_DIR}/{parser_file}', f'{project_name}/src/{parser_file}')
         shutil.copy(f'{EXAMPLE_DIR}/preprocess.py', f'{project_name}/src/preprocess.py')
         shutil.copy(f'{EXAMPLE_DIR}/postprocess.py', f'{project_name}/src/postprocess.py')
         shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/NGArgumentParser.py')
+        shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
 
         print(f"Created '{project_name}' project structure successfully.")
     except Exception as e:

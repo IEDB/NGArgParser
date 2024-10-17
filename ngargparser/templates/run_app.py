@@ -11,10 +11,16 @@ def main():
         pass
 
     if args.subcommand == 'preprocess':
-        # ADD CODE LOGIC ON HOW TO SPLIT JOBS.
-        preprocess.run(**vars(args))
+        # Validate Arguments
+        parser.validate_args(**vars(args))
+
+        # ADD CODE LOGIC TO SPLIT RESULTS.
+        postprocess.run(**vars(args))
 
     if args.subcommand == 'postprocess':
+        # Validate Arguments
+        parser.validate_args(**vars(args))
+
         # ADD CODE LOGIC TO COMBINE RESULTS.
         postprocess.run(**vars(args))
 
