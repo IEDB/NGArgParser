@@ -11,37 +11,48 @@ The parser class inherits directly from `argparse.ArgumentParser`. Once it's ins
 The `preprocess` subparser has the following options available:
 ```bash
 >> python run_test.py preprocess -h
-usage: run_test.py preprocess [-h] [--json-input JSON_FILE] [--params-dir PREPROCESS_PARAMETERS_DIR]
+usage: run_test.py preprocess --json-input JSON_FILE 
+                              [-h] [--params-dir PREPROCESS_PARAMETERS_DIR]
                               [--inputs-dir PREPROCESS_INPUTS_DIR] [--assume-valid]
 
 Preprocess JSON input files into smaller units, if possible and create a job_descriptions.json file that
 includes all commands to run the workflow
 
-options:
-  -h, --help            show this help message and exit
+required parameters:
   --json-input JSON_FILE, -j JSON_FILE
                         JSON file containing input parameters.
+  --output-dir OUTPUT_DIRECTORY
+                        a directory under which output files will be placed
+
+optional parameters:
+  -h, --help            show this help message and exit
   --params-dir PREPROCESS_PARAMETERS_DIR
                         a directory to store preprocessed JSON input files
+                        [ default: $OUTPUT_DIRECTORY/predict_inputs/params ]
   --inputs-dir PREPROCESS_INPUTS_DIR
                         a directory to store other, non-JSON inputs (e.g., fasta files)
+                        [ default: $OUTPUT_DIRECTORY/predict-inputs/data ]
   --assume-valid        flag to indicate validation can be skipped
 ```
 
 The `postprocess` subparser has the following options available:
 ```bash
 >> python run_test.py postprocess -h
-usage: run_test.py postprocess [-h] [--input-results-dir POSTPROCESS_INPUT_DIR]
-                               [--postprocessed-results-dir POSTPROCESS_RESULT_DIR]
+usage: run_test.py postprocess --input-results-dir POSTPROCESS_INPUT_DIR \
+                               --postprocessed-results-dir POSTPROCESS_RESULT_DIR
+                               [-h]
 
 results from individual prediction jobs are aggregated
 
-options:
-  -h, --help            show this help message and exit
+required parameters:
   --input-results-dir POSTPROCESS_INPUT_DIR
                         directory containing the result files to postprocess
   --postprocessed-results-dir POSTPROCESS_RESULT_DIR
                         a directory to contain the post-processed results
+
+optional parameters:
+  -h, --help            show this help message and exit
+
 ```
 
 The `predict` subparser has no options available as the NGArgumentParser will only create the subparser and not add any options to it. It is the developer's duty to add arguments and customize the `predict` subparser.  More details on filling in the logic for each run mode is below.
@@ -242,9 +253,8 @@ smaller JSON files that can be passed to the `predict` step.  Additionally, a
 to be executed in order to complete the prediction as well as any expected output
 files.
 
-It is essentially creating the following filestructure, where we set the following parameters:
-1. `params-dir="./output-directory/predict-inputs/params"`
-2. `inputs-dir="./output-directory/predict-inputs/data"`
+An output directory structure is created, as below:
+
 ```bash
 .
 └── output-directory/
@@ -253,6 +263,9 @@ It is essentially creating the following filestructure, where we set the followi
     │   └── params/
     └── predict-outputs/
 ```
+
+If `--params-dir` and `--inputs-dir` are undefined, they will default to a directory
+underneath `output-directory/predict-inputs`, as shown above.
 
 `inputs-dir`: This directory will hold a temporary file that has all the inputs.
 ```python
