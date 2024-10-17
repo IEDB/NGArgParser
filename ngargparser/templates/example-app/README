@@ -1,5 +1,7 @@
 # aa-counter
 
+This example app will take list of sequences along with a chosen amino acid and count the number of occurrence in each sequence.
+
 This tool wrapper was created with the NGArgumentParser Framework. This framework is intended to help standardize the workflow for running NG standalone tools and allow for more rapid and distributed development.
 
 All tools created with this framework has three subcommands:
@@ -26,22 +28,9 @@ The "src" directory contains several template files that may need to be filled i
 
 Getting Started
 ---------------
-Install the app:
-```bash
-pip install .
-```
-
-The `cli` command should be available. Let's create an example app that comes with this framework for user's reference.
-```bash
-cli g example
-```
-
-This will create an app called `aa-counter`. This example app will take list of sequences along with a chosen amino acid and
-count the number of occurrence in each sequence.
-
 
 ## Predict
-After navigating inside the `aa-counter`, we can run a simple prediction example.
+Inside the `aa-counter`, we can run a simple prediction example.
 ```bash
 # to run JSON file as input
 python src/run_aa_counter.py predict -j src/example.json
