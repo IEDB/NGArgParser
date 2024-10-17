@@ -1,29 +1,149 @@
-{TOOL_NAME}
---------------------------
+# aa-counter
 
-This tool wrapper was created with the NGArgumentParser Framework. This framework
-is intended to help standardize the workflow for running NG standalone tools and
-allow for more rapid and distributed development.
+This tool wrapper was created with the NGArgumentParser Framework. This framework is intended to help standardize the workflow for running NG standalone tools and allow for more rapid and distributed development.
 
-A tool created with this framework has three subcommands:
-1. **preprocess**\
-   Splits the input JSON file into smaller, atomic units, each of which is suitable for independent processing by the "predict" command. Additionally, generates a file containing detailed descriptions of the commands to be executed.
-
-2. **predict**\
+All tools created with this framework has three subcommands:
+1. **predict**\
    Executes the prediction process for each unit based on the input provided in a JSON file.
+
+2. **preprocess**\
+   Splits the input JSON file into smaller, atomic units, each of which is suitable for independent processing by the "predict" command. Additionally, generates a file containing detailed descriptions of the commands to be executed.
 
 3. **postprocess**\
    Aggregates the results from all predict commands into a consolidated output file.
 
 The "src" directory contains several template files that may need to be filled in to incorporate your tool:
-1. **run_{TOOL_EXEC_NAME}.py**\
+1. **run_aa_counter.py**\
    This is the primary script that users execute, responsible for managing and executing the various sub-commands.
-2. **{TOOL_NAME_CAP}ArgumentParser.py**\
+2. **AACounterArgumentParser.py**\
    This is the primary argument parser class, where developers can define and customize flags and parameters for the "predict" sub-command.
 3. **preprocess.py**\
    This script implements the logic for dividing the input JSON file into discrete, atomic job units for processing.
 4. **postprocess.py**\
    This script consolidates the results from the atomic job units into a single, unified output file.
+5. **validators.py**\
+   This file contains all validation logic for (mainly) the arguments that can be used with Python's argparse.
+
+Getting Started
+---------------
+Install the app:
+```bash
+pip install .
+```
+
+The `cli` command should be available. Let's create an example app that comes with this framework for user's reference.
+```bash
+cli g example
+```
+
+This will create an app called `aa-counter`. This example app will take list of sequences along with a chosen amino acid and
+count the number of occurrence in each sequence.
+
+
+## Predict
+After navigating inside the `aa-counter`, we can run a simple prediction example.
+```bash
+# to run JSON file as input
+python src/run_aa_counter.py predict -j src/example.json
+
+# to run TSV file as input
+python src/run_aa_counter.py predict -t src/example.tsv -a P
+```
+This will output the results to the terminal in `JSON` format. To specify an output file (`-o`), including the desired path, or to change the file extension (`-f`), use the corresponding flags:
+```bash
+python src/run_aa_counter.py predict \
+-j src/example.json \
+-o ./result \
+-f json
+```
+*__NOTE__*: By default, `-f` is set to `json` format.
+
+These formats will not be used in the NG workflow, but it might be valuable for users who prefer to specify more options directly on the command line. 
+
+## Preprocess
+Ideally, any apps created with this framework should be able to split inputs into smaller input units. For `aa-counter`, seqeucnes are divided by peptide length. It will create multiple files where each file contains sequences with same length. 
+```bash
+python src/run_aa_counter.py preprocess -j src/example.json
+```
+
+Notice that the above code outputs some text about creating folders. This is the default output file structure that is provided by this framework. The file structure should look the following:
+```
+aa-counter
+├── output-directory/
+│   ├── predict-inputs/
+│   │   ├── data/
+│   │   └── params/
+│   └── predict-outputs/
+└── src/
+    ├── ...
+    ├── postprocess.py
+    ├── preprocess.py
+    ├── run_aa_counter.py
+    └── validators.py
+```
+
+If using the default file structure is unfavorable, and would like to use custom folders instead, run the following command:
+```bash
+python src/run_aa_counter.py preprocess \
+-j src/example.json \
+--params-dir /PATH/TO/DIR/FOR/PARAMS \
+--inputs-dir /PATH/TO/DIR/FOR/INPUTS
+```
+This app will split the inputs into smaller units and save them under the defined paths (`--params-dir` and `--inputs-dir`).
+
+```bash
+python src/run_aa_counter.py preprocess \
+-j src/example.json \
+--params-dir /PATH/TO/DIR/FOR/PARAMS \
+--inputs-dir /PATH/TO/DIR/FOR/INPUTS \
+-o /PATH/TP/OUTPUT/DIR
+```
+By default, the output directory path is set to the app project folder. In this case, it would simply be `aa-counter/`.
+
+At this point, `job_descriptions.json` should have been created inside the `aa-counter` directory.
+
+The `job_descriptions.json` should contain multiple independent job commands along with parameter descriptions. It contains details on how to run the individual jobs including the specific command lines, job dependencies and expected outputs.  
+It should roughly look like this (Fuller version can be found under the `ngparser>templates>example-app>example_job_descriptions.json`):
+```bash
+[
+    {
+        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aacounter.py predict -j /ABSOLUTE/PATH/TO/aa-counter/output-directory/predict-inputs/params/0-bkewmn69.json -o /ABSOLUTE/PATH/TO/aa-counter/output-directory/predict-outputs/result.0 -f json",
+        "job_id": 0,
+        "job_type": "prediction",
+        "depends_on_job_ids": [],
+        "expected_outputs": [
+            "/ABSOLUTE/PATH/TO/aa-counter/output-directory/predict-outputs/result.0.json"
+        ]
+    },
+    ...
+    {
+        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aacounter.py postprocess --job-desc-file=/ABSOLUTE/PATH/TO/aa-counter/output-directory/job_descriptions.json -o /ABSOLUTE/PATH/TO/OUTPUT/DIR/final-result -f json",
+        "job_id": 3,
+        "job_type": "postprocess",
+        "depends_on_job_ids": [
+            0,
+            1,
+            2
+        ],
+        "expected_outputs": [
+            "/ABSOLUTE/PATH/TO/aa-counter/output-directory/final-result"
+        ]
+    }
+]
+```
+Please note that the last command is the only one that uses `postprocess` as it will aggregate all the output files from the previous steps together.
+
+## Postprocess
+The last command of the `job_descriptions.json` will look like this, which aggregates all the results into one file.
+
+```bash
+python src/run_aa_counter.py postprocess \
+--job-desc-file=output-directory/job_descriptions.json \
+-o /ABSOLUTE/PATH/TO/OUTPUT/DIR/final-result \
+-f json
+```
+
+
 
 
 Contributing a standalone
@@ -40,105 +160,3 @@ All tools must be pre-approved by the IEDB team before development is started. S
 > One of the requirements for the "predict" command is the option to generate output in JSON format that adheres to the NG tools output format specifications. Examples of this format can be found in the 'examples' directory and more details on can be found [here](https://nextgen-tools.iedb.org/docs/).
 
 Once the CLI tool is able to run basic prediction given a JSON file, the next step is to implement preprocessing.
-
-Preprocess
-----------
-In this stage, inputs are split into multiple job units optimized for efficient processing. Each tool may employ different methods for preprocessing to maximize performance. This guideline ensures that all CLI tools maintain a consistent file structure and a standardized approach to argument parsing.
-
-In "preprocess.py", the following logic should be implemented. While this example assumes the inputs are protein sequences, the approach should be adaptable to any type of input data.
-
-* Create an output directory for the prediction, with the following file structure:
-   ```
-   .
-   ├── output-directory/
-   │   ├── predict-inputs/
-   │   │   ├── data/
-   │   │   └── params/
-   │   └── predict-outputs/
-   └── src/
-      ├── run_test.py
-      ├── preprocess.py
-      └── postprocess.py
-   ```
-* Parse main input data (e.g., protein sequences) from the input JSON file. Split the input if needed, and store them under: "output-directory/predict-inputs/params" folder.
-* Parse the remaining parameters from the input JSON file, and split them into an atomic job units.
-    * Make sure for each atomic job unit has a key/value pair pointing to the input sequence files under "output-directory/predict-inputs/data".
-    * Each job unit should be stored under "output-directory/predict-inputs/params".
-* Create a "job_descriptions.json" file (Example file can be found in "ngargparser/misc/example_job_descriptions.json")
-    * This file will have list of commands to run, one "predict" command for each job unit.
-    * The last command in the description file will use "postprocess" subcommand.
-
-Predict
--------
-This stage is essentially a wrapper around the tool and its implementation is mostly up to the developer.  The only requirements here are that:
-* It must accept inputs in JSON format
-* It must include an option to produce JSON format outputs
-
-
-Postprocess
------------
-This stage is where the results of the individual jobs are aggregated into a single JSON file.
-
-In "postprocess.py", the code for the following logic should be implemented.
-* Read in all the results files created (under "output-directory/predict-outputs/")
-* Combine all the results into single JSON file named "output-directory/final-result.json'.
-
-
-Example App (Amino Acid Counter)
---------------------------------
-In order to better visualize the file structure to understand the framework, please view the "example-app".
-
-The "example-app" can be created by running the following command:
-> cli g example
-
-Getting Started (Predict)
--------
-For single prediction given a JSON file,
-> python src/run_aa_counter.py predict \
--j output-directory/example.json \
-
-For single prediction given a TSV file,
-> python src/run_aa_counter.py predict \
--t output-directory/example.tsv \
--a L
-
-The command outputs the results to the terminal by default. To specify an output file (`-o`), including the desired path, or to change the file extension (`-f`), use the corresponding flags:
-> python src/run_aa_counter.py predict \
--j output-directory/example.json \
--o output-directory/predict-outputs/result \
--f json
-
-*__NOTE__*: By default, `-f` is set to `json` format.
-
-These formats will not be used in the NG workflow, but it might be valuable for users who prefer to specify more options directly on the command line. 
-
-Example App - Preprocess
-------------------------
-Starting from an input file that contains many peptides, create smaller input files, divided up by peptide length.
-
-> python src/run_aa_counter.py preprocess -j output-directory/example.json
-
-This will split the input into multiple parameter files and data files, saved under "predict-inputs/data" and "predict-inputs/params" respectively.
-
-In addition, it will create a `job_description.json` file that has details on how to run the individual jobs including the specific command lines, job dependencies and expected outputs.  
-
-An example job desription file can be found (@hkim please add one to the examples directory). In addition to the "predict" jobs, the a "postprocess" job is also defined in the job_descriptions file.
-
-
-Example App - Postprocess
-----------------------------------------------
-The last command of the "job_descriptions.json" will look like this, which
- aggregates all the results into one file.
-
-> python src/run_aa_counter.py postprocess \
---job-desc-file=output-directory/job_descriptions.json \
---postprocess-input-dir=ouptut-directory/predict-outputs \
---postprocess-result-dir=output-directory
-
-Creating a new app within this framework
-----------------------------------------
-To create a new app that makes us of this framework, use the following command:
-
-> cli g {APP_NAME}
-
-This will create a new directory structure, similar to that of the example app, and will include templates with logic that needs to be filled in.
