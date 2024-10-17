@@ -4,6 +4,7 @@ import string
 import random
 import json
 import validators
+import sys
 from pathlib import Path
 from typing import TypedDict, List
 
@@ -54,32 +55,36 @@ class NGArgumentParser(argparse.ArgumentParser):
         
         # Create a placeholder for subparser 'predict'
         self.parser_predict=None
+
+        # Variable to decide whether or not the default output file structure
+        # should be used or not.
+        self.use_default_fs=True
         
         # Create subparser 'preprocess'
         # -----------------------------------------------------
-        parser_preprocess = self.subparser.add_parser('preprocess', 
+        self.parser_preprocess = self.subparser.add_parser('preprocess', 
                                                  help='Preprocess jobs.',
                                                  description='Preprocess JSON input files into smaller units, if possible and create a job_descriptions.json file that includes all commands to run the workflow')
         
-        parser_preprocess.add_argument("--input-json", "-j",
+        self.parser_preprocess.add_argument("--input-json", "-j",
                                         dest="input_json",
                                         type=argparse.FileType('r'),
                                         help="JSON file containing input parameters.",
                                         metavar="JSON_FILE")
         
-        parser_preprocess.add_argument("--params-dir",
+        self.parser_preprocess.add_argument("--params-dir",
                                         dest="preprocess_parameters_dir",
                                         type=validators.validate_directory,
-                                        default=self.DEFAULT_PARAMS_DIR,
+                                        # default=self.DEFAULT_PARAMS_DIR,
                                         help="a directory to store preprocessed JSON input files")
-        
-        parser_preprocess.add_argument("--inputs-dir",
+
+        self.parser_preprocess.add_argument("--inputs-dir",
                                         dest="preprocess_inputs_dir",
                                         type=validators.validate_directory,
-                                        default=self.DEFAULT_INPUTS_DIR,
+                                        # default=self.DEFAULT_INPUTS_DIR,
                                         help="a directory to store other, non-JSON inputs (e.g., fasta files)")
         
-        parser_preprocess.add_argument("--assume-valid",
+        self.parser_preprocess.add_argument("--assume-valid",
                                         action="store_true",
                                         dest="assume_valid_flag",
                                         default=False,
@@ -88,36 +93,36 @@ class NGArgumentParser(argparse.ArgumentParser):
 
         # Create subparser 'postprocess'
         # -----------------------------------------------------
-        parser_postprocess = self.subparser.add_parser('postprocess', 
+        self.parser_postprocess = self.subparser.add_parser('postprocess', 
                                                         help='Postprocess jobs.',
                                                         description='results from individual prediction jobs are aggregated')
 
-        parser_postprocess.add_argument("--input-results-dir",
+        self.parser_postprocess.add_argument("--input-results-dir",
                                         dest="postprocess_input_dir",
                                         type=validators.validate_directory,
                                         default=self.DEFAULT_RESULTS_DIR,
                                         help="directory containing the result files to postprocess")
 
-        parser_postprocess.add_argument("--postprocessed-results-dir",
+        self.parser_postprocess.add_argument("--postprocessed-results-dir",
                                         dest="postprocess_result_dir",
                                         type=validators.validate_directory,
                                         default=self.OUTPUT_DIR_PATH,
                                         help="a directory to contain the post-processed results")
         
-        parser_postprocess.add_argument("--job-desc-file",
+        self.parser_postprocess.add_argument("--job-desc-file",
                                         dest="job_desc_file",
                                         type=validators.validate_directory_given_filename,
                                         default=self.PROJECT_ROOT_PATH,
                                         help="Path to job description file.")
         
-        parser_postprocess.add_argument("--output-prefix", "-o",
+        self.parser_postprocess.add_argument("--output-prefix", "-o",
                                 dest="output_prefix",
                                 type=validators.validate_directory_given_filename,
                                 default=self.DEFAULT_RESULTS_DIR / self.generate_random_filename(),
                                 help="prediction result output prefix.",
                                 metavar="OUTPUT_PREFIX")
         
-        parser_postprocess.add_argument("--output-format", "-f",
+        self.parser_postprocess.add_argument("--output-format", "-f",
                                 dest="output_format",
                                 default="json",
                                 help="prediction result output format (Default=json)",
@@ -158,10 +163,29 @@ class NGArgumentParser(argparse.ArgumentParser):
     def validate_preprocess_args(self, kwargs):
         print("Validating preprocess arguments")
         print(kwargs)
+        
+        # Additional validation to ensure that params-dir and inputs-dir are both specified.
+        # Setting either one of them indicates that the use will not use the default
+        # file structure.
+        if bool(kwargs.get('preprocess_parameters_dir')) ^ bool(kwargs.get('preprocess_inputs_dir')):
+            self.parser_preprocess.error("Both --inputs-dir and --params-dir is required to be specified")
+
+        # When both of these parameters are set, then let the user to use their custom
+        # file structure.
+        if kwargs.get('preprocess_parameters_dir') and kwargs.get('preprocess_inputs_dir'):
+            self.use_default_fs=False
+
+        if self.use_default_fs: self.generate_output_file_structure()
+
+
     
     def validate_postprocess_args(self, kwargs):
         print("Validating postprocess arguments")
     
+
+    def generate_output_file_structure(self):
+        print("Creating default output file structure")
+
     def format_exec_name(self, name):
         pname = name.replace('-', '_')
         # pname = [_.capitalize() for _ in pname]
