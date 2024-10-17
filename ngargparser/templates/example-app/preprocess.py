@@ -21,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-def split_by_length(jdata):
+def split_by_length(jdata, input_dir_path, param_dir_path):
     data = json.loads(jdata)
     peptides = data['peptide']
     pep_lengths = [len(p) for p in peptides]
@@ -51,20 +51,17 @@ def split_by_length(jdata):
     # -------------------------------------------------------------------
     # STEP 2. Create temp dir where the splitted jobs can be stored
     # -------------------------------------------------------------------
-    PROJ_ROOT = str(Path(__file__).parent.parent)
-    input_dir = str(PROJ_ROOT) + '/output-directory/predict-inputs/data/'
-    param_dir = str(PROJ_ROOT) + '/output-directory/predict-inputs/params/'
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
     for i in range(len(splitted_input_params)):
         abs_path_seqs_tmpfile = None
         # create temporary file to store each input
-        with tempfile.NamedTemporaryFile(dir=input_dir, prefix=f'{i}-{timestamp}-', suffix='.txt', mode='w', delete=False) as tmpfile:
+        with tempfile.NamedTemporaryFile(dir=input_dir_path, prefix=f'{i}-{timestamp}-', suffix='.txt', mode='w', delete=False) as tmpfile:
             tmpfile.write('\n'.join(splitted_input_seqs[i]))
             abs_path_seqs_tmpfile = Path(tmpfile.name).resolve()
 
         # Update peptide_file_path
         splitted_input_params[i]['peptide_file_path'] = str(abs_path_seqs_tmpfile)
 
-        with tempfile.NamedTemporaryFile(dir=param_dir, prefix=f'{i}-{timestamp}-', suffix='.json', mode='w', delete=False) as tmpfile:
+        with tempfile.NamedTemporaryFile(dir=param_dir_path, prefix=f'{i}-{timestamp}-', suffix='.json', mode='w', delete=False) as tmpfile:
             json.dump(splitted_input_params[i], tmpfile, indent=4)

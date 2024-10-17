@@ -115,7 +115,7 @@ def convert_tsv_to_json(tfile, aa):
         "amino_acid": "L"
     }
     '''
-    with open(tfile, 'r') as f :
+    with open(tfile.name, 'r') as f :
         header = f.readline().strip().split('	')
         content = [_.strip().split('	') for _ in f.readlines()]
 
@@ -137,7 +137,6 @@ def convert_tsv_to_json(tfile, aa):
 def read_json(jfile):
     # with open(jfile, 'r') as f :
     #     content = json.load(f)
-    print(jfile)
     content = json.load(jfile)
     return json.dumps(content)
 
@@ -194,14 +193,13 @@ def main():
             raise parser.error("Counter app preprocess command only accepts JSON file.")
 
         # 1.1 Validate arguments
-        parser.validate_args(**vars(args))
+        parser.validate_args(args)
 
         # 2. Logic to split the inputs by length
-        split_by_length(json_input)
+        split_by_length(json_input, args.preprocess_inputs_dir, args.preprocess_parameters_dir)
 
         # 3. Create job description file
-        param_dir = str(Path(__file__).parent.parent) + '/output-directory/predict-inputs/params'
-        parser.create_job_descriptions_file(param_dir)
+        parser.create_job_descriptions_file(args)
 
     if args.subcommand == 'postprocess':
         # 1. Parse arguments to get the job description data
@@ -217,7 +215,7 @@ def main():
 
         # 3. Write to the final output file.
         if args.output_prefix:
-            result_file_path = args.output_prefix.stem + '.' + args.output_format
+            result_file_path = args.output_prefix.with_suffix(f'.{args.output_format}')
         else:
             raise parser.error("Please provide output file name.")
 

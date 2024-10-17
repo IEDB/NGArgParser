@@ -84,12 +84,19 @@ class NGArgumentParser(argparse.ArgumentParser):
                                         # default=self.DEFAULT_INPUTS_DIR,
                                         help="a directory to store other, non-JSON inputs (e.g., fasta files)")
         
+        self.parser_preprocess.add_argument("--output-dir", "-o",
+                                dest="output_dir",
+                                type=validators.validate_directory_given_filename,
+                                # default=self.DEFAULT_RESULTS_DIR / self.generate_random_filename(),
+                                help="prediction result output directory.",
+                                metavar="OUTPUT_DIR")
+
         self.parser_preprocess.add_argument("--assume-valid",
                                         action="store_true",
                                         dest="assume_valid_flag",
                                         default=False,
                                         help="flag to indicate validation can be skipped")
-
+        
 
         # Create subparser 'postprocess'
         # -----------------------------------------------------
@@ -152,18 +159,15 @@ class NGArgumentParser(argparse.ArgumentParser):
         return self.parser_predict
     
 
-    def validate_args(self, **kwargs):
-        print(kwargs)
+    def validate_args(self, args):
+        if args.subcommand == 'preprocess':
+            self.validate_preprocess_args(args)
 
-        if kwargs['subcommand'] == 'preprocess':
-            self.validate_preprocess_args(kwargs)
+        if args.subcommand == 'postprocess':
+            self.validate_postprocess_args(args)
 
-        if kwargs['subcommand'] == 'postprocess':
-            self.validate_postprocess_args(kwargs)
-
-    def validate_preprocess_args(self, kwargs):
-        print("Validating preprocess arguments")
-        print(kwargs)
+    def validate_preprocess_args(self, args):
+        kwargs = vars(args)
         
         # Additional validation to ensure that params-dir and inputs-dir are both specified.
         # Setting either one of them indicates that the use will not use the default
@@ -175,17 +179,33 @@ class NGArgumentParser(argparse.ArgumentParser):
         # file structure.
         if kwargs.get('preprocess_parameters_dir') and kwargs.get('preprocess_inputs_dir'):
             self.use_default_fs=False
+            # Check if output directory is specified. If not, use the default dir
+            if not kwargs.get('output_dir'):
+                setattr(args, 'output_dir', self.PROJECT_ROOT_PATH)
+
 
         if self.use_default_fs: 
-            # TODO: Set default attributes values to 'preprocess_parameters_dir' and
+            # Set default attributes values to 'preprocess_parameters_dir' and
             # 'preprocess_inputs_dir'.
+            setattr(args, 'preprocess_parameters_dir', self.DEFAULT_PARAMS_DIR)
+            setattr(args, 'preprocess_inputs_dir', self.DEFAULT_INPUTS_DIR)
+            
+            # Check if output directory is specified. If not, use the default dir
+            if not kwargs.get('output_dir'):
+                setattr(args, 'output_dir', self.DEFAULT_RESULTS_DIR)
+            
             self.generate_output_file_structure()
 
 
+        # Check if output directory is specified. If not, use the default dir
+        if not kwargs.get('output_dir'):
+            setattr(args, 'output_dir', self.DEFAULT_INPUTS_DIR)
+
     
-    def validate_postprocess_args(self, kwargs):
+    def validate_postprocess_args(self, args):
         print("Validating postprocess arguments")
-    
+        kwargs = vars(args)
+
 
     def generate_output_file_structure(self):
         print("Creating default output file structure")
@@ -228,19 +248,19 @@ class NGArgumentParser(argparse.ArgumentParser):
         return filename
 
 
-    def create_job_descriptions_file(self, params_dir):
-        # project root
-        PROJ_ROOT_PATH = str(Path(__file__).parent.parent)
+    # def create_job_descriptions_file(self, params_dir):
+    def create_job_descriptions_file(self, args):
+        kwargs = vars(args)
+        params_dir = kwargs.get('preprocess_parameters_dir')
         
         # output path
-        OUTPUT_DIR_PATH = PROJ_ROOT_PATH + '/output-directory'
-        PREDICT_OUTPUT_DIR = OUTPUT_DIR_PATH + '/predict-outputs'
+        OUTPUT_DIR_PATH = kwargs.get('output_dir')
 
         # job description file path
-        JD_PATH = PROJ_ROOT_PATH + '/job_descriptions.json'
+        JD_PATH = self.PROJECT_ROOT_PATH / 'job_descriptions.json'
 
         # exec file path
-        PROJ_NAME = PROJ_ROOT_PATH.split('/')[-1]
+        PROJ_NAME = self.PROJECT_ROOT_PATH.name.split('/')[-1]
         PROJ_NAME = self.format_exec_name(PROJ_NAME)
         EXEC_FILE_PATH = str(Path(__file__).parent) + f'/run_{PROJ_NAME}.py'
         files_with_ctime = []
@@ -297,11 +317,11 @@ class NGArgumentParser(argparse.ArgumentParser):
             for i, job in enumerate(job_files):
                 param_file_path = str(job)
                 
-                shell_cmd = f'{EXEC_FILE_PATH} predict -j {param_file_path} -o {PREDICT_OUTPUT_DIR}/result.{i} -f json'
+                shell_cmd = f'{EXEC_FILE_PATH} predict -j {param_file_path} -o {OUTPUT_DIR_PATH}/result.{i} -f json'
                 job_id = i
                 job_type = 'prediction'
                 expected_outputs = [
-                    f'{PREDICT_OUTPUT_DIR}/result.{i}.json'
+                    f'{OUTPUT_DIR_PATH}/result.{i}.json'
                 ]
 
                 jd: JobDescriptionParams = {
