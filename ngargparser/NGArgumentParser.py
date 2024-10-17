@@ -3,6 +3,7 @@ import textwrap
 import string
 import random
 import json
+import validators
 from pathlib import Path
 from typing import TypedDict, List
 
@@ -62,16 +63,19 @@ class NGArgumentParser(argparse.ArgumentParser):
         
         parser_preprocess.add_argument("--input-json", "-j",
                                         dest="input_json",
+                                        type=argparse.FileType('r'),
                                         help="JSON file containing input parameters.",
                                         metavar="JSON_FILE")
         
         parser_preprocess.add_argument("--params-dir",
                                         dest="preprocess_parameters_dir",
+                                        type=validators.validate_directory,
                                         default=self.DEFAULT_PARAMS_DIR,
                                         help="a directory to store preprocessed JSON input files")
         
         parser_preprocess.add_argument("--inputs-dir",
                                         dest="preprocess_inputs_dir",
+                                        type=validators.validate_directory,
                                         default=self.DEFAULT_INPUTS_DIR,
                                         help="a directory to store other, non-JSON inputs (e.g., fasta files)")
         
@@ -136,6 +140,23 @@ class NGArgumentParser(argparse.ArgumentParser):
         #                                 help="flag to indicate validation can be skipped")
         
         return self.parser_predict
+    
+
+    def validate_args(self, **kwargs):
+        print(kwargs)
+
+        if kwargs['subcommand'] == 'preprocess':
+            self.validate_preprocess_args(kwargs)
+
+        if kwargs['subcommand'] == 'postprocess':
+            self.validate_postprocess_args(kwargs)
+
+    def validate_preprocess_args(self, kwargs):
+        print("Validating preprocess arguments")
+        print(kwargs)
+    
+    def validate_postprocess_args(self, kwargs):
+        print("Validating postprocess arguments")
     
     def format_exec_name(self, name):
         pname = name.replace('-', '_')
