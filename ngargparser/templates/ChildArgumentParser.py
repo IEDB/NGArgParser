@@ -1,4 +1,5 @@
 import textwrap
+import argparse
 from NGArgumentParser import NGArgumentParser
 
 
@@ -25,11 +26,13 @@ class ChildArgumentParser(NGArgumentParser):
         # -----------------------------------------------------
         pred_parser.add_argument("--input-tsv", "-t",
                                 dest="input_tsv",
+                                type=argparse.FileType('r'),
                                 default=None,
                                 help="Perform counting given a TSV file.",
                                 )
         pred_parser.add_argument("--input-json", "-j",
                                 dest="input_json",
+                                type=argparse.FileType('r'),
                                 default=None,
                                 help="Perform counting given a JSON file.",
                                 )

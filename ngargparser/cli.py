@@ -61,10 +61,10 @@ def create_project_structure(project_name):
         # Create directory structure
         os.makedirs(project_name)
         os.makedirs(os.path.join(project_name, 'src'))
-        os.makedirs(os.path.join(project_name, 'output-directory'))
-        os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'data'))
-        os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'params'))
-        os.makedirs(os.path.join(project_name, 'output-directory', 'predict-outputs'))
+        # os.makedirs(os.path.join(project_name, 'output-directory'))
+        # os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'data'))
+        # os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'params'))
+        # os.makedirs(os.path.join(project_name, 'output-directory', 'predict-outputs'))
         
         # Create necessary files
         exec_file = f'run_{format_project_name(project_name)}.py'
@@ -76,6 +76,7 @@ def create_project_structure(project_name):
         shutil.copy(f'{TEMPLATE_DIR}/preprocess.py', f'{project_name}/src/preprocess.py')
         shutil.copy(f'{TEMPLATE_DIR}/postprocess.py', f'{project_name}/src/postprocess.py')        
         shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/NGArgumentParser.py')
+        shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
 
         # Add default content to all the files
         replace_text_in_place(f'{project_name}/src/{exec_file}', 'CHILDPARSER', parser_name)
