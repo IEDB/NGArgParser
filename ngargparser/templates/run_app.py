@@ -1,5 +1,6 @@
+import preprocess
+import postprocess
 from CHILDPARSER import CHILDPARSER
-import preprocess, postprocess
 
 
 def main():
@@ -12,14 +13,14 @@ def main():
 
     if args.subcommand == 'preprocess':
         # Validate Arguments
-        parser.validate_args(**vars(args))
+        parser.validate_args(args)
 
         # ADD CODE LOGIC TO SPLIT RESULTS.
         postprocess.run(**vars(args))
 
     if args.subcommand == 'postprocess':
         # Validate Arguments
-        parser.validate_args(**vars(args))
+        parser.validate_args(args)
 
         # ADD CODE LOGIC TO COMBINE RESULTS.
         postprocess.run(**vars(args))
