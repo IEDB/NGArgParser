@@ -16,7 +16,7 @@ def main():
         parser.validate_args(args)
 
         # ADD CODE LOGIC TO SPLIT RESULTS.
-        postprocess.run(**vars(args))
+        preprocess.run(**vars(args))
 
     if args.subcommand == 'postprocess':
         # Validate Arguments

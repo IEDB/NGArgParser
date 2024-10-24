@@ -3,7 +3,6 @@ import textwrap
 import string
 import random
 import json
-import os
 import validators
 from pathlib import Path
 from typing import TypedDict, List
@@ -69,27 +68,32 @@ class NGArgumentParser(argparse.ArgumentParser):
         self.parser_preprocess.add_argument("--input-json", "-j",
                                         dest="input_json",
                                         type=argparse.FileType('r'),
+                                        required=True,
                                         help="JSON file containing input parameters.",
                                         metavar="JSON_FILE")
+        
+        self.parser_preprocess.add_argument("--output-dir", "-o",
+                                        dest="output_dir",
+                                        type=validators.validate_directory,
+                                        required=True,
+                                        help="prediction result output directory.",
+                                        metavar="OUTPUT_DIR")
         
         self.parser_preprocess.add_argument("--params-dir",
                                         dest="preprocess_parameters_dir",
                                         type=validators.validate_directory,
-                                        # default=self.DEFAULT_PARAMS_DIR,
-                                        help="a directory to store preprocessed JSON input files")
+                                        help="""
+                                        a directory to store preprocessed JSON input files
+                                        (default: $OUTPUT_DIR/predict-inputs/params)
+                                        """)
 
         self.parser_preprocess.add_argument("--inputs-dir",
                                         dest="preprocess_inputs_dir",
                                         type=validators.validate_directory,
-                                        # default=self.DEFAULT_INPUTS_DIR,
-                                        help="a directory to store other, non-JSON inputs (e.g., fasta files)")
-        
-        self.parser_preprocess.add_argument("--output-dir", "-o",
-                                dest="output_dir",
-                                type=validators.validate_directory_given_filename,
-                                # default=self.DEFAULT_RESULTS_DIR / self.generate_random_filename(),
-                                help="prediction result output directory.",
-                                metavar="OUTPUT_DIR")
+                                        help="""
+                                        a directory to store other, non-JSON inputs (e.g., fasta files)
+                                        (default: $OUTPUT_DIR/predict-inputs/data)
+                                        """)
 
         self.parser_preprocess.add_argument("--assume-valid",
                                         action="store_true",
@@ -166,73 +170,32 @@ class NGArgumentParser(argparse.ArgumentParser):
         if args.subcommand == 'postprocess':
             self.validate_postprocess_args(args)
 
+
     def validate_preprocess_args(self, args):
         kwargs = vars(args)
-        
-        # Additional validation to ensure that params-dir and inputs-dir are both specified.
-        # Setting either one of them indicates that the use will not use the default
-        # file structure.
-        if bool(kwargs.get('preprocess_parameters_dir')) ^ bool(kwargs.get('preprocess_inputs_dir')):
-            self.parser_preprocess.error("Both --inputs-dir and --params-dir is required to be specified")
+        output_dir = kwargs.get('output_dir')
 
-        # When both of these parameters are set, then let the user to use their custom
-        # file structure.
-        if kwargs.get('preprocess_parameters_dir') and kwargs.get('preprocess_inputs_dir'):
-            self.use_default_fs=False
-            # Check if output directory is specified. If not, use the default dir
-            if not kwargs.get('output_dir'):
-                setattr(args, 'output_dir', self.PROJECT_ROOT_PATH)
+        # Set params-dir and inputs-dir to the value of '--output-dir' 
+        # if both are not specified.
+        if not kwargs.get('preprocess_parameters_dir'):
+            params_dir = output_dir / 'predict-inputs' / 'params'
+            self.ensure_directory_exists(params_dir)
+            setattr(args, 'preprocess_parameters_dir', params_dir)
 
+        if not kwargs.get('preprocess_inputs_dir'):
+            inputs_dir = output_dir / 'predict-inputs' / 'data'
+            self.ensure_directory_exists(inputs_dir)
+            setattr(args, 'preprocess_inputs_dir', inputs_dir)
 
-        if self.use_default_fs: 
-            # Set default attributes values to 'preprocess_parameters_dir' and
-            # 'preprocess_inputs_dir'.
-            setattr(args, 'preprocess_parameters_dir', self.DEFAULT_PARAMS_DIR)
-            setattr(args, 'preprocess_inputs_dir', self.DEFAULT_INPUTS_DIR)
-            
-            # Check if output directory is specified. If not, use the default dir
-            if not kwargs.get('output_dir'):
-                setattr(args, 'output_dir', self.DEFAULT_RESULTS_DIR)
-            
-            self.generate_output_file_structure()
-
-
-        # Check if output directory is specified. If not, use the default dir
-        if not kwargs.get('output_dir'):
-            setattr(args, 'output_dir', self.DEFAULT_INPUTS_DIR)
+    def ensure_directory_exists(self, path):
+        if not path.exists():
+            path.mkdir(parents=True, exist_ok=True)
 
     
     def validate_postprocess_args(self, args):
-        print("Validating postprocess arguments")
+        print("Validating postprocess arguments...")
         kwargs = vars(args)
 
-
-    def generate_output_file_structure(self):
-        print("Creating default output file structure")
-        output_dir = self.PROJECT_ROOT_PATH / 'output-directory'
-        predict_inputs_dir = output_dir / 'predict-inputs'
-        params_dir = predict_inputs_dir / 'params'
-        data_dir = predict_inputs_dir / 'data'
-        predict_outputs_dir = output_dir / 'predict-outputs'
-        output_fs = [
-            output_dir,
-            predict_inputs_dir,
-            predict_outputs_dir,
-            params_dir,
-            data_dir
-        ]
-
-        missing_dir = 0
-        for each_path in output_fs:
-            if each_path.exists() and each_path.is_dir():
-                continue
-            
-            os.makedirs(each_path)
-            print(f'Creating missing folder: {each_path}')
-            missing_dir = missing_dir + 1
-        
-        if missing_dir == 0 :
-            print('The \'output-directory\' already exists with the correct structure. This app will continue to use that directory.')
 
     def format_exec_name(self, name):
         pname = name.replace('-', '_')
