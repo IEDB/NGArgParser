@@ -1,33 +1,34 @@
 [
     {
-        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aacounter.py predict -j /ABSOLUTE/PATH/TO/aa-counter/output-directory/predict-inputs/params/0-bkewmn69.json -o /ABSOLUTE/PATH/TO/aa-counter/output-directory/predict-outputs/result.0 -f json",
+        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aacounter.py predict -j /ABSOLUTE/PATH/TO/PARAMS/0-bkewmn69.json -o /ABSOLUTE/PATH/TO/PREDICTION/OUTPUT/result.0 -f json",
         "job_id": 0,
         "job_type": "prediction",
         "depends_on_job_ids": [],
         "expected_outputs": [
-            "/ABSOLUTE/PATH/TO/aa-counter/output-directory/predict-outputs/result.0.json"
+            "/ABSOLUTE/PATH/TO/PREDICTION/OUTPUT/result.0.json"
         ]
     },
     {
-        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aacounter.py predict -j /ABSOLUTE/PATH/TO/aa-counter/output-directory/predict-inputs/params/1-lt6tqemw.json -o /ABSOLUTE/PATH/TO/aa-counter/output-directory/predict-outputs/result.1 -f json",
+        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aacounter.py predict -j /ABSOLUTE/PATH/TO/PARAMS/1-kz25mrya.json -o /ABSOLUTE/PATH/TO/PREDICTION/OUTPUT/result.1 -f json",
         "job_id": 1,
         "job_type": "prediction",
         "depends_on_job_ids": [],
         "expected_outputs": [
-            "/ABSOLUTE/PATH/TO/aa-counter/output-directory/predict-outputs/result.1.json"
+            "/ABSOLUTE/PATH/TO/PREDICTION/OUTPUT/result.1.json"
+            
         ]
     },
     {
-        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aacounter.py predict -j /ABSOLUTE/PATH/TO/aa-counter/output-directory/predict-inputs/params/2-wuxhlscn.json -o /ABSOLUTE/PATH/TO/aa-counter/output-directory/predict-outputs/result.2 -f json",
+        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aacounter.py predict -j /ABSOLUTE/PATH/TO/PARAMS/2-qto0ebic.json -o /ABSOLUTE/PATH/TO/PREDICTION/OUTPUT/result.2 -f json",
         "job_id": 2,
         "job_type": "prediction",
         "depends_on_job_ids": [],
         "expected_outputs": [
-            "/ABSOLUTE/PATH/TO/aa-counter/output-directory/predict-outputs/result.2.json"
+            "/ABSOLUTE/PATH/TO/PREDICTION/OUTPUT/result.2.json"
         ]
     },
     {
-        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aacounter.py postprocess --job-desc-file=/ABSOLUTE/PATH/TO/aa-counter/output-directory/job_descriptions.json -o /ABSOLUTE/PATH/TO/aa-counter/output-directory/final-result -f json",
+        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aa_counter.py postprocess --job-desc-file=/ABSOLUTE/PATH/TO/aa-counter/job_descriptions.json --input-results-dir=/ABSOLUTE/PATH/TO/PREDICTION/OUTPUT --postprocessed-results-dir=PATH/TO/OUTPUT",
         "job_id": 3,
         "job_type": "postprocess",
         "depends_on_job_ids": [
@@ -36,7 +37,7 @@
             2
         ],
         "expected_outputs": [
-            "/ABSOLUTE/PATH/TO/aa-counter/output-directory/final-result"
+            "PATH/TO/OUTPUT/final-result.json"
         ]
     }
 ]

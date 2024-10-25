@@ -50,9 +50,9 @@ python src/run_aa_counter.py predict \
 These formats will not be used in the NG workflow, but it might be valuable for users who prefer to specify more options directly on the command line. 
 
 ## Preprocess
-Ideally, any apps created with this framework should be able to split inputs into smaller input units. For `aa-counter`, seqeucnes are divided by peptide length. It will create multiple files where each file contains sequences with same length. 
+Ideally, any apps created with this framework should be able to split inputs into smaller input units. For `aa-counter`, sequences are divided by peptide length. It will create multiple files where each file contains sequences with the same length. 
 ```bash
-python src/run_aa_counter.py preprocess -j src/example.json
+python src/run_aa_counter.py preprocess -j src/example.json -o output-directory
 ```
 
 Notice that the above code outputs some text about creating folders. This is the default output file structure that is provided by this framework. The file structure should look the following:
@@ -75,38 +75,31 @@ If using the default file structure is unfavorable, and would like to use custom
 ```bash
 python src/run_aa_counter.py preprocess \
 -j src/example.json \
+-o /PATH/TO/OUTPUT/DIR \
 --params-dir /PATH/TO/DIR/FOR/PARAMS \
 --inputs-dir /PATH/TO/DIR/FOR/INPUTS
 ```
 This app will split the inputs into smaller units and save them under the defined paths (`--params-dir` and `--inputs-dir`).
 
-```bash
-python src/run_aa_counter.py preprocess \
--j src/example.json \
---params-dir /PATH/TO/DIR/FOR/PARAMS \
---inputs-dir /PATH/TO/DIR/FOR/INPUTS \
--o /PATH/TP/OUTPUT/DIR
-```
-By default, the output directory path is set to the app project folder. In this case, it would simply be `aa-counter/`.
-
 At this point, `job_descriptions.json` should have been created inside the `aa-counter` directory.
 
 The `job_descriptions.json` should contain multiple independent job commands along with parameter descriptions. It contains details on how to run the individual jobs including the specific command lines, job dependencies and expected outputs.  
+
 It should roughly look like this (Fuller version can be found under the `ngparser>templates>example-app>example_job_descriptions.json`):
 ```bash
 [
     {
-        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aacounter.py predict -j /ABSOLUTE/PATH/TO/aa-counter/output-directory/predict-inputs/params/0-bkewmn69.json -o /ABSOLUTE/PATH/TO/aa-counter/output-directory/predict-outputs/result.0 -f json",
+        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aacounter.py predict -j /ABSOLUTE/PATH/TO/PARAMS/0-bkewmn69.json -o /ABSOLUTE/PATH/TO/PREDICTION/OUTPUT/result.0 -f json",
         "job_id": 0,
         "job_type": "prediction",
         "depends_on_job_ids": [],
         "expected_outputs": [
-            "/ABSOLUTE/PATH/TO/aa-counter/output-directory/predict-outputs/result.0.json"
+            "/ABSOLUTE/PATH/TO/PREDICTION/OUTPUT/result.0.json"
         ]
     },
     ...
     {
-        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aacounter.py postprocess --job-desc-file=/ABSOLUTE/PATH/TO/aa-counter/output-directory/job_descriptions.json -o /ABSOLUTE/PATH/TO/OUTPUT/DIR/final-result -f json",
+        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aa_counter.py postprocess --job-desc-file=/ABSOLUTE/PATH/TO/aa-counter/job_descriptions.json --input-results-dir=/ABSOLUTE/PATH/TO/PREDICTION/OUTPUT --postprocessed-results-dir=PATH/TO/OUTPUT",
         "job_id": 3,
         "job_type": "postprocess",
         "depends_on_job_ids": [
@@ -115,7 +108,7 @@ It should roughly look like this (Fuller version can be found under the `ngparse
             2
         ],
         "expected_outputs": [
-            "/ABSOLUTE/PATH/TO/aa-counter/output-directory/final-result"
+            "PATH/TO/OUTPUT/final-result.json"
         ]
     }
 ]
