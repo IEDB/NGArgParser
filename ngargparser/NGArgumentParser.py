@@ -112,12 +112,14 @@ class NGArgumentParser(argparse.ArgumentParser):
                                         dest="postprocess_input_dir",
                                         type=validators.validate_directory,
                                         default=self.DEFAULT_RESULTS_DIR,
+                                        required=True,
                                         help="directory containing the result files to postprocess")
 
         self.parser_postprocess.add_argument("--postprocessed-results-dir",
                                         dest="postprocess_result_dir",
                                         type=validators.validate_directory,
                                         default=self.OUTPUT_DIR_PATH,
+                                        required=True,
                                         help="a directory to contain the post-processed results")
         
         self.parser_postprocess.add_argument("--job-desc-file",
@@ -187,6 +189,10 @@ class NGArgumentParser(argparse.ArgumentParser):
             self.ensure_directory_exists(inputs_dir)
             setattr(args, 'preprocess_inputs_dir', inputs_dir)
 
+        # Also, create predict-output directory in advance.
+        predict_output_dir = output_dir / 'predict-outputs'
+        self.ensure_directory_exists(predict_output_dir)
+
     def ensure_directory_exists(self, path):
         if not path.exists():
             path.mkdir(parents=True, exist_ok=True)
@@ -218,6 +224,9 @@ class NGArgumentParser(argparse.ArgumentParser):
         
         # output path
         OUTPUT_DIR_PATH = kwargs.get('output_dir')
+
+        # final result directory path
+        PRED_OUTPUT_DIR = OUTPUT_DIR_PATH / 'predict-outputs'
 
         # job description file path
         JD_PATH = self.PROJECT_ROOT_PATH / 'job_descriptions.json'
@@ -280,11 +289,11 @@ class NGArgumentParser(argparse.ArgumentParser):
             for i, job in enumerate(job_files):
                 param_file_path = str(job)
                 
-                shell_cmd = f'{EXEC_FILE_PATH} predict -j {param_file_path} -o {OUTPUT_DIR_PATH}/result.{i} -f json'
+                shell_cmd = f'{EXEC_FILE_PATH} predict -j {param_file_path} -o {PRED_OUTPUT_DIR}/result.{i} -f json'
                 job_id = i
                 job_type = 'prediction'
                 expected_outputs = [
-                    f'{OUTPUT_DIR_PATH}/result.{i}.json'
+                    f'{PRED_OUTPUT_DIR}/result.{i}.json'
                 ]
 
                 jd: JobDescriptionParams = {
@@ -299,7 +308,8 @@ class NGArgumentParser(argparse.ArgumentParser):
 
             # Add command for postprocessing
             i += 1
-            shell_cmd = f'{EXEC_FILE_PATH} postprocess --job-desc-file={JD_PATH} -o {OUTPUT_DIR_PATH}/final-result -f json'
+            # shell_cmd = f'{EXEC_FILE_PATH} postprocess --job-desc-file={JD_PATH} -o {OUTPUT_DIR_PATH}/final-result -f json'
+            shell_cmd = f'{EXEC_FILE_PATH} postprocess --job-desc-file={JD_PATH} --input-results-dir={OUTPUT_DIR_PATH} --postprocessed-results-dir={OUTPUT_DIR_PATH}'
             job_id = i
             job_type = 'postprocess'
             depends_on_job_ids = list(range(i))

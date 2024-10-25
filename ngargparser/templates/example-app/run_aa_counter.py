@@ -217,7 +217,8 @@ def main():
         if args.output_prefix:
             result_file_path = args.output_prefix.with_suffix(f'.{args.output_format}')
         else:
-            raise parser.error("Please provide output file name.")
+            # raise parser.error("Please provide output file name.")
+            result_file_path = args.postprocess_input_dir / 'final-result.json'
 
         save_results_to(result_file_path, final_header, final_data)
 
