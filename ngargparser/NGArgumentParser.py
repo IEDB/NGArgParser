@@ -79,6 +79,7 @@ class NGArgumentParser(argparse.ArgumentParser):
                                         help="prediction result output directory.",
                                         metavar="OUTPUT_DIR")
         
+        # default will be set in validate_preprocess_args()
         self.parser_preprocess.add_argument("--params-dir",
                                         dest="preprocess_parameters_dir",
                                         type=validators.validate_directory,
@@ -87,6 +88,7 @@ class NGArgumentParser(argparse.ArgumentParser):
                                         (default: $OUTPUT_DIR/predict-inputs/params)
                                         """)
 
+        # default will be set in validate_preprocess_args()
         self.parser_preprocess.add_argument("--inputs-dir",
                                         dest="preprocess_inputs_dir",
                                         type=validators.validate_directory,
@@ -272,13 +274,6 @@ class NGArgumentParser(argparse.ArgumentParser):
         if current_group:
             grouped_files.append(current_group)
 
-        # for i, gfiles in enumerate(grouped_files):
-        #     print('========================')
-        #     print(f'GROUP {i+1}:')
-        #     print('========================')
-        #     for file in gfiles:
-        #         print(str(file))
-
         '''
         Take the last group that was newly created, and create
         job_description file out of it.
@@ -308,7 +303,6 @@ class NGArgumentParser(argparse.ArgumentParser):
 
             # Add command for postprocessing
             i += 1
-            # shell_cmd = f'{EXEC_FILE_PATH} postprocess --job-desc-file={JD_PATH} -o {OUTPUT_DIR_PATH}/final-result -f json'
             shell_cmd = f'{EXEC_FILE_PATH} postprocess --job-desc-file={JD_PATH} --input-results-dir={OUTPUT_DIR_PATH} --postprocessed-results-dir={OUTPUT_DIR_PATH}'
             job_id = i
             job_type = 'postprocess'
