@@ -2,7 +2,7 @@ import json
 import re
 from pathlib import Path
 from preprocess import split_by_length
-from postprocess import collect_all_job_results, save_results_to
+from postprocess import collect_all_job_results, collect_all_job_results_without_jd, save_results_to
 from AACounterArgumentParser import AACounterArgumentParser
 
 
@@ -135,9 +135,9 @@ def convert_tsv_to_json(tfile, aa):
 
 
 def read_json(jfile):
-    # with open(jfile, 'r') as f :
-    #     content = json.load(f)
     content = json.load(jfile)
+    jfile.seek(0)
+
     return json.dumps(content)
 
 
@@ -202,24 +202,35 @@ def main():
         parser.create_job_descriptions_file(args)
 
     if args.subcommand == 'postprocess':
-        # 1. Parse arguments to get the job description data
+        # 1.1 Validate arguments
+        parser.validate_args(args)
+        
+        # 2. If job-description is provided
         if args.job_desc_file:
-            json_input = read_json(args.job_desc_file)
+            # 1. Parse arguments to get the job description data
+            if args.job_desc_file:
+                json_input = read_json(args.job_desc_file)
+            else:
+                raise parser.error("Counter app preprocess command only accepts JSON file.")
+
+            job_descriptions = json.loads(json_input)
+            post_jd = job_descriptions[-1]
+            result_file_path = post_jd['expected_outputs'][0]
+
+            # 2.1 Aggregate all the results.
+            final_header, final_data = collect_all_job_results(job_descriptions)
+            
+            
         else:
-            raise parser.error("Counter app preprocess command only accepts JSON file.")
-
-        job_descriptions = json.loads(json_input)
-
-        # 2. Aggregate all the results.
-        final_header, final_data = collect_all_job_results(job_descriptions)
-
-        # 3. Write to the final output file.
+            # allow user to perform postprocess without job-description
+            final_header, final_data = collect_all_job_results_without_jd(args)
+            result_file_path = args.postprocess_result_dir / 'final-result-no-jd.json'
+        
+        # Adjust final path
         if args.output_prefix:
             result_file_path = args.output_prefix.with_suffix(f'.{args.output_format}')
-        else:
-            # raise parser.error("Please provide output file name.")
-            result_file_path = args.postprocess_input_dir / 'final-result.json'
 
+        
         save_results_to(result_file_path, final_header, final_data)
 
 

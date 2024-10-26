@@ -10,14 +10,14 @@ from typing import TypedDict, List
 
 class NGArgumentParser(argparse.ArgumentParser):
     ''' Setting default paths '''
-    # defaults for preprocessing
+    # # defaults for preprocessing
     PROJECT_ROOT_PATH = Path(__file__).resolve().parents[1]
-    OUTPUT_DIR_PATH = PROJECT_ROOT_PATH / 'output-directory'
-    DEFAULT_PARAMS_DIR = OUTPUT_DIR_PATH / 'predict-inputs' / 'params'
-    DEFAULT_INPUTS_DIR = OUTPUT_DIR_PATH / 'predict-inputs' / 'data'
+    # OUTPUT_DIR_PATH = PROJECT_ROOT_PATH / 'output-directory'
+    # DEFAULT_PARAMS_DIR = OUTPUT_DIR_PATH / 'predict-inputs' / 'params'
+    # DEFAULT_INPUTS_DIR = OUTPUT_DIR_PATH / 'predict-inputs' / 'data'
 
-    # defaults for postprocessing
-    DEFAULT_RESULTS_DIR = OUTPUT_DIR_PATH / 'predict-outputs'
+    # # defaults for postprocessing
+    # DEFAULT_RESULTS_DIR = OUTPUT_DIR_PATH / 'predict-outputs'
 
     def __init__(self):
         '''
@@ -110,26 +110,45 @@ class NGArgumentParser(argparse.ArgumentParser):
                                                         help='Postprocess jobs.',
                                                         description='results from individual prediction jobs are aggregated')
 
-        self.parser_postprocess.add_argument("--input-results-dir",
+        # --input-results-dir option and --job-desc-file should be mutually exclusive.
+        # Make sure at least one of the two be defined.
+        group = self.parser_postprocess.add_mutually_exclusive_group(required=True)
+
+        group.add_argument("--job-desc-file",
+                                        dest="job_desc_file",
+                                        type=argparse.FileType('r'),
+                                        # default=self.PROJECT_ROOT_PATH,
+                                        # required=True,
+                                        help="Path to job description file.")
+
+        group.add_argument("--input-results-dir",
                                         dest="postprocess_input_dir",
                                         type=validators.validate_directory,
-                                        default=self.DEFAULT_RESULTS_DIR,
-                                        required=True,
+                                        # default=self.DEFAULT_RESULTS_DIR,
+                                        # required=True,
                                         help="directory containing the result files to postprocess")
+
+
+        # self.parser_postprocess.add_argument("--job-desc-file",
+        #                                 dest="job_desc_file",
+        #                                 type=argparse.FileType('r'),
+        #                                 # default=self.PROJECT_ROOT_PATH,
+        #                                 required=True,
+        #                                 help="Path to job description file.")
+
+        # self.parser_postprocess.add_argument("--input-results-dir",
+        #                                 dest="postprocess_input_dir",
+        #                                 type=validators.validate_directory,
+        #                                 default=self.DEFAULT_RESULTS_DIR,
+        #                                 required=True,
+        #                                 help="directory containing the result files to postprocess")
 
         self.parser_postprocess.add_argument("--postprocessed-results-dir",
                                         dest="postprocess_result_dir",
                                         type=validators.validate_directory,
-                                        default=self.OUTPUT_DIR_PATH,
+                                        # default=self.OUTPUT_DIR_PATH,
                                         required=True,
                                         help="a directory to contain the post-processed results")
-        
-        self.parser_postprocess.add_argument("--job-desc-file",
-                                        dest="job_desc_file",
-                                        type=argparse.FileType('r'),
-                                        # default=self.PROJECT_ROOT_PATH,
-                                        required=True,
-                                        help="Path to job description file.")
         
         self.parser_postprocess.add_argument("--output-prefix", "-o",
                                 dest="output_prefix",
@@ -201,8 +220,23 @@ class NGArgumentParser(argparse.ArgumentParser):
 
     
     def validate_postprocess_args(self, args):
-        print("Validating postprocess arguments...")
         kwargs = vars(args)
+        
+        '''
+        Note that --input-results-dir option and --job-desc-file are mutually exclusive.
+        If --job-desc-file is set, then extract value of "input_result-dir" and set it
+        to the Namespace.
+        '''
+        if kwargs.get('job_desc_file'):
+            # Read job-description file, and set the pointer back to beginning
+            # in case it needs to be read again
+            jd_content = json.load(args.job_desc_file)
+            args.job_desc_file.seek(0)
+            
+            preprocess_result_dir = jd_content[0]['expected_outputs'][0]
+            preprocess_result_dir = Path(preprocess_result_dir).parent
+            
+            setattr(args, 'postprocess_input_dir', preprocess_result_dir)
 
 
     def format_exec_name(self, name):
@@ -236,7 +270,8 @@ class NGArgumentParser(argparse.ArgumentParser):
         # exec file path
         PROJ_NAME = self.PROJECT_ROOT_PATH.name.split('/')[-1]
         PROJ_NAME = self.format_exec_name(PROJ_NAME)
-        EXEC_FILE_PATH = str(Path(__file__).parent) + f'/run_{PROJ_NAME}.py'
+        EXEC_FILE_PATH = Path(__file__).resolve().parent / f'run_{PROJ_NAME}.py'
+        
         files_with_ctime = []
 
         for file_path in Path(params_dir).iterdir():

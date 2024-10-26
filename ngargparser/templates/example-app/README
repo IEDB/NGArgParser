@@ -125,7 +125,21 @@ python src/run_aa_counter.py postprocess \
 -f json
 ```
 
+Given the job description file, you can run the postprocess command with the following command:
+```bash
+python src/run_aa_counter.py postprocess \
+--job-desc-file=output-directory/job_descriptions.json \
+--postprocessed-results-dir=custom-output-dir
+```
 
+
+If postprocessing needs to be done without having to provide the `job_descriptions.json`, run the same command with `--input-results-dir`:
+
+```bash
+python src/run_aa_counter.py postprocess \
+--input-results-dir=custom-output-dir/predict-outputs \
+--postprocessed-results-dir=custom-output-dir
+```
 
 
 Contributing a standalone

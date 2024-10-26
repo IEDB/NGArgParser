@@ -32,6 +32,34 @@ def collect_all_job_results(job_descriptions):
 
     return final_table_header, final_table_data
 
+
+def collect_all_job_results_without_jd(args):
+    '''
+    Namespace(subcommand='postprocess', job_desc_file=None, 
+              postprocess_input_dir=PosixPath('custom-output-dir/predict-outputs'), 
+              postprocess_result_dir=PosixPath('custom-output-dir'), 
+              output_prefix=None, 
+              output_format='json')
+    '''
+    preprocess_results_dir = args.postprocess_input_dir
+
+    final_table_data = []
+    final_table_header = []
+    for job_result_file in preprocess_results_dir.iterdir():
+        with open(job_result_file, 'r') as f :
+            table_data = json.load(f)
+
+        job_result_table_data = table_data['results'][0]['table_data']
+
+        if not final_table_header :
+            final_table_header = table_data['results'][0]['table_columns']
+
+        for td in job_result_table_data:
+            final_table_data.append(td)
+    
+    return final_table_header, final_table_data
+
+
 def save_results_to(path, header, data):
     final_data = {
         'warnings': [],
