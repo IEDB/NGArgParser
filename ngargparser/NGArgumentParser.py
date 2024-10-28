@@ -254,8 +254,7 @@ class NGArgumentParser(argparse.ArgumentParser):
 
 
     # def create_job_descriptions_file(self, params_dir):
-    def create_job_descriptions_file(self, args):
-        kwargs = vars(args)
+    def create_job_descriptions_file(self, **kwargs):
         params_dir = kwargs.get('preprocess_parameters_dir')
         
         # output path
@@ -338,7 +337,7 @@ class NGArgumentParser(argparse.ArgumentParser):
 
             # Add command for postprocessing
             i += 1
-            shell_cmd = f'{EXEC_FILE_PATH} postprocess --job-desc-file={JD_PATH} --input-results-dir={OUTPUT_DIR_PATH} --postprocessed-results-dir={OUTPUT_DIR_PATH}'
+            shell_cmd = f'{EXEC_FILE_PATH} postprocess --job-desc-file={JD_PATH} --input-results-dir={PRED_OUTPUT_DIR} --postprocessed-results-dir={OUTPUT_DIR_PATH}'
             job_id = i
             job_type = 'postprocess'
             depends_on_job_ids = list(range(i))

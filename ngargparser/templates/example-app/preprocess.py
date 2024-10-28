@@ -18,6 +18,12 @@ import tempfile
 from pathlib import Path
 
 
+def read_json(jfile):
+    content = json.load(jfile)
+    jfile.seek(0)
+
+    return json.dumps(content)
+    
 def split_by_length(jdata, input_dir_path, param_dir_path):
     data = json.loads(jdata)
     peptides = data['peptide']
@@ -48,6 +54,16 @@ def split_by_length(jdata, input_dir_path, param_dir_path):
     # -------------------------------------------------------------------
     # STEP 2. Create temp dir where the splitted jobs can be stored
     # -------------------------------------------------------------------
+        
+    '''Clean old files'''
+    for file in input_dir_path.iterdir():
+        # Delete the file
+        if file.is_file(): file.unlink()  
+
+    for file in param_dir_path.iterdir():
+        # Delete the file
+        if file.is_file(): file.unlink()
+
     for i in range(len(splitted_input_params)):
         abs_path_seqs_tmpfile = None
         # create temporary file to store each input
@@ -60,3 +76,13 @@ def split_by_length(jdata, input_dir_path, param_dir_path):
 
         with tempfile.NamedTemporaryFile(dir=param_dir_path, prefix=f'{i}-', suffix='.json', mode='w', delete=False) as tmpfile:
             json.dump(splitted_input_params[i], tmpfile, indent=4)
+
+
+def run(**kwargs):
+    # ADD CODE LOGIC TO SPLIT RESULTS.
+    data = kwargs.get('input_json')
+    data = read_json(data)
+    input_dir_path = kwargs.get('preprocess_inputs_dir')
+    param_dir_path = kwargs.get('preprocess_parameters_dir')
+
+    split_by_length(data, input_dir_path, param_dir_path)

@@ -1,8 +1,7 @@
 import json
 import re
-from pathlib import Path
-from preprocess import split_by_length
-from postprocess import collect_all_job_results, collect_all_job_results_without_jd, save_results_to
+import preprocess
+import postprocess
 from AACounterArgumentParser import AACounterArgumentParser
 
 
@@ -133,7 +132,6 @@ def convert_tsv_to_json(tfile, aa):
 
     return content
 
-
 def read_json(jfile):
     content = json.load(jfile)
     jfile.seek(0)
@@ -146,6 +144,7 @@ def main():
     args = parser.parse_args()
 
     if args.subcommand == 'predict':
+        # ADD CODE LOGIC HERE.
         # Unify inputs into a JSON format.
         if args.input_tsv:
             if not args.aa:
@@ -184,56 +183,22 @@ def main():
             # raise parser.error("Please define the output file using the '-o' flag.")
             print(json.dumps(result_json, indent=4))
 
-
     if args.subcommand == 'preprocess':
-        # 1. Parse arguments
-        if args.input_json:
-            json_input = read_json(args.input_json)
-        else:
-            raise parser.error("Counter app preprocess command only accepts JSON file.")
-
-        # 1.1 Validate arguments
+        # Validate Arguments
         parser.validate_args(args)
-
-        # 2. Logic to split the inputs by length
-        split_by_length(json_input, args.preprocess_inputs_dir, args.preprocess_parameters_dir)
-
-        # 3. Create job description file
-        parser.create_job_descriptions_file(args)
+        
+        # Run preprocess logic
+        preprocess.run(**vars(args))
+        
+        # Create job description file
+        parser.create_job_descriptions_file(**vars(args))
 
     if args.subcommand == 'postprocess':
-        # 1.1 Validate arguments
+        # Validate Arguments
         parser.validate_args(args)
-        
-        # 2. If job-description is provided
-        if args.job_desc_file:
-            # 1. Parse arguments to get the job description data
-            if args.job_desc_file:
-                json_input = read_json(args.job_desc_file)
-            else:
-                raise parser.error("Counter app preprocess command only accepts JSON file.")
 
-            job_descriptions = json.loads(json_input)
-            post_jd = job_descriptions[-1]
-            result_file_path = post_jd['expected_outputs'][0]
-
-            # 2.1 Aggregate all the results.
-            final_header, final_data = collect_all_job_results(job_descriptions)
-            
-            
-        else:
-            # allow user to perform postprocess without job-description
-            final_header, final_data = collect_all_job_results_without_jd(args)
-            result_file_path = args.postprocess_result_dir / 'final-result-no-jd.json'
-        
-        # Adjust final path
-        if args.output_prefix:
-            result_file_path = args.output_prefix.with_suffix(f'.{args.output_format}')
-
-        
-        save_results_to(result_file_path, final_header, final_data)
-
+        # Run postprocess logic
+        postprocess.run(**vars(args))
 
 if __name__=='__main__':
     main()
-
