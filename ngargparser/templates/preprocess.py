@@ -10,4 +10,5 @@
 #     * Note that the last command in the description file will use 'postprocess' subcommand.
 
 def run(**kwargs):
+    # ADD CODE LOGIC TO SPLIT INPUTS
     pass

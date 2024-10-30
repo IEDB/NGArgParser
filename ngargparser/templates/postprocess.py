@@ -4,4 +4,5 @@
 #     * This file should be saved under 'postprocess_job/aggregated_result.json'.
 
 def run(**kwargs):
+    # ADD CODE LOGIC TO COMBINE RESULTS
     pass

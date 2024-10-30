@@ -15,7 +15,7 @@ def main():
         # Validate Arguments
         parser.validate_args(args)
 
-        # ADD CODE LOGIC TO SPLIT RESULTS.
+        # ADD CODE LOGIC TO SPLIT INPUTS INSIDE PREPROCESS.PY
         preprocess.run(**vars(args))
 
         # Create job description file
@@ -25,7 +25,7 @@ def main():
         # Validate Arguments
         parser.validate_args(args)
 
-        # ADD CODE LOGIC TO COMBINE RESULTS.
+        # ADD CODE LOGIC TO COMBINE RESULTS INSIDE POSTPROCESS.PY
         postprocess.run(**vars(args))
 
 if __name__=='__main__':
