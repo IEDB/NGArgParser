@@ -10,14 +10,9 @@ from typing import TypedDict, List
 
 class NGArgumentParser(argparse.ArgumentParser):
     ''' Setting default paths '''
-    # # defaults for preprocessing
+    # defaults for preprocessing
     PROJECT_ROOT_PATH = Path(__file__).resolve().parents[1]
-    # OUTPUT_DIR_PATH = PROJECT_ROOT_PATH / 'output-directory'
-    # DEFAULT_PARAMS_DIR = OUTPUT_DIR_PATH / 'predict-inputs' / 'params'
-    # DEFAULT_INPUTS_DIR = OUTPUT_DIR_PATH / 'predict-inputs' / 'data'
-
-    # # defaults for postprocessing
-    # DEFAULT_RESULTS_DIR = OUTPUT_DIR_PATH / 'predict-outputs'
+    
 
     def __init__(self):
         '''
@@ -337,7 +332,7 @@ class NGArgumentParser(argparse.ArgumentParser):
 
             # Add command for postprocessing
             i += 1
-            shell_cmd = f'{EXEC_FILE_PATH} postprocess --job-desc-file={JD_PATH} --input-results-dir={PRED_OUTPUT_DIR} --postprocessed-results-dir={OUTPUT_DIR_PATH}'
+            shell_cmd = f'{EXEC_FILE_PATH} postprocess --job-desc-file={JD_PATH} --postprocessed-results-dir={OUTPUT_DIR_PATH}'
             job_id = i
             job_type = 'postprocess'
             depends_on_job_ids = list(range(i))

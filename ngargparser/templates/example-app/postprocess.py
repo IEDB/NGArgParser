@@ -46,7 +46,7 @@ def collect_all_job_results_without_jd(args):
               output_prefix=None, 
               output_format='json')
     '''
-    preprocess_results_dir = args.postprocess_input_dir
+    preprocess_results_dir = args.get('postprocess_input_dir')
 
     final_table_data = []
     final_table_header = []
@@ -101,7 +101,7 @@ def run(**kwargs):
         # allow user to perform postprocess without job-description
         result_dir = kwargs.get('postprocess_result_dir')
         final_header, final_data = collect_all_job_results_without_jd(kwargs)
-        result_file_path = result_dir / 'final-result-no-jd.json'          
+        result_file_path = result_dir / 'final-result.json'          
 
     if output_prefix:
         result_file_path = output_prefix.with_suffix(f'.{output_format}')
