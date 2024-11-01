@@ -20,11 +20,364 @@ The "src" directory contains several template files that may need to be filled i
    This is the primary script that users execute, responsible for managing and executing the various sub-commands.
 2. **{TOOL_NAME_CAP}ArgumentParser.py**\
    This is the primary argument parser class, where developers can define and customize flags and parameters for the "predict" sub-command.
-3. **preprocess.py**\
+3. **NGArgumentParser**\
+   This is the root Argument Parser that the AACounterArgumentParser will depend on. It contains parser for "preprocess" and "postprocess", and logic to create "job_descriptions" file.
+4. **preprocess.py**\
    This script implements the logic for dividing the input JSON file into discrete, atomic job units for processing.
-4. **postprocess.py**\
+5. **postprocess.py**\
    This script consolidates the results from the atomic job units into a single, unified output file.
+6. **validators.py**\
+   This file contains all validation logic for (mainly) the arguments that can be used with Python's argparse.
 
+
+First thing to do is to implement basic prediction given a JSON file.
+
+Predict
+-------
+This stage is essentially a wrapper around the tool and its implementation is mostly up to the developer.  The only requirements here are that:
+* It must accept inputs in JSON format
+* It must include an option to produce JSON format outputs
+
+#### **run_{TOOL_EXEC_NAME}.py**
+The main logic to do the prediction should go here:
+```python
+import preprocess
+import postprocess
+from {TOOL_NAME_CAP}ArgumentParser import {TOOL_NAME_CAP}ArgumentParser
+
+
+def main():
+    parser = {TOOL_NAME_CAP}ArgumentParser()
+    args = parser.parse_args()
+
+    if args.subcommand == 'predict':
+        # ADD CODE LOGIC HERE.
+        pass
+```
+
+For basic prediction, the NGArgumentParser expcects the tool to run the following basic example:
+```bash
+python run_{TOOL_EXEC_NAME}.py predict -j example.json -o myoutput-dir
+```
+
+The NGArgumentParser has few items implmented in advance to alleviate some work from the developers, such as enabling commonly used parameters. Please use the following command to see what argument parameters are built-in:
+```bash
+python run_{TOOL_EXEC_NAME}.py predict --help
+```
+
+#### **{TOOL_NAME_CAP}ArgumentParser.py**
+To customize the app descriptions, help, arguments, etc., developers can modify the **{TOOL_NAME_CAP}ArgumentParser.py** file. 
+
+For example, let's add the followings:
+```python
+pred_parser = self.add_predict_subparser(
+            description='This is an example Argument Parser'
+        )
+pred_parser.add_argument("--fasta", "-fa",
+                        dest="fasta_file",
+                        type=argparse.FileType('r'),
+                        default=None,
+                        help="FASTA file containing protein sequence.",
+                        )
+```
+
+Now, the `--help` should be updated to include the new description text and parameter to accept FASTA file:
+```bash
+usage: run_myapp.py predict [-h] [--input-tsv INPUT_TSV] [--input-json INPUT_JSON] [--output-prefix OUTPUT_PREFIX] [--output-format OUTPUT_FORMAT] [--fasta FASTA_FILE]
+
+This is an example Argument Parser
+
+options:
+  -h, --help            show this help message and exit
+  --input-tsv INPUT_TSV, -t INPUT_TSV
+                        Perform counting given a TSV file.
+  --input-json INPUT_JSON, -j INPUT_JSON
+                        Perform counting given a JSON file.
+  --output-prefix OUTPUT_PREFIX, -o OUTPUT_PREFIX
+                        prediction result output prefix.
+  --output-format OUTPUT_FORMAT, -f OUTPUT_FORMAT
+                        prediction result output format (Default=tsv)
+  --fasta FASTA_FILE, -fa FASTA_FILE
+                        FASTA file containing protein sequence.
+```
+
+#### **validators.py**
+When each parameter requires a validation, developers should add the validation logic inside this file.
+
+For example, let say the FASTA file parameter needs to ensure that only valid amino acids are present in the file. Let's add the following validation logic to the "validators.py".
+
+```python
+# Inside validators.py
+from Bio import SeqIO
+
+def is_valid_amino_acid_sequence(seq):  
+    valid_amino_acids = set("ACDEFGHIKLMNPQRSTVWY")  
+    return all(char in valid_amino_acids for char in seq)  
+
+def validate_fasta_file(path_str):
+    path = Path(path_str)
+    with path.open("r") as file:
+        sequence = list(SeqIO.parse(file, "fasta"))[0].seq
+    
+    if not is_valid_amino_acid_sequence(str(sequence)):
+        raise argparse.ArgumentTypeError(f"FASTA file contains invalid character.")
+    return path
+```
+
+Add the validation as a `type` in the **{TOOL_NAME_CAP}ArgumentParser.py**:
+```python
+pred_parser.add_argument("--fasta", "-fa",
+                        dest="fasta_file",
+                        type=validators.validate_fasta_file,
+                        default=None,
+                        help="FASTA file containing protein sequence.",
+                        )
+```
+This will allow the NGArgumentParser to run the validation code while it's parsing the arguments.
+
+Let's provide an invalid FASTA file. It should raise an error.
+```text
+>hello
+LKASDFLAKSDFAJXZ
+```
+```bash
+> python src/run_myapp.py predict --fasta src/example.fasta
+usage: run_myapp.py predict [-h] [--input-tsv INPUT_TSV] [--input-json INPUT_JSON] [--output-prefix OUTPUT_PREFIX] [--output-format OUTPUT_FORMAT] [--fasta FASTA_FILE]
+run_myapp.py predict: error: argument --fasta/-fa: FASTA file contains invalid character.
+```
+
+Once all the parameters are implemented and able to run basic prediction given a JSON file, the next step is to implement preprocessing.
+
+## Filling in the Logic for Preprocess and Postprocess
+
+The logic for each of the run modes (`predict`, `preprocess`, `postprocess`) needs
+to be fleshed out separately.  We aim to include as much of the common logic as
+possible in future releases of NGArgumentParser.
+
+We will take the following `example.json` file as the input file to demonstrate what `preprocess` and `postprocess` should generally be handling.
+
+```json
+# example.json
+{
+"peptide_list": ["TMDKSELVQK", "EILNSPEKAC", "KMKGDYFRYF"],  
+"alleles": "HLA-A*02:01,HLA-A*01:01",
+  "predictors": [
+    {
+      "type": "binding",
+      "method": "netmhcpan_ba"
+    }
+  ]
+}
+```
+
+Preprocess
+----------
+In this stage, inputs are split into multiple job units optimized for efficient processing. Each tool may employ different methods for preprocessing to maximize performance. This guideline ensures that all CLI tools maintain a consistent file structure and a standardized approach to argument parsing.
+
+In this step, a JSON input file is validated and, if possible, broken down into
+smaller JSON files that can be passed to the `predict` step.  Additionally, a
+`job_descriptions.json` files is created that lists each of the commands that need
+to be executed in order to complete the prediction as well as any expected output
+files.
+
+It is essentially creating the following file structure:
+```bash
+.
+└── output-directory/
+    ├── predict-inputs/
+    │   ├── data/
+    │   └── params/
+    └── predict-outputs/
+```
+Users can also choose to set their own "params" and/or "inputs" folder
+1. `params-dir="CUSTOM/PATH/TO/params"`
+2. `inputs-dir="CUSTOM/PATH/TO/data"`
+
+This will create similar file structure, but without the "predict-inputs" folder:
+```bash
+.
+└── output-directory/
+    └── predict-outputs/
+```
+
+`inputs-dir`: This directory will hold a file that has all the inputs.
+```python
+# example input file holding list of sequences (predict-inputs/data/sequence.txt)
+TMDKSELVQK
+EILNSPEKAC
+KMKGDYFRYF
+```
+
+`params-dir`: This directory will have multiple json files where each json file will have parameters for single prediction.
+
+Depending on the usage/intention, there are many ways of splitting the parameters. For this example, let say we want to split the inputs by allele. The `preprocess` will break down `example.json` into 2 small units (`0.json`, `1.json`) by splitting the alleles, and
+place them under the `params-dir`.
+```json
+// file: 0.json
+{
+  "alleles": "HLA-A*02:01",
+  "predictors": [
+    {
+      "type": "binding",
+      "method": "netmhcpan_ba"
+    }
+  ],
+  "peptide_file_path": "/PATH/TO/CLI-TOOL-PROJECT-ROOT/output-directory/predict-inputs/data/sequence.txt",
+  "peptide_length_range": [
+    10,
+    10
+  ]
+}
+```
+
+```json
+// file: 1.json
+{
+  "alleles": "HLA-A*01:01",
+  "predictors": [
+    {
+      "type": "binding",
+      "method": "netmhcpan_ba"
+    }
+  ],
+  "peptide_file_path": "/PATH/TO/CLI-TOOL-PROJECT-ROOT/output-directory/predict-inputs/data/sequence.txt",
+  "peptide_length_range": [
+    10,
+    10
+  ]
+}
+```
+
+The NGArgumentParser will create `job_descriptions.json` file during this stage.
+
+`job_descriptions.json`: This is a file that has a list of job descriptions where each job descriptions will have a command that needs to be run in order to create the resulting output.
+
+Inside the `job_descriptions` file, it should look like the following:
+```json
+// file: job_descriptions.json
+[
+    {
+        "shell_cmd": "/ABSOLUTE/PATH/TO/EXECUTABLE_FILE predict -j /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-inputs/params/0.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-outputs/result.0 -f json",
+        "job_id": "0",
+        "job_type": "prediction",
+        "depends_on_job_ids": [],
+        "expected_outputs": [
+            "/ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-outputs/result.0.json"
+        ]
+    },
+    {
+        "shell_cmd": "/ABSOLUTE/PATH/TO/EXECUTABLE_FILE predict -j /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-inputs/params/1.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-outputs/result.1 -f json",
+        "job_id": "1",
+        "job_type": "prediction",
+        "depends_on_job_ids": [],
+        "expected_outputs": [
+            "/ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-outputs/result.1.json"
+        ]
+    },
+    {
+        "shell_cmd": "/ABSOLUTE/PATH/TO/EXECUTABLE_FILE postprocess --job-desc-file=/ABSOLUTE/PATH/TO/APP/ROOT/job_descriptions.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/final-result -f json",
+        "job_id": "2",
+        "job_type": "postprocess",
+        "depends_on_job_ids": [
+            "0",
+            "1",
+        ],
+        "expected_outputs": [
+            "/ABSOLUTE/PATH/TO/APP/ROOT/output-directory/final-result"
+        ]
+    }
+]
+```
+
+From the above example, note that the first two are individual predictions, whereas the last command is a postprocessing step that gathers all the result files.
+
+Postprocess
+-----------
+This stage is where the results of the individual jobs are aggregated into a single JSON file.
+
+The last command of the `job_descriptions.json` will look like this, which aggregates all the results from the individual predictions into a single file.
+```bash
+>> /ABSOLUTE/PATH/TO/EXECUTABLE_FILE postprocess --job-desc-file=/ABSOLUTE/PATH/TO/APP/ROOT/job_descriptions.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/final-result -f json
+```
+Using the above example, the last command should take the two individual prediction result files 
+(`result.0.json`, `result.1.json`) and combine them into a single file.
+
+This step will create a single file called  `final-result.json`, which will look like the following:
+```json
+{
+  "warnings": [],
+  "results": [
+    {
+      "type": "peptide_table",
+      "table_columns": [
+        "sequence_number",
+        "peptide",
+        "start",
+        "end",
+        "length",
+        "allele",
+        "peptide_index"
+      ],
+      "table_data": [
+        [
+          1,
+          "TMDKSELVQK",
+          1,
+          10,
+          10,
+          "HLA-A*02:01",
+          1
+        ],
+        [
+          2,
+          "EILNSPEKAC",
+          1,
+          10,
+          10,
+          "HLA-A*02:01",
+          2
+        ],
+        [
+          3,
+          "KMKGDYFRYF",
+          1,
+          10,
+          10,
+          "HLA-A*02:01",
+          3
+        ],
+        [
+          1,
+          "TMDKSELVQK",
+          1,
+          10,
+          10,
+          "HLA-A*01:01",
+          1
+        ],
+        [
+          2,
+          "EILNSPEKAC",
+          1,
+          10,
+          10,
+          "HLA-A*01:01",
+          2
+        ],
+        [
+          3,
+          "KMKGDYFRYF",
+          1,
+          10,
+          10,
+          "HLA-A*01:01",
+          3
+        ]
+      ]
+    }
+  ]
+}
+```
 
 Contributing a standalone
 -------------------------
@@ -38,104 +391,3 @@ All tools must be pre-approved by the IEDB team before development is started. S
 
 > **NOTE:**\
 > One of the requirements for the "predict" command is the option to generate output in JSON format that adheres to the NG tools output format specifications. Examples of this format can be found in the 'examples' directory and more details on can be found [here](https://nextgen-tools.iedb.org/docs/).
-
-Once the CLI tool is able to run basic prediction given a JSON file, the next step is to implement preprocessing.
-
-Preprocess
-----------
-In this stage, inputs are split into multiple job units optimized for efficient processing. Each tool may employ different methods for preprocessing to maximize performance. This guideline ensures that all CLI tools maintain a consistent file structure and a standardized approach to argument parsing.
-
-In "preprocess.py", the following logic should be implemented. While this example assumes the inputs are protein sequences, the approach should be adaptable to any type of input data.
-
-* Create an output directory for the prediction, with the following file structure:
-   ```
-   .
-   ├── output-directory/
-   │   ├── predict-inputs/
-   │   │   ├── data/
-   │   │   └── params/
-   │   └── predict-outputs/
-   └── src/
-      ├── run_test.py
-      ├── preprocess.py
-      └── postprocess.py
-   ```
-* Parse main input data (e.g., protein sequences) from the input JSON file. Split the input if needed, and store them under: "output-directory/predict-inputs/params" folder.
-* Parse the remaining parameters from the input JSON file, and split them into an atomic job units.
-    * Make sure for each atomic job unit has a key/value pair pointing to the input sequence files under "output-directory/predict-inputs/data".
-    * Each job unit should be stored under "output-directory/predict-inputs/params".
-* Create a "job_descriptions.json" file (Example file can be found in "ngargparser/misc/example_job_descriptions.json")
-    * This file will have list of commands to run, one "predict" command for each job unit.
-    * The last command in the description file will use "postprocess" subcommand.
-
-Predict
--------
-This stage is essentially a wrapper around the tool and its implementation is mostly up to the developer.  The only requirements here are that:
-* It must accept inputs in JSON format
-* It must include an option to produce JSON format outputs
-
-
-Postprocess
------------
-This stage is where the results of the individual jobs are aggregated into a single JSON file.
-
-In "postprocess.py", the code for the following logic should be implemented.
-* Read in all the results files created (under "output-directory/predict-outputs/")
-* Combine all the results into single JSON file named "output-directory/final-result.json'.
-
-
-Example App (Amino Acid Counter)
---------------------------------
-In order to better visualize the file structure to understand the framework, please view the "example-app".
-
-The "example-app" can be created by running the following command:
-> cli g example
-
-Example App - Predict
--------
-For single prediction given a JSON file,
-> python src/run_aacounter.py predict \
--j output-directory/example.json \
--o output-directory/predict-outputs/result.1 \
--f json
-
-The app can also provide support to take in alternative inputs, such as TSV.  These formats will not be used in the NG workflow, but it might be valuable for users who prefer to specify more options directly on the command line. For example:
-
-> python src/run_aacounter.py predict \
--t output-directory/example.tsv \
--a L \
--o output-directory/predict-outputs/result.1 \
--f json
-
-Here, in addition to the TSV file, we need to specify the "-a" option.
-
-Example App - Preprocess
-------------------------
-Starting from an input file that contains many peptides, create smaller input files, divided up by peptide length.
-
-> python src/run_aacounter.py preprocess -j output-directory/example.json
-
-This will split the input into multiple parameter files and data files, saved under "predict-inputs/data" and "predict-inputs/params" respectively.
-
-In addition, it will create a "job_description.json" file that has details on how to run the individual jobs including the specific command lines, job dependencies and expected outputs.  
-
-An example job desription file can be found (@hkim please add one to the examples directory). In addition to the "predict" jobs, the a "postprocess" job is also defined in the job_descriptions file.
-
-
-Example App - Postprocess
-----------------------------------------------
-The last command of the "job_descriptions.json" will look like this, which
- aggregates all the results into one file.
-
-> python src/run_aacounter.py postprocess \
---job-desc-file=output-directory/job_descriptions.json \
---postprocess-input-dir=ouptut-directory/predict-outputs \
---postprocess-result-dir=output-directory
-
-Creating a new app within this framework
-----------------------------------------
-To create a new app that makes us of this framework, use the following command:
-
-> cli g {APP_NAME}
-
-This will create a new directory structure, similar to that of the example app, and will include templates with logic that needs to be filled in.
