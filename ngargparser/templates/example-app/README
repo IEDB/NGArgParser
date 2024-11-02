@@ -51,6 +51,8 @@ These formats will not be used in the NG workflow, but it might be valuable for 
 
 ## Preprocess
 Ideally, any apps created with this framework should be able to split inputs into smaller input units. For `aa-counter`, sequences are divided by peptide length. It will create multiple files where each file contains sequences with the same length. 
+
+Note that "output-directory" folder should be created in advance before running the below command.
 ```bash
 python src/run_aa_counter.py preprocess -j src/example.json -o output-directory
 ```

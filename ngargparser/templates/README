@@ -83,7 +83,7 @@ pred_parser.add_argument("--fasta", "-fa",
 
 Now, the `--help` should be updated to include the new description text and parameter to accept FASTA file:
 ```bash
-usage: run_myapp.py predict [-h] [--input-tsv INPUT_TSV] [--input-json INPUT_JSON] [--output-prefix OUTPUT_PREFIX] [--output-format OUTPUT_FORMAT] [--fasta FASTA_FILE]
+usage: run_{TOOL_EXEC_NAME}.py predict [-h] [--input-tsv INPUT_TSV] [--input-json INPUT_JSON] [--output-prefix OUTPUT_PREFIX] [--output-format OUTPUT_FORMAT] [--fasta FASTA_FILE]
 
 This is an example Argument Parser
 
@@ -141,9 +141,9 @@ Let's provide an invalid FASTA file. It should raise an error.
 LKASDFLAKSDFAJXZ
 ```
 ```bash
-> python src/run_myapp.py predict --fasta src/example.fasta
-usage: run_myapp.py predict [-h] [--input-tsv INPUT_TSV] [--input-json INPUT_JSON] [--output-prefix OUTPUT_PREFIX] [--output-format OUTPUT_FORMAT] [--fasta FASTA_FILE]
-run_myapp.py predict: error: argument --fasta/-fa: FASTA file contains invalid character.
+> python src/run_{TOOL_EXEC_NAME}.py predict --fasta src/example.fasta
+usage: run_{TOOL_EXEC_NAME}.py predict [-h] [--input-tsv INPUT_TSV] [--input-json INPUT_JSON] [--output-prefix OUTPUT_PREFIX] [--output-format OUTPUT_FORMAT] [--fasta FASTA_FILE]
+run_{TOOL_EXEC_NAME}.py predict: error: argument --fasta/-fa: FASTA file contains invalid character.
 ```
 
 Once all the parameters are implemented and able to run basic prediction given a JSON file, the next step is to implement preprocessing.
@@ -173,6 +173,12 @@ We will take the following `example.json` file as the input file to demonstrate 
 Preprocess
 ----------
 In this stage, inputs are split into multiple job units optimized for efficient processing. Each tool may employ different methods for preprocessing to maximize performance. This guideline ensures that all CLI tools maintain a consistent file structure and a standardized approach to argument parsing.
+
+Let's run a simple preprocess command:
+```bash
+python src/run_{TOOL_EXEC_NAME}.py preprocess -j src/example.json -o output-directory
+```
+(Note that **"output-directory" folder should be created in advance** before running the below command.)
 
 In this step, a JSON input file is validated and, if possible, broken down into
 smaller JSON files that can be passed to the `predict` step.  Additionally, a
