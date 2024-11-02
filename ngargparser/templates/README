@@ -263,7 +263,7 @@ Inside the `job_descriptions` file, it should look like the following:
 // file: job_descriptions.json
 [
     {
-        "shell_cmd": "/ABSOLUTE/PATH/TO/EXECUTABLE_FILE predict -j /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-inputs/params/0.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-outputs/result.0 -f json",
+        "shell_cmd": "/ABSOLUTE/PATH/TO/run_{TOOL_EXEC_NAME}.py predict -j /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-inputs/params/0.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-outputs/result.0 -f json",
         "job_id": "0",
         "job_type": "prediction",
         "depends_on_job_ids": [],
@@ -272,7 +272,7 @@ Inside the `job_descriptions` file, it should look like the following:
         ]
     },
     {
-        "shell_cmd": "/ABSOLUTE/PATH/TO/EXECUTABLE_FILE predict -j /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-inputs/params/1.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-outputs/result.1 -f json",
+        "shell_cmd": "/ABSOLUTE/PATH/TO/run_{TOOL_EXEC_NAME}.py predict -j /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-inputs/params/1.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/predict-outputs/result.1 -f json",
         "job_id": "1",
         "job_type": "prediction",
         "depends_on_job_ids": [],
@@ -281,7 +281,7 @@ Inside the `job_descriptions` file, it should look like the following:
         ]
     },
     {
-        "shell_cmd": "/ABSOLUTE/PATH/TO/EXECUTABLE_FILE postprocess --job-desc-file=/ABSOLUTE/PATH/TO/APP/ROOT/job_descriptions.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/final-result -f json",
+        "shell_cmd": "/ABSOLUTE/PATH/TO/run_{TOOL_EXEC_NAME}.py postprocess --job-desc-file=/ABSOLUTE/PATH/TO/APP/ROOT/job_descriptions.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/final-result -f json",
         "job_id": "2",
         "job_type": "postprocess",
         "depends_on_job_ids": [
@@ -303,7 +303,7 @@ This stage is where the results of the individual jobs are aggregated into a sin
 
 The last command of the `job_descriptions.json` will look like this, which aggregates all the results from the individual predictions into a single file.
 ```bash
->> /ABSOLUTE/PATH/TO/EXECUTABLE_FILE postprocess --job-desc-file=/ABSOLUTE/PATH/TO/APP/ROOT/job_descriptions.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/final-result -f json
+>> python src/run_{TOOL_EXEC_NAME}.py postprocess --job-desc-file=/ABSOLUTE/PATH/TO/APP/ROOT/job_descriptions.json -o /ABSOLUTE/PATH/TO/APP/ROOT/output-directory/final-result -f json
 ```
 Using the above example, the last command should take the two individual prediction result files 
 (`result.0.json`, `result.1.json`) and combine them into a single file.
