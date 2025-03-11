@@ -340,7 +340,6 @@ class NGArgumentParser(argparse.ArgumentParser):
             json.dump(jd_cmds, f, indent=4)
 
 
-class NGParserUtils:
     @staticmethod
     def get_app_root_dir(start_dir=None, anchor_files=None):
         """Find the app root directory by looking for known anchor files."""
