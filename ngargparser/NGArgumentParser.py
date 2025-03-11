@@ -167,66 +167,6 @@ class NGArgumentParser(argparse.ArgumentParser):
         return self.parser_predict
     
 
-    @staticmethod
-    def get_app_root_dir(start_dir=None, anchor_files=None):
-        """Find the app root directory by looking for known anchor files."""
-        if start_dir is None:
-            start_dir = os.getcwd()  # Default to the current working directory
-        
-        if anchor_files is None:
-            anchor_files = ['LICENSE']
-        
-        # Normalize to absolute path
-        current_dir = os.path.abspath(start_dir)
-        
-        # Traverse up the directory tree until an anchor file is found or root is reached
-        while current_dir != os.path.dirname(current_dir):
-            # Check for anchor files in the current directory
-            for anchor in anchor_files:
-                if os.path.isfile(os.path.join(current_dir, anchor)) or os.path.isdir(os.path.join(current_dir, anchor)):
-                    return current_dir  # Return the directory where the anchor file is found
-
-            # Check for anchor files in child directories
-            for root, dirs, files in os.walk(current_dir):
-                for anchor in anchor_files:
-                    if anchor in dirs or anchor in files:
-                        return root  # Return the child directory where the anchor file is found
-
-            current_dir = os.path.dirname(current_dir)  # Move up one level
-        
-        # If no anchor file is found, return None or raise an error
-        return None
-
-
-    @staticmethod
-    def find_file_path(start_dir=None, filename=None):
-        """Find the full path of a given file by searching both upwards and downwards from the start directory."""
-        if start_dir is None:
-            start_dir = os.getcwd()  # Default to the current working directory
-        
-        if filename is None:
-            raise ValueError("Filename must be provided")
-        
-        # Normalize to absolute path
-        start_dir = os.path.abspath(start_dir)
-        
-        # Check upwards
-        current_dir = start_dir
-        while current_dir != os.path.dirname(current_dir):
-            target_path = os.path.join(current_dir, filename)
-            if os.path.isfile(target_path):
-                return target_path  # Return the full path of the file if found
-            
-            current_dir = os.path.dirname(current_dir)  # Move up one level
-        
-        # Check downwards
-        for root, _, files in os.walk(start_dir):
-            if filename in files:
-                return os.path.join(root, filename)
-        
-        return None  # Return None if the file is not found
-    
-
     def validate_args(self, args):
         if args.subcommand == 'preprocess':
             self.validate_preprocess_args(args)
@@ -398,6 +338,98 @@ class NGArgumentParser(argparse.ArgumentParser):
 
             # Write the entire list of jobs to job description file
             json.dump(jd_cmds, f, indent=4)
+
+
+class NGParserUtils:
+    @staticmethod
+    def get_app_root_dir(start_dir=None, anchor_files=None):
+        """Find the app root directory by looking for known anchor files."""
+        if start_dir is None:
+            start_dir = os.getcwd()  # Default to the current working directory
+        
+        if anchor_files is None:
+            anchor_files = ['LICENSE']
+        
+        # Normalize to absolute path
+        current_dir = os.path.abspath(start_dir)
+        
+        # Traverse up the directory tree until an anchor file is found or root is reached
+        while current_dir != os.path.dirname(current_dir):
+            # Check for anchor files in the current directory
+            for anchor in anchor_files:
+                if os.path.isfile(os.path.join(current_dir, anchor)) or os.path.isdir(os.path.join(current_dir, anchor)):
+                    return current_dir  # Return the directory where the anchor file is found
+
+            # Check for anchor files in child directories
+            for root, dirs, files in os.walk(current_dir):
+                for anchor in anchor_files:
+                    if anchor in dirs or anchor in files:
+                        return root  # Return the child directory where the anchor file is found
+
+            current_dir = os.path.dirname(current_dir)  # Move up one level
+        
+        # If no anchor file is found, return None or raise an error
+        return None
+
+
+    @staticmethod
+    def find_file_path(start_dir=None, filename=None):
+        """Find the full path of a given file by searching both upwards and downwards from the start directory."""
+        if start_dir is None:
+            start_dir = os.getcwd()  # Default to the current working directory
+        
+        if filename is None:
+            raise ValueError("Filename must be provided")
+        
+        # Normalize to absolute path
+        start_dir = os.path.abspath(start_dir)
+        
+        # Check upwards
+        current_dir = start_dir
+        while current_dir != os.path.dirname(current_dir):
+            target_path = os.path.join(current_dir, filename)
+            if os.path.isfile(target_path):
+                return target_path  # Return the full path of the file if found
+            
+            current_dir = os.path.dirname(current_dir)  # Move up one level
+        
+        # Check downwards
+        for root, _, files in os.walk(start_dir):
+            if filename in files:
+                return os.path.join(root, filename)
+        
+        return None  # Return None if the file is not found
+    
+
+    @staticmethod
+    def merge_parsers(p1, p2):
+        '''
+        Merges two argument parsers together.
+
+        Args:
+            p1 (argparse): The main argument parser.
+            p2 (argparse): The secondary argument parser that will be added to first argument parser.
+
+        Returns:
+            None
+        
+        Raises:
+            None
+        '''
+        for action in p2._actions:
+            # Skip the help action (usually the first action)
+            if action.dest == "help":
+                continue
+
+            # Filter out unsupported keys
+            valid_keys = ["option_strings", "dest", "nargs", "const", "default", "type", "choices", "required", "help", "metavar"]
+            kwargs = {key: getattr(action, key) for key in valid_keys if hasattr(action, key)}
+
+            # By default, override 'required' to make arguments optional
+            kwargs['required'] = False
+
+            # Add the argument to p1
+            p1.add_argument(*action.option_strings, **kwargs)
 
 
 class JobDescriptionParams(TypedDict):
