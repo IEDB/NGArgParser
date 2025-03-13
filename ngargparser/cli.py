@@ -50,6 +50,7 @@ def create_example_structure():
         shutil.copy(f'{EXAMPLE_DIR}/postprocess.py', f'{project_name}/src/postprocess.py')
         shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/NGArgumentParser.py')
         shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
+        # shutil.copy(f'{NGPARSER_DIR}/configure.py', f'{project_name}/src/configure.py')
 
         print(f"Created '{project_name}' project structure successfully.")
     except Exception as e:
@@ -74,13 +75,15 @@ def create_project_structure(project_name):
         shutil.copy(f'{TEMPLATE_DIR}/run_app.py', f'{project_name}/src/{exec_file}')
         shutil.copy(f'{TEMPLATE_DIR}/ChildArgumentParser.py', f'{project_name}/src/{parser_file}')
         shutil.copy(f'{TEMPLATE_DIR}/preprocess.py', f'{project_name}/src/preprocess.py')
-        shutil.copy(f'{TEMPLATE_DIR}/postprocess.py', f'{project_name}/src/postprocess.py')        
+        shutil.copy(f'{TEMPLATE_DIR}/postprocess.py', f'{project_name}/src/postprocess.py')
+        shutil.copy(f'{TEMPLATE_DIR}/configure.py', f'{project_name}/src/configure.py')     
         shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/NGArgumentParser.py')
         shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
 
         # Add default content to all the files
         replace_text_in_place(f'{project_name}/src/{exec_file}', 'CHILDPARSER', parser_name)
         replace_text_in_place(f'{project_name}/src/{parser_file}', 'ChildArgumentParser', parser_name)        
+        replace_text_in_place(f'{project_name}/src/configure.py', 'PROJECT_NAME', project_name)        
 
         print(f"Created '{project_name}' project structure successfully.")
     except Exception as e:
