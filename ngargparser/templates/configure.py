@@ -1,89 +1,130 @@
 #! /usr/bin/env python3
 
-import argparse
 import os
-import sys
-import platform
-from configparser import ConfigParser
+import importlib.util
+import re
 
+CONFIG_PATH = "paths.py"
+ENV_INFO_PATH = ".env_info"
 
-# Interactive input for tool paths
-def get_tool_path(tool_name, non_interactive, default_path="None"):
-    """Prompt user for a tool path or use default in non-interactive mode."""
-    if non_interactive:
-        print(f"⚙️  Using default path for {tool_name}: {default_path}")
-        return default_path
-
-    try:
-        path = input(f"Enter the path to {tool_name} (press Enter to skip): ").strip()
-        return path if path else default_path
-    except KeyboardInterrupt:
-        print("\n⚠️  Configuration aborted by user. Exiting gracefully...")
-        sys.exit(0)
-
-def create_config_file(args, dependent_tools):
-    """Create a default configuration file if it doesn't exist."""
-    config_file = 'config.ini'
+def load_config(path):
+    if not os.path.exists(path):
+        print(f"❌ Config file '{path}' not found.")
+        return {}
     
-    if not os.path.exists(config_file):
-        print(f"Creating default configuration file: {config_file}")
-    else:
-        print('Overriding exising configuration file.')
+    # Treat 'path' as a module and load everything into 'config'
+    spec = importlib.util.spec_from_file_location("config", path)
+    config = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(config)
 
-    # Create a ConfigParser object
-    config_object = ConfigParser()
-
-    # Add general information about this package
-    config_object["GENERAL"] = {
-        "name": "PROJECT_NAME"
+    return {
+        k: v for k, v in config.__dict__.items()
+        if not k.startswith("__")
     }
 
-    # Add Dependency Tools
-    if dependent_tools:
-        print("\nThis tool depends on:")
-        for tool in dependent_tools:
-            print(f"🔹 {tool[0]} (e.g., /usr/local/bin/{tool[1]})")
-        print("\n")
-
-        config_object["DEPENDENCY_TOOL_PATHS"] = {}
-        for tool in dependent_tools:
-            config_object["DEPENDENCY_TOOL_PATHS"][tool[0]] = get_tool_path(tool[1], args.no_interactive)
-
-    # Add Python envrionment
-    config_object["ENV"] = {
-        "python_version": platform.python_version(),
-        "path": sys.prefix,
-        "python_executable": sys.executable,
-    }
+def detect_dependency_tools(config):
+    """
+    Detect all dependency tools from the config by finding variables ending with '_path'.
+    Only detects main tool paths, ignoring optional paths like _lib_path.
+    Returns a dictionary mapping tool names to their variable prefixes.
+    """
+    tools = {}
     
+    for key in config.keys():
+        if key.endswith('_path'):
+            # Extract the tool prefix (everything before '_path')
+            tool_prefix = key[:-5]  # Remove '_path' suffix
+            
+            # Skip optional path variables (lib_path, venv, module are not main tools)
+            if tool_prefix.endswith('_lib') or tool_prefix.endswith('_venv') or tool_prefix.endswith('_module'):
+                continue
+            
+            # Check if this tool has the required configuration structure
+            # (at minimum, it should have a _path variable)
+            if f"{tool_prefix}_path" in config:
+                tools[tool_prefix] = tool_prefix
+    
+    return tools
 
-    with open(config_file, 'w') as conf: 
-        config_object.write(conf)
+def write_env_info(config, output_path):
+    with open(output_path, "w") as f:
+        for key, value in config.items():
+            if value is None:
+                continue
 
-    print(f"\n✅ Configuration saved to {config_file}")
+            if isinstance(value, str):
+                value = value.strip("'").strip('"')
+            
+            f.write(f"{key.upper()}={value}\n")
 
+    print(f"* .env_info file created")
+
+def create_shell_script(config, tool_prefix, output_path):
+    """
+    Create shell script for a dependency tool.
+    
+    Args:
+        config: Configuration dictionary
+        tool_prefix: The prefix used for this tool's variables (e.g., 'phbr', 'pepx', 'mhci')
+        output_path: Path where to write the shell script
+    """
+    # Get values from config using prefix
+    module = config.get(f"{tool_prefix}_module")
+    venv = config.get(f"{tool_prefix}_venv")
+    lib_path = config.get(f"{tool_prefix}_lib_path")
+    tool_path = config.get(f"{tool_prefix}_path")
+    env_var = f"{tool_prefix.upper()}_PATH"
+
+    # Check if required path is None or empty
+    if tool_path is None or (isinstance(tool_path, str) and tool_path.strip() == ""):
+        print(f"❌ Shell script for '{tool_prefix}' not created: required path is None or empty")
+        return
+
+    lines = ["#!/bin/bash\n"]
+
+    lines.append(f"# ---- Setup for {tool_prefix.upper()} ----")
+
+    # Optional: Load module
+    if module:
+        lines.append("module purge")
+        lines.append(f"module load {module}")
+
+    # Optional: Activate virtualenv
+    if venv:
+        lines.append(f"source {venv}/bin/activate")
+
+    # Optional: Set LD_LIBRARY_PATH
+    if lib_path:
+        lines.append(f"export LD_LIBRARY_PATH={lib_path}:$LD_LIBRARY_PATH")
+
+    # Required: Export tool path
+    lines.append(f"export {env_var}={tool_path}")
+
+    with open(output_path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+    os.chmod(output_path, 0o755)
+    print(f"* Shell script for '{tool_prefix}' created at '{output_path}'")
 
 def main():
-    # Argument parser for non-interactive mode
-    parser = argparse.ArgumentParser(description="Configuration Tool")
-    parser.add_argument("--no-interactive", "-i", dest="no_interactive", action="store_true", help="Run in non-interactive mode")
-    args = parser.parse_args()
-
-    # ADD app-specific configuration
-    # -----------------------------------------------------
+    config = load_config(CONFIG_PATH)
+    if not config:
+        return
     
+    write_env_info(config, ENV_INFO_PATH)
+
+    # Dynamically detect all dependency tools from paths.py
+    detected_tools = detect_dependency_tools(config)
     
-    # MODIFY to include other IEDB tools
-    # -----------------------------------------------------
-    dependent_tools = [
-        # General name, Package name
-        ('mhci', 'tcell_mhci'),
-        ('mhcii', 'tcell_mhcii'),
-    ]
+    if not detected_tools:
+        print("* No dependency tools detected in paths.py")
+        return
+    
+    print(f"* Detected {len(detected_tools)} dependency tools: {', '.join(detected_tools.keys())}")
+    
+    # Create shell scripts for each detected tool
+    for tool_prefix in detected_tools.keys():
+        create_shell_script(config, tool_prefix, output_path=f'setup_{tool_prefix}_env.sh')
 
-    # Creates the .ini file
-    create_config_file(args, dependent_tools)
-
-
-if __name__=='__main__':
+if __name__ == "__main__":
     main()
