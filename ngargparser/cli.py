@@ -78,14 +78,34 @@ def create_project_structure(project_name):
         shutil.copy(f'{TEMPLATE_DIR}/preprocess.py', f'{project_name}/src/preprocess.py')
         shutil.copy(f'{TEMPLATE_DIR}/postprocess.py', f'{project_name}/src/postprocess.py')
         shutil.copy(f'{TEMPLATE_DIR}/configure.py', f'{project_name}/src/configure.py')     
+        # Make configure.py executable
+        os.chmod(f'{project_name}/src/configure.py', 0o755)
         shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/NGArgumentParser.py')
         shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
         shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core_validators.py')
+        
+        # Try to copy license file, but don't fail if it's not available
+        license_source = f'{NGPARSER_DIR}/license-LJI.txt'
+        if os.path.exists(license_source):
+            shutil.copy(license_source, f'{project_name}/license-LJI.txt')
+        else:
+            print(f"Warning: License file not found at {license_source}")
+            print("Skipping license file copy.")
 
         # Add default content to all the files
         replace_text_in_place(f'{project_name}/src/{exec_file}', 'CHILDPARSER', parser_name)
         replace_text_in_place(f'{project_name}/src/{parser_file}', 'ChildArgumentParser', parser_name)        
-        replace_text_in_place(f'{project_name}/src/configure.py', 'PROJECT_NAME', project_name)        
+        replace_text_in_place(f'{project_name}/src/configure.py', 'PROJECT_NAME', project_name)
+
+        # Create configure executable file
+        configure_file = f'{project_name}/configure'
+
+        # Create and write the line into the configure file
+        with open(configure_file, 'w') as f:
+            f.write(f'./src/configure.py')
+        
+        # Make the file executable
+        os.chmod(configure_file, 0o755)
 
         print(f"Created '{project_name}' project structure successfully.")
     except Exception as e:
@@ -263,7 +283,7 @@ def create_paths_file(project_name_or_path):
         paths_file_path = project_name_or_path
     else:
         # Project name - create in project/src/ structure
-        paths_file_path = f'{project_name_or_path}/src/paths.py'
+        paths_file_path = f'{project_name_or_path}/paths.py'
     
     try:
         # Check if paths.py already exists
