@@ -18,9 +18,6 @@ def main():
         # ADD CODE LOGIC TO SPLIT INPUTS INSIDE PREPROCESS.PY
         preprocess.run(**vars(args))
 
-        # Create job description file
-        parser.create_job_descriptions_file(**vars(args))
-
     if args.subcommand == 'postprocess':
         # Validate Arguments
         parser.validate_args(args)
