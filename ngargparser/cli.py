@@ -605,59 +605,6 @@ def setup_paths_command(args):
     setup_paths_file(args.paths_file)
 
 
-def add_single_dependency(file_path, dependency_name):
-    """
-    Add a single dependency to an existing paths file.
-    
-    Args:
-        file_path (str): Path to the paths file
-        dependency_name (str): Name of the dependency to add
-    """
-    # Normalize the dependency name for variable names (lowercase, replace spaces/dashes with underscores)
-    normalized_name = dependency_name.lower().replace(' ', '_').replace('-', '_')
-    
-    # Content to append
-    content = f"""
-
-''' [ {dependency_name} ] '''
-# Path to the {dependency_name} (required)
-{normalized_name}_path=None
-
-# Path to the {dependency_name} virtual environment (optional)
-{normalized_name}_venv=None
-
-# Name of the environment module to be activated (optional).
-# Most users can keep this as None
-{normalized_name}_module=None
-
-# If using a different Python environment or binary for this tool compared to others,
-# you may need to update LD_LIBRARY_PATH to ensure the correct libraries are used.
-# If you're using the same environment across all tools, this can usually be left empty.
-# (optional)
-{normalized_name}_lib_path=None
-"""
-    
-    try:
-        # Append to the file
-        with open(file_path, 'a', encoding='utf-8') as f:
-            f.write(content)
-        
-        print(f"✓ Added dependency '{dependency_name}' to '{file_path}'.")
-        
-    except Exception as e:
-        print(f"Error updating file: {e}")
-
-
-def add_dependency_command(args):
-    """
-    Command to add a single dependency to an existing paths file.
-    
-    Args:
-        args: Command line arguments containing dependency_name and path
-    """
-    add_single_dependency(args.path, args.dependency_name)
-
-
 def main():
     parser = argparse.ArgumentParser(description='NG Argument Parser Framework')
     subparsers = parser.add_subparsers(dest='command')
@@ -670,19 +617,12 @@ def main():
     setup_paths_parser = subparsers.add_parser('setup-paths', help='Setup or update paths.py with tool dependencies')
     setup_paths_parser.add_argument('paths_file', type=str, help='Path to the paths.py file to create or update')
 
-    # Create 'add-dep' sub-command
-    add_dep_parser = subparsers.add_parser('add-dep', help='Add a single dependency to an existing paths.py file')
-    add_dep_parser.add_argument('dependency_name', type=str, help='Name of the dependency to add')
-    add_dep_parser.add_argument('--path', type=str, default='./src/paths.py', help='Path to the paths.py file (default: ./src/paths.py)')
-
     args = parser.parse_args()
 
     if args.command == 'generate' or args.command == 'g':
         startapp_command(args)
     elif args.command == 'setup-paths':
         setup_paths_command(args)
-    elif args.command == 'add-dep':
-        add_dependency_command(args)
     else:
         parser.print_help()  # Print help message if 'startapp' command is not specified
 
