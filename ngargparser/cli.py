@@ -80,6 +80,7 @@ def create_project_structure(project_name):
         shutil.copy(f'{TEMPLATE_DIR}/configure.py', f'{project_name}/src/configure.py')     
         shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/NGArgumentParser.py')
         shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
+        shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core_validators.py')
 
         # Add default content to all the files
         replace_text_in_place(f'{project_name}/src/{exec_file}', 'CHILDPARSER', parser_name)
