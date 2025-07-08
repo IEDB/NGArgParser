@@ -70,28 +70,28 @@ class NGArgumentParser(argparse.ArgumentParser):
         
         self.parser_preprocess.add_argument("--output-dir", "-o",
                                         dest="output_dir",
-                                        type=validators.validate_directory,
+                                        type=validators.validate_preprocess_dir, # this will create subdirectories
                                         required=True,
                                         help="prediction result output directory.",
                                         metavar="OUTPUT_DIR")
         
         # default will be set in validate_preprocess_args()
-        self.parser_preprocess.add_argument("--params-dir",
-                                        dest="preprocess_parameters_dir",
-                                        type=validators.validate_directory,
-                                        help="""
-                                        a directory to store preprocessed JSON input files
-                                        (default: $OUTPUT_DIR/predict-inputs/params)
-                                        """)
+        # self.parser_preprocess.add_argument("--params-dir",
+        #                                 dest="preprocess_parameters_dir",
+        #                                 type=validators.validate_directory,
+        #                                 help="""
+        #                                 a directory to store preprocessed JSON input files
+        #                                 (default: $OUTPUT_DIR/predict-inputs/params)
+        #                                 """)
 
-        # default will be set in validate_preprocess_args()
-        self.parser_preprocess.add_argument("--inputs-dir",
-                                        dest="preprocess_inputs_dir",
-                                        type=validators.validate_directory,
-                                        help="""
-                                        a directory to store other, non-JSON inputs (e.g., fasta files)
-                                        (default: $OUTPUT_DIR/predict-inputs/data)
-                                        """)
+        # # default will be set in validate_preprocess_args()
+        # self.parser_preprocess.add_argument("--inputs-dir",
+        #                                 dest="preprocess_inputs_dir",
+        #                                 type=validators.validate_directory,
+        #                                 help="""
+        #                                 a directory to store other, non-JSON inputs (e.g., fasta files)
+        #                                 (default: $OUTPUT_DIR/predict-inputs/data)
+        #                                 """)
 
         self.parser_preprocess.add_argument("--assume-valid",
                                         action="store_true",
@@ -167,37 +167,37 @@ class NGArgumentParser(argparse.ArgumentParser):
         return self.parser_predict
     
 
-    def validate_args(self, args):
-        if args.subcommand == 'preprocess':
-            self.validate_preprocess_args(args)
+    # def validate_args(self, args):
+    #     if args.subcommand == 'preprocess':
+    #         self.validate_preprocess_args(args)
 
-        if args.subcommand == 'postprocess':
-            self.validate_postprocess_args(args)
+    #     if args.subcommand == 'postprocess':
+    #         self.validate_postprocess_args(args)
 
 
-    def validate_preprocess_args(self, args):
-        kwargs = vars(args)
-        output_dir = kwargs.get('output_dir')
+    # def validate_preprocess_args(self, args):
+    #     kwargs = vars(args)
+    #     output_dir = kwargs.get('output_dir')
 
-        # Set params-dir and inputs-dir to the value of '--output-dir' 
-        # if both are not specified.
-        if not kwargs.get('preprocess_parameters_dir'):
-            params_dir = output_dir / 'predict-inputs' / 'params'
-            self.ensure_directory_exists(params_dir)
-            setattr(args, 'preprocess_parameters_dir', params_dir)
+    #     # Set params-dir and inputs-dir to the value of '--output-dir' 
+    #     # if both are not specified.
+    #     if not kwargs.get('preprocess_parameters_dir'):
+    #         params_dir = output_dir / 'predict-inputs' / 'params'
+    #         self.ensure_directory_exists(params_dir)
+    #         setattr(args, 'preprocess_parameters_dir', params_dir)
 
-        if not kwargs.get('preprocess_inputs_dir'):
-            inputs_dir = output_dir / 'predict-inputs' / 'data'
-            self.ensure_directory_exists(inputs_dir)
-            setattr(args, 'preprocess_inputs_dir', inputs_dir)
+    #     if not kwargs.get('preprocess_inputs_dir'):
+    #         inputs_dir = output_dir / 'predict-inputs' / 'data'
+    #         self.ensure_directory_exists(inputs_dir)
+    #         setattr(args, 'preprocess_inputs_dir', inputs_dir)
 
-        # Also, create predict-output directory in advance.
-        predict_output_dir = output_dir / 'predict-outputs'
-        self.ensure_directory_exists(predict_output_dir)
+    #     # Also, create predict-output directory in advance.
+    #     predict_output_dir = output_dir / 'predict-outputs'
+    #     self.ensure_directory_exists(predict_output_dir)
 
-    def ensure_directory_exists(self, path):
-        if not path.exists():
-            path.mkdir(parents=True, exist_ok=True)
+    # def ensure_directory_exists(self, path):
+    #     if not path.exists():
+    #         path.mkdir(parents=True, exist_ok=True)
 
     
     def validate_postprocess_args(self, args):

@@ -12,16 +12,10 @@ def main():
         pass
 
     if args.subcommand == 'preprocess':
-        # Validate Arguments
-        parser.validate_args(args)
-
         # ADD CODE LOGIC TO SPLIT INPUTS INSIDE PREPROCESS.PY
         preprocess.run(**vars(args))
 
     if args.subcommand == 'postprocess':
-        # Validate Arguments
-        parser.validate_args(args)
-
         # ADD CODE LOGIC TO COMBINE RESULTS INSIDE POSTPROCESS.PY
         postprocess.run(**vars(args))
 
