@@ -171,7 +171,8 @@ def validate_preprocess_dir(path_str):
         raise argparse.ArgumentTypeError(f"'{path_str}' is not a valid directory.")
 
     # paths.py file
-    paths_file = Path(__file__).resolve().parent / "paths.py"
+    # paths_file = Path(__file__).resolve().parent / "paths.py"
+    paths_file = path.resolve().parent / "paths.py"
 
     try:
         # Get list of dependencies
