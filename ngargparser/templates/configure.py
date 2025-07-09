@@ -108,10 +108,21 @@ def create_shell_script(config, tool_prefix, output_path):
 
 def main():
     config = load_config(CONFIG_PATH)
-    if not config:
-        return
     
-    write_env_info(config, DOT_ENV_PATH)
+    # Check if .env file already exists
+    if os.path.exists(DOT_ENV_PATH):
+        print(f"* .env file already exists at '{DOT_ENV_PATH}'")
+    else:
+        # Create .env file even if paths.py is empty
+        if not config:
+            print("* paths.py is empty, creating minimal .env file")
+            # Create minimal .env file with just APP_ROOT
+            app_root = os.path.abspath(".")
+            with open(DOT_ENV_PATH, "w") as f:
+                f.write(f"APP_ROOT={app_root}\n")
+            print(f"* .env file created")
+        else:
+            write_env_info(config, DOT_ENV_PATH)
 
     # Dynamically detect all dependency tools from paths.py
     detected_tools = detect_dependency_tools(config)

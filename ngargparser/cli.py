@@ -319,7 +319,12 @@ def create_paths_file(project_name_or_path):
         dependencies = get_dependencies()
         
         if not dependencies:
-            print("No dependencies specified. Creating basic paths.py file.")
+            print("No dependencies specified. Creating empty paths.py file.")
+            # Create empty file
+            with open(paths_file_path, 'w', encoding='utf-8') as f:
+                f.write('')
+            print(f"\n✓ Created empty '{paths_file_path}'.")
+            return
         else:
             print(f"Found {len(dependencies)} dependencies:")
             for i, dep in enumerate(dependencies, 1):
@@ -434,7 +439,22 @@ def update_paths_file(file_path, existing_content, existing_deps):
     # Append new sections to existing content
     # Remove any trailing whitespace from existing content first
     existing_content = existing_content.rstrip()
-    updated_content = existing_content + ''.join(new_sections)
+    
+    # If this is the first dependency being added, ensure no empty lines at the top
+    if not existing_deps:
+        # For the first dependency, remove all leading newlines
+        first_section = new_sections[0].lstrip('\n')  # Remove leading newlines
+        remaining_sections = new_sections[1:] if len(new_sections) > 1 else []
+        
+        # If existing content is empty or just whitespace, don't add any newline
+        if not existing_content.strip():
+            updated_content = first_section + ''.join(remaining_sections)
+        else:
+            # If there's existing content, add one newline to separate
+            updated_content = existing_content + '\n' + first_section + ''.join(remaining_sections)
+    else:
+        # For subsequent dependencies, use the normal format
+        updated_content = existing_content + ''.join(new_sections)
     
     # Normalize content ending to ensure exactly one newline
     updated_content = normalize_content_ending(updated_content)
