@@ -49,9 +49,22 @@ def create_example_structure():
         shutil.copy(f'{EXAMPLE_DIR}/{parser_file}', f'{project_name}/src/{parser_file}')
         shutil.copy(f'{EXAMPLE_DIR}/preprocess.py', f'{project_name}/src/preprocess.py')
         shutil.copy(f'{EXAMPLE_DIR}/postprocess.py', f'{project_name}/src/postprocess.py')
+        shutil.copy(f'{TEMPLATE_DIR}/configure.py', f'{project_name}/src/configure.py')     
+        # Make configure.py executable
+        os.chmod(f'{project_name}/src/configure.py', 0o755)
         shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/NGArgumentParser.py')
         shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
-        # shutil.copy(f'{NGPARSER_DIR}/configure.py', f'{project_name}/src/configure.py')
+        shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core_validators.py')
+
+        # Create configure executable file
+        configure_file = f'{project_name}/configure'
+
+        # Create and write the line into the configure file
+        with open(configure_file, 'w') as f:
+            f.write(f'./src/configure.py')
+        
+        # Make the file executable
+        os.chmod(configure_file, 0o755)
 
         print(f"Created '{project_name}' project structure successfully.")
     except Exception as e:
@@ -283,6 +296,9 @@ def create_paths_file(project_name_or_path):
         paths_file_path = project_name_or_path
     else:
         # Project name - create in project/src/ structure
+        if project_name_or_path == 'example':
+            project_name_or_path = 'aa-counter'
+
         paths_file_path = f'{project_name_or_path}/paths.py'
     
     try:
