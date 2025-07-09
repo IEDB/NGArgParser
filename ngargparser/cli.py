@@ -56,6 +56,15 @@ def create_example_structure():
         shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
         shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core_validators.py')
 
+        # Copy build.sh, Makefile, and do-not-distribute.txt to project root
+        shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/build.sh')
+        shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/Makefile')
+        shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/do-not-distribute.txt')
+        # Make build.sh executable
+        os.chmod(f'{project_name}/build.sh', 0o755)
+        # Replace TOOL_NAME in build.sh for example app
+        replace_text_in_place(f'{project_name}/build.sh', 'TOOL_NAME=ng_appname', 'TOOL_NAME=ng_aa-counter')
+
         # Create configure executable file
         configure_file = f'{project_name}/configure'
 
@@ -97,6 +106,15 @@ def create_project_structure(project_name):
         shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
         shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core_validators.py')
         
+        # Copy build.sh, Makefile, and do-not-distribute.txt to project root
+        shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/build.sh')
+        shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/Makefile')
+        shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/do-not-distribute.txt')
+        # Make build.sh executable
+        os.chmod(f'{project_name}/build.sh', 0o755)
+        # Replace TOOL_NAME in build.sh
+        replace_text_in_place(f'{project_name}/build.sh', 'TOOL_NAME=ng_appname', f'TOOL_NAME=ng_{project_name}')
+
         # Try to copy license file, but don't fail if it's not available
         license_source = f'{NGPARSER_DIR}/license-LJI.txt'
         if os.path.exists(license_source):

@@ -1,0 +1,17 @@
+# list of files to remove from the distributed package
+.env
+.gitmodules
+.gitignore
+.gitlab-ci.yml
+.git/*
+.python-version
+.git/
+__pycache__/*
+__pycache__
+build.sh
+build.md
+build/*
+build/
+do-not-distribute.txt
+Makefile
+**.sh
