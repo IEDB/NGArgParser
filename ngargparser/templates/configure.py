@@ -5,7 +5,7 @@ import importlib.util
 import re
 
 CONFIG_PATH = "paths.py"
-ENV_INFO_PATH = ".env_info"
+DOT_ENV_PATH = ".env"
 
 def load_config(path):
     if not os.path.exists(path):
@@ -57,7 +57,7 @@ def write_env_info(config, output_path):
             
             f.write(f"{key.upper()}={value}\n")
 
-    print(f"* .env_info file created")
+    print(f"* .env file created")
 
 def create_shell_script(config, tool_prefix, output_path):
     """
@@ -111,7 +111,7 @@ def main():
     if not config:
         return
     
-    write_env_info(config, ENV_INFO_PATH)
+    write_env_info(config, DOT_ENV_PATH)
 
     # Dynamically detect all dependency tools from paths.py
     detected_tools = detect_dependency_tools(config)

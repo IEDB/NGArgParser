@@ -1,7 +1,10 @@
+import os
 import preprocess
 import postprocess
 import validators
 from CHILDPARSER import CHILDPARSER
+from dotenv import load_dotenv
+load_dotenv()
 
 
 def main():
