@@ -15,7 +15,8 @@ setup(
       ],  
   package_data = {
       # Include everything inside the templates/ in the package.
-      'ngargparser.templates': ['**/*'],
+      'ngargparser.templates': ['*'],
+      'ngargparser.templates.example-app': ['*'],
       # Include the license file in the main package
       'ngargparser': ['license-LJI.txt'],
   },
