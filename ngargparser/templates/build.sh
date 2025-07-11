@@ -14,6 +14,8 @@ mkdir -p $BUILD_DIR
 
 rsync --cvs-exclude --exclude build --exclude-from='do-not-distribute.txt' -a --delete $SRC_DIR/ $BUILD_DIR/
 
+mkdir -p $BUILD_DIR/libs
+
 # Use sed to replace the string with the environment variable
 if [[ "$(uname)" == "Darwin" ]]; then
     # For MacOS
