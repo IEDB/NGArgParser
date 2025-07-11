@@ -1,8 +1,10 @@
 import textwrap
+import argparse
 import validators
 from NGArgumentParser import NGArgumentParser
 
-class ClusterArgumentParser(NGArgumentParser):
+
+class ChildArgumentParser(NGArgumentParser):
     def __init__(self):
         super().__init__()
 
@@ -14,36 +16,42 @@ class ClusterArgumentParser(NGArgumentParser):
         from here:
         https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser
         '''
-        # Set program details by setting params, such as
+        # ADD program details by setting params, such as
         # prog, usage, description, epilog, etc.
         # -----------------------------------------------------
-        self.description=textwrap.dedent(
-        '''\
-            This is an example description.
-        '''    
+        self.description = textwrap.dedent(
+            '''
+            '''
         )
 
-
-        # Add/Modify subparser prediction descriptions
+        # ADD subparser prediction descriptions
         # -----------------------------------------------------
         pred_parser = self.add_predict_subparser(
-            help='Perform individual prediction.',
-            description='This is where the users can perform indifidual predictions.'
+            help='',
+            description=''
         )
 
-        
-        # Add tool-specific params 
+        # ADD tool-specific params 
         # -----------------------------------------------------
+        pred_parser.add_argument("--input-tsv", "-t",
+                                dest="input_tsv",
+                                type=argparse.FileType('r'),
+                                default=None,
+                                help="Perform counting given a TSV file.",
+                                )
+        pred_parser.add_argument("--input-json", "-j",
+                                dest="input_json",
+                                type=argparse.FileType('r'),
+                                default=None,
+                                help="Perform counting given a JSON file.",
+                                )
         pred_parser.add_argument("--output-prefix", "-o",
-                                 dest="output_prefix",
-                                 type=validators.validate_directory_given_filename,
-                                 default=self.DEFAULT_RESULTS_DIR / self.generate_random_filename(),
-                                 help="prediction result output prefix.",
-                                 metavar="OUTPUT_PREFIX")
+                                dest="output_prefix",
+                                help="prediction result output prefix.",
+                                metavar="OUTPUT_PREFIX")
         pred_parser.add_argument("--output-format", "-f",
-                                 dest="output_format",
-                                 default="tsv",
-                                 help="prediction result output format (Default=tsv)",
-                                 metavar="OUTPUT_FORMAT")  
-    
-    
+                                dest="output_format",
+                                default="json",
+                                help="prediction result output format (Default=tsv)",
+                                metavar="OUTPUT_FORMAT")
+
