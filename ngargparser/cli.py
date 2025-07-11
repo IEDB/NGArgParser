@@ -195,7 +195,7 @@ def normalize_content_ending(content):
     Returns:
         str: Content with exactly one trailing newline
     """
-    return content.rstrip() + '\n'
+    return content.strip() + '\n'
 
 
 def normalize_name(name):
@@ -346,10 +346,7 @@ def create_paths_file(project_name_or_path):
                 print(f"  {i}. {dep}")
         
         # Create the content
-        content = """from pathlib import Path
-
-# Get the absolute path to the project root directory
-APP_ROOT = Path(__file__).parent.absolute()"""
+        content = ""
         
         # Add dependency sections if any
         if dependencies:
