@@ -6,6 +6,14 @@ class ClusterArgumentParser(NGArgumentParser):
     def __init__(self):
         super().__init__()
 
+        '''
+        It is the developer's responsibility to customize these parameters.
+        At the minimum, the below parameters should be customized before deploying.
+
+        Developers can choose to further customize other parameters of ArgumentParser()
+        from here:
+        https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser
+        '''
         # Set program details by setting params, such as
         # prog, usage, description, epilog, etc.
         # -----------------------------------------------------

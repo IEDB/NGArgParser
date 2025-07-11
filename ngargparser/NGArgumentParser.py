@@ -16,14 +16,6 @@ class NGArgumentParser(argparse.ArgumentParser):
     
 
     def __init__(self):
-        '''
-        It is the developer's responsibility to customize these parameters.
-        At the minimum, the below parameters should be customized before deploying.
-
-        Developers can choose to further customize other parameters of ArgumentParser()
-        from here:
-        https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser
-        '''
         super().__init__()
         # self.prog='The name of the program (default: os.path.basename(sys.argv[0]))'
         # self.usage='The string describing the program usage (default: generated from arguments added to parser)'
