@@ -21,7 +21,9 @@ setup(
       'ngargparser': ['license-LJI.txt'],
   },
   include_package_data = True,
-  install_requires = [],
+  install_requires = [
+      'python-dotenv>=0.19.0',
+  ],
   entry_points = {
     'console_scripts': [
           'cli = ngargparser.cli:main',
