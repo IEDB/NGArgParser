@@ -85,10 +85,7 @@ def create_project_structure(project_name):
         # Create directory structure
         os.makedirs(project_name)
         os.makedirs(os.path.join(project_name, 'src'))
-        # os.makedirs(os.path.join(project_name, 'output-directory'))
-        # os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'data'))
-        # os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'params'))
-        # os.makedirs(os.path.join(project_name, 'output-directory', 'predict-outputs'))
+
         
         # Create necessary files
         exec_file = f'run_{format_project_name(project_name)}.py'
@@ -96,7 +93,7 @@ def create_project_structure(project_name):
         parser_name = f'{format_project_name(project_name, capitalize=True)}ArgumentParser'
         update_and_place_readme(f'{TEMPLATE_DIR}/README', project_name)
         shutil.copy(f'{TEMPLATE_DIR}/run_app.py', f'{project_name}/src/{exec_file}')
-        shutil.copy(f'{TEMPLATE_DIR}/ChildArgumentParser.py', f'{project_name}/src/{parser_file}')
+        shutil.copy(f'{NGPARSER_DIR}/NGChildArgumentParser.py', f'{project_name}/src/{parser_file}')
         shutil.copy(f'{TEMPLATE_DIR}/preprocess.py', f'{project_name}/src/preprocess.py')
         shutil.copy(f'{TEMPLATE_DIR}/postprocess.py', f'{project_name}/src/postprocess.py')
         shutil.copy(f'{TEMPLATE_DIR}/configure.py', f'{project_name}/src/configure.py')     
@@ -125,7 +122,7 @@ def create_project_structure(project_name):
 
         # Add default content to all the files
         replace_text_in_place(f'{project_name}/src/{exec_file}', 'CHILDPARSER', parser_name)
-        replace_text_in_place(f'{project_name}/src/{parser_file}', 'ChildArgumentParser', parser_name)        
+        replace_text_in_place(f'{project_name}/src/{parser_file}', 'NGChildArgumentParser', parser_name)        
         replace_text_in_place(f'{project_name}/src/configure.py', 'PROJECT_NAME', project_name)
 
         # Create configure executable file

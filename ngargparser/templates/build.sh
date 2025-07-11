@@ -7,7 +7,7 @@ TOOL_NAME=ng_appname
 # pull the tool version from the environment, otherwise set it to 'local'
 TOOL_VERSION="${TOOL_VERSION:-local}"
 TOOL_DIR=$TOOL_NAME-$TOOL_VERSION
-SRC_DIR=$(cd $(dirname "${BASH_SOURCE[0]}") && pwd)
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR=$SRC_DIR/build/$TOOL_DIR
 
 mkdir -p $BUILD_DIR
