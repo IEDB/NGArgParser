@@ -122,7 +122,7 @@ def create_project_structure(project_name):
 
         # Add default content to all the files
         replace_text_in_place(f'{project_name}/src/{exec_file}', 'CHILDPARSER', parser_name)
-        replace_text_in_place(f'{project_name}/src/{parser_file}', 'NGChildArgumentParser', parser_name)        
+        replace_text_in_place(f'{project_name}/src/{parser_file}', 'ChildArgumentParser', parser_name)        
         replace_text_in_place(f'{project_name}/src/configure.py', 'PROJECT_NAME', project_name)
 
         # Create configure executable file
