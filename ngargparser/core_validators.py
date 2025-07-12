@@ -54,6 +54,7 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
     """
     Read paths.py file, identify dependencies, and create the required directory 
     structure for each dependency tool under the specified output directory.
+    If no dependencies are found, create a default directory structure.
     
     Args:
         output_path (str or Path): The output directory where tool structures will be created
@@ -84,6 +85,9 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
     # Split by triple quotes and process each section
     sections = re.split(r"'''\s*\[\s*([^\]]+)\s*\]\s*'''", content)[1:]  # Skip first empty part
     
+    # Check if we have any dependencies
+    has_dependencies = False
+    
     # Process sections in pairs (name, content)
     for i in range(0, len(sections), 2):
         if i + 1 < len(sections):
@@ -103,38 +107,75 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
                 # print(f"Debug: Tool='{tool_name}', Var='{var_name}', Value='{cleaned_value}'")
                 
                 if cleaned_value and cleaned_value.lower() != 'none':
+                    has_dependencies = True
                     # Create tool directory under output path
                     # Convert tool name to lowercase and replace spaces with underscores for directory name
                     tool_dir_name = tool_name.lower().replace(' ', '_')
+
+                    # Defining alias for tool names
                     if tool_dir_name == 't_cell_class_i':
                         tool_dir_name = 'mhci'
                     elif tool_dir_name == 't_cell_class_ii':
                         tool_dir_name = 'mhcii'
-                    elif tool_dir_name == 'pepx':
-                        tool_dir_name = 'pepx'
                     
                     tool_path = output_dir / tool_dir_name
                     
-                    # Define the directory structure
-                    directories = [
-                        tool_path / "aggregate",
-                        tool_path / "predict-inputs" / "data",
-                        tool_path / "predict-inputs" / "params",
-                        tool_path / "predict-outputs",
-                    ]
+                    # When dependencies are found, create only the main tool directory
+                    try:
+                        tool_path.mkdir(parents=True, exist_ok=True)
+                        created_structures[tool_name] = [str(tool_path)]
+                        # print(f"Created directory: {tool_path}")
+                    except Exception as e:
+                        print(f"Error creating directory {tool_path}: {e}")
                     
-                    # Create the directories
-                    created_dirs = []
-                    for directory in directories:
-                        try:
-                            directory.mkdir(parents=True, exist_ok=True)
-                            created_dirs.append(str(directory))
-                            # print(f"Created directory: {directory}")
-                        except Exception as e:
-                            print(f"Error creating directory {directory}: {e}")
-                    
-                    created_structures[tool_name] = created_dirs
                     break  # Only need one valid path per tool
+    
+    # If dependencies were found, also create the current app directory structure
+    if has_dependencies:
+        # Get the current app name (folder name only, not full path)
+        curr_app_name = Path(__file__).resolve().parents[1].name
+        
+        # Define the directory structure for the current app
+        directories = [
+            output_dir / curr_app_name / "aggregate",
+            output_dir / curr_app_name / "predict-inputs" / "data",
+            output_dir / curr_app_name / "predict-inputs" / "params",
+            output_dir / curr_app_name / "predict-outputs",
+        ]
+        
+        # Create the directories
+        created_dirs = []
+        for directory in directories:
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+                created_dirs.append(str(directory))
+                # print(f"Created directory: {directory}")
+            except Exception as e:
+                print(f"Error creating directory {directory}: {e}")
+        
+        created_structures[curr_app_name] = created_dirs
+    
+    # If no dependencies were found, create default directory structure
+    if not has_dependencies:
+        # Define the directory structure if there are 0 dependencies defined in paths.py
+        directories = [
+            output_dir / "aggregate",
+            output_dir / "predict-inputs" / "data",
+            output_dir / "predict-inputs" / "params",
+            output_dir / "predict-outputs",
+        ]
+        
+        # Create the directories
+        created_dirs = []
+        for directory in directories:
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+                created_dirs.append(str(directory))
+                # print(f"Created directory: {directory}")
+            except Exception as e:
+                print(f"Error creating directory {directory}: {e}")
+        
+        created_structures["default"] = created_dirs
     
     return created_structures
 
@@ -177,8 +218,11 @@ def validate_preprocess_dir(path_str):
         # Get list of dependencies
         deps = get_dependencies_from_paths(paths_file)
         print(f"Found {len(deps)} dependencies:")
-        for dep in deps:
-            print(f"- {dep}")
+        if deps:
+            for dep in deps:
+                print(f"- {dep}")
+        else:
+            print("- No dependencies found, creating default structure")
 
         
         print(f"\nCreating directory structures under: {path}")
