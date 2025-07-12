@@ -53,14 +53,18 @@ class NGArgumentParser(argparse.ArgumentParser):
                                                  help='Preprocess jobs.',
                                                  description='Preprocess JSON input files into smaller units, if possible and create a job_descriptions.json file that includes all commands to run the workflow')
         
-        self.parser_preprocess.add_argument("--input-json", "-j",
+        # Create argument groups
+        self.preprocess_required_group = self.parser_preprocess.add_argument_group('required parameters')
+        self.preprocess_optional_group = self.parser_preprocess.add_argument_group('optional parameters')
+
+        self.preprocess_required_group.add_argument("--input-json", "-j",
                                         dest="input_json",
                                         type=argparse.FileType('r'),
                                         required=True,
                                         help="JSON file containing input parameters.",
                                         metavar="JSON_FILE")
         
-        self.parser_preprocess.add_argument("--output-dir", "-o",
+        self.preprocess_required_group.add_argument("--output-dir", "-o",
                                         dest="output_dir",
                                         type=validators.validate_preprocess_dir, # this will create subdirectories
                                         required=True,
@@ -68,24 +72,24 @@ class NGArgumentParser(argparse.ArgumentParser):
                                         metavar="OUTPUT_DIR")
         
         # default will be set in validate_preprocess_args()
-        # self.parser_preprocess.add_argument("--params-dir",
-        #                                 dest="preprocess_parameters_dir",
-        #                                 type=validators.validate_directory,
-        #                                 help="""
-        #                                 a directory to store preprocessed JSON input files
-        #                                 (default: $OUTPUT_DIR/predict-inputs/params)
-        #                                 """)
+        self.preprocess_optional_group.add_argument("--params-dir",
+                                        dest="preprocess_parameters_dir",
+                                        type=validators.validate_directory,
+                                        help="""
+                                        a directory to store preprocessed JSON input files
+                                        (default: $OUTPUT_DIR/predict-inputs/params)
+                                        """)
 
-        # # default will be set in validate_preprocess_args()
-        # self.parser_preprocess.add_argument("--inputs-dir",
-        #                                 dest="preprocess_inputs_dir",
-        #                                 type=validators.validate_directory,
-        #                                 help="""
-        #                                 a directory to store other, non-JSON inputs (e.g., fasta files)
-        #                                 (default: $OUTPUT_DIR/predict-inputs/data)
-        #                                 """)
+        # default will be set in validate_preprocess_args()
+        self.preprocess_optional_group.add_argument("--inputs-dir",
+                                        dest="preprocess_inputs_dir",
+                                        type=validators.validate_directory,
+                                        help="""
+                                        a directory to store other, non-JSON inputs (e.g., fasta files)
+                                        (default: $OUTPUT_DIR/predict-inputs/data)
+                                        """)
 
-        self.parser_preprocess.add_argument("--assume-valid",
+        self.preprocess_optional_group.add_argument("--assume-valid",
                                         action="store_true",
                                         dest="assume_valid_flag",
                                         default=False,
