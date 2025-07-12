@@ -57,6 +57,7 @@ class NGArgumentParser(argparse.ArgumentParser):
         self.preprocess_required_group = self.parser_preprocess.add_argument_group('required parameters')
         self.preprocess_optional_group = self.parser_preprocess.add_argument_group('optional parameters')
 
+        # Define required parameters for preprocess subcommand
         self.preprocess_required_group.add_argument("--input-json", "-j",
                                         dest="input_json",
                                         type=argparse.FileType('r'),
@@ -71,6 +72,7 @@ class NGArgumentParser(argparse.ArgumentParser):
                                         help="prediction result output directory.",
                                         metavar="OUTPUT_DIR")
         
+        # Define optional parameters for preprocess subcommand
         # default will be set in validate_preprocess_args()
         self.preprocess_optional_group.add_argument("--params-dir",
                                         dest="preprocess_parameters_dir",
