@@ -121,7 +121,6 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
                         tool_path / "predict-inputs" / "data",
                         tool_path / "predict-inputs" / "params",
                         tool_path / "predict-outputs",
-                        tool_path / "results"
                     ]
                     
                     # Create the directories
