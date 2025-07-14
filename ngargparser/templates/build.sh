@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Ensure this script always runs with bash, regardless of how it's invoked
+if [ -z "$BASH_VERSION" ]; then
+    # Re-execute this script with bash if not already running with bash
+    exec bash "$0" "$@"
+fi
+
 #TODO: update the set flags appropriately
 set -ex
 
