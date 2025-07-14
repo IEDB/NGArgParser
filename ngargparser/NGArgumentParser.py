@@ -9,6 +9,24 @@ from pathlib import Path
 from typing import TypedDict, List
 
 
+class CustomHelpFormatter(argparse.HelpFormatter):
+    def _format_usage(self, usage, actions, groups, prefix):
+        if usage is not None:
+            usage = usage % dict(prog=self._prog)
+        elif usage is None:
+            # Create custom usage line
+            usage = f'{self._prog} postprocess --input-results-dir POSTPROCESS_INPUT_DIR \\\n' + \
+                   f'{" " * len(self._prog + " postprocess ")}--postprocessed-results-dir POSTPROCESS_RESULT_DIR\n' + \
+                   f'{" " * len(self._prog + " postprocess ")}[-h]'
+        
+        # Handle None prefix - default to "usage: "
+        if prefix is None:
+            prefix = "usage: "
+        
+        # Format with proper prefix
+        return f'{prefix}{usage}\n\n'
+
+
 class NGArgumentParser(argparse.ArgumentParser):
     ''' Setting default paths '''
     # defaults for preprocessing
@@ -97,51 +115,49 @@ class NGArgumentParser(argparse.ArgumentParser):
                                         default=False,
                                         help="flag to indicate validation can be skipped")
         
-
         # Create subparser 'postprocess'
         # -----------------------------------------------------
         self.parser_postprocess = self.subparser.add_parser('postprocess', 
                                                         help='Postprocess jobs.',
-                                                        description='results from individual prediction jobs are aggregated')
+                                                        description='results from individual prediction jobs are aggregated',
+                                                        epilog='Note: Exactly one of --job-desc-file or --input-results-dir must be specified.',
+                                                        formatter_class=CustomHelpFormatter)
 
-        # --input-results-dir option and --job-desc-file should be mutually exclusive.
-        # Make sure at least one of the two be defined.
-        group = self.parser_postprocess.add_mutually_exclusive_group(required=True)
+        # Create input source group (mutually exclusive options)
+        self.postprocess_required_input_group = self.parser_postprocess.add_argument_group('input source (choose exactly one)')
 
-        group.add_argument("--job-desc-file",
-                                        dest="job_desc_file",
-                                        type=argparse.FileType('r'),
-                                        # default=self.PROJECT_ROOT_PATH,
-                                        # required=True,
-                                        help="Path to job description file.")
+        self.postprocess_required_input_group.add_argument("--job-desc-file", "-j",
+                                dest="job_desc_file",
+                                type=argparse.FileType('r'),
+                                help="Path to job description file.")
 
-        group.add_argument("--input-results-dir",
-                                        dest="postprocess_input_dir",
-                                        type=validators.validate_directory,
-                                        # default=self.DEFAULT_RESULTS_DIR,
-                                        # required=True,
-                                        help="directory containing the result files to postprocess")
+        self.postprocess_required_input_group.add_argument("--input-results-dir", "-i",
+                                dest="postprocess_input_dir",
+                                type=validators.validate_directory,
+                                help="directory containing the result files to postprocess")
 
-        self.parser_postprocess.add_argument("--postprocessed-results-dir",
-                                        dest="postprocess_result_dir",
-                                        type=validators.validate_directory,
-                                        # default=self.OUTPUT_DIR_PATH,
-                                        required=True,
-                                        help="a directory to contain the post-processed results")
-        
-        self.parser_postprocess.add_argument("--output-prefix", "-o",
+        # Other required parameters
+        self.postprocess_required_group = self.parser_postprocess.add_argument_group('other required parameters')
+
+        self.postprocess_required_group.add_argument("--postprocessed-results-dir", "-p",
+                                dest="postprocess_result_dir",
+                                type=validators.validate_directory,
+                                help="a directory to contain the post-processed results")
+
+        # Optional parameters group  
+        self.postprocess_optional_group = self.parser_postprocess.add_argument_group('optional parameters')
+
+        self.postprocess_optional_group.add_argument("--output-prefix", "-o",
                                 dest="output_prefix",
                                 type=validators.validate_directory_given_filename,
-                                # default=self.DEFAULT_RESULTS_DIR / self.generate_random_filename(),
                                 help="prediction result output prefix.",
                                 metavar="OUTPUT_PREFIX")
-        
-        self.parser_postprocess.add_argument("--output-format", "-f",
+
+        self.postprocess_optional_group.add_argument("--output-format", "-f",
                                 dest="output_format",
                                 default="json",
                                 help="prediction result output format (Default=json)",
                                 metavar="OUTPUT_FORMAT")
-
 
     def add_predict_subparser(self, help='', description=''):
         '''
@@ -163,6 +179,26 @@ class NGArgumentParser(argparse.ArgumentParser):
         #                                 help="flag to indicate validation can be skipped")
         
         return self.parser_predict
+
+    def validate_mutually_exclusive_args(self, args):
+        """Manually validate that exactly one of the mutually exclusive args is provided"""
+        job_desc_provided = args.job_desc_file is not None
+        input_dir_provided = args.postprocess_input_dir is not None
+        
+        if job_desc_provided and input_dir_provided:
+            self.parser_postprocess.error("argument --input-results-dir: not allowed with argument --job-desc-file")
+        elif not job_desc_provided and not input_dir_provided:
+            self.parser_postprocess.error("one of the arguments --job-desc-file --input-results-dir is required")
+    
+    def parse_args(self):
+        args = super().parse_args()
+        
+        # If postprocess command is used, validate mutual exclusion
+        if hasattr(args, 'subcommand') and args.subcommand == 'postprocess':
+            self.validate_mutually_exclusive_args(args)
+        
+        return args
+
     
 
     # def validate_args(self, args):
@@ -198,24 +234,24 @@ class NGArgumentParser(argparse.ArgumentParser):
     #         path.mkdir(parents=True, exist_ok=True)
 
     
-    def validate_postprocess_args(self, args):
-        kwargs = vars(args)
+    # def validate_postprocess_args(self, args):
+    #     kwargs = vars(args)
         
-        '''
-        Note that --input-results-dir option and --job-desc-file are mutually exclusive.
-        If --job-desc-file is set, then extract value of "input_result-dir" and set it
-        to the Namespace.
-        '''
-        if kwargs.get('job_desc_file'):
-            # Read job-description file, and set the pointer back to beginning
-            # in case it needs to be read again
-            jd_content = json.load(args.job_desc_file)
-            args.job_desc_file.seek(0)
+    #     '''
+    #     Note that --input-results-dir option and --job-desc-file are mutually exclusive.
+    #     If --job-desc-file is set, then extract value of "input_result-dir" and set it
+    #     to the Namespace.
+    #     '''
+    #     if kwargs.get('job_desc_file'):
+    #         # Read job-description file, and set the pointer back to beginning
+    #         # in case it needs to be read again
+    #         jd_content = json.load(args.job_desc_file)
+    #         args.job_desc_file.seek(0)
             
-            preprocess_result_dir = jd_content[0]['expected_outputs'][0]
-            preprocess_result_dir = Path(preprocess_result_dir).parent
+    #         preprocess_result_dir = jd_content[0]['expected_outputs'][0]
+    #         preprocess_result_dir = Path(preprocess_result_dir).parent
             
-            setattr(args, 'postprocess_input_dir', preprocess_result_dir)
+    #         setattr(args, 'postprocess_input_dir', preprocess_result_dir)
 
 
     def format_exec_name(self, name):
