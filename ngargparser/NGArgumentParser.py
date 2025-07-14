@@ -15,7 +15,7 @@ class CustomHelpFormatter(argparse.HelpFormatter):
             usage = usage % dict(prog=self._prog)
         elif usage is None:
             # Create custom usage line
-            usage = f'{self._prog} postprocess --input-results-dir POSTPROCESS_INPUT_DIR \\\n' + \
+            usage = f'{self._prog} --input-results-dir POSTPROCESS_INPUT_DIR \\\n' + \
                    f'{" " * len(self._prog + " postprocess ")}--postprocessed-results-dir POSTPROCESS_RESULT_DIR\n' + \
                    f'{" " * len(self._prog + " postprocess ")}[-h]'
         
