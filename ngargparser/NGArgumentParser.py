@@ -31,7 +31,7 @@ class NGArgumentParser(argparse.ArgumentParser):
     ''' Setting default paths '''
     # defaults for preprocessing
     PROJECT_ROOT_PATH = Path(__file__).resolve().parents[1]
-    
+
 
     def __init__(self):
         super().__init__()
@@ -159,13 +159,31 @@ class NGArgumentParser(argparse.ArgumentParser):
                                 help="prediction result output format (Default=json)",
                                 metavar="OUTPUT_FORMAT")
 
+        # Add patch for groups
+        self.patch_parser_for_groups(self.parser_preprocess)
+        self.patch_parser_for_groups(self.parser_postprocess)
+
+
     def add_predict_subparser(self, help='', description=''):
         '''
-        This is where prediction subparser will be created with user specified
-        help and description texts, and attaching some common arguments across tools.
+        Creates and returns a 'predict' subparser with customizable help and description text.
+        
+        This method adds a new subparser for prediction-related commands. The subparser is 
+        configured with user-provided help and description text, and can be further customized
+        by adding tool-specific arguments. Common arguments that are shared across different
+        tools can also be added here.
+
+        Args:
+            help (str): Help text displayed in the main command list
+            description (str): Detailed description shown in the predict command's help
+
+        Returns:
+            ArgumentParser: The configured predict subparser that can be customized with
+                          additional tool-specific arguments
         '''
         # add subparser
         self.parser_predict = self.subparser.add_parser('predict', help=help, description=description)
+        self.patch_parser_for_groups(self.parser_predict)
 
         # add common arguments across tools
         # self.parser_predict.add_argument("--input-json", "-j",
@@ -191,187 +209,111 @@ class NGArgumentParser(argparse.ArgumentParser):
             self.parser_postprocess.error("one of the arguments --job-desc-file --input-results-dir is required")
     
     def parse_args(self):
+        """Parse command line arguments and perform validation.
+
+        This method extends the base ArgumentParser's parse_args() to add custom validation
+        for mutually exclusive arguments in the postprocess command. It ensures that exactly 
+        one of --job-desc-file or --input-results-dir is provided when using postprocess.
+
+        Returns:
+            argparse.Namespace: The parsed command-line arguments with all validations passed
+
+        Raises:
+            ArgumentError: If validation fails for mutually exclusive arguments
+        """
         args = super().parse_args()
-        
+            
         # If postprocess command is used, validate mutual exclusion
         if hasattr(args, 'subcommand') and args.subcommand == 'postprocess':
             self.validate_mutually_exclusive_args(args)
-        
+
         return args
 
-    
 
-    # def validate_args(self, args):
-    #     if args.subcommand == 'preprocess':
-    #         self.validate_preprocess_args(args)
-
-    #     if args.subcommand == 'postprocess':
-    #         self.validate_postprocess_args(args)
-
-
-    # def validate_preprocess_args(self, args):
-    #     kwargs = vars(args)
-    #     output_dir = kwargs.get('output_dir')
-
-    #     # Set params-dir and inputs-dir to the value of '--output-dir' 
-    #     # if both are not specified.
-    #     if not kwargs.get('preprocess_parameters_dir'):
-    #         params_dir = output_dir / 'predict-inputs' / 'params'
-    #         self.ensure_directory_exists(params_dir)
-    #         setattr(args, 'preprocess_parameters_dir', params_dir)
-
-    #     if not kwargs.get('preprocess_inputs_dir'):
-    #         inputs_dir = output_dir / 'predict-inputs' / 'data'
-    #         self.ensure_directory_exists(inputs_dir)
-    #         setattr(args, 'preprocess_inputs_dir', inputs_dir)
-
-    #     # Also, create predict-output directory in advance.
-    #     predict_output_dir = output_dir / 'predict-outputs'
-    #     self.ensure_directory_exists(predict_output_dir)
-
-    # def ensure_directory_exists(self, path):
-    #     if not path.exists():
-    #         path.mkdir(parents=True, exist_ok=True)
-
-    
-    # def validate_postprocess_args(self, args):
-    #     kwargs = vars(args)
+    def patch_parser_for_groups(self, parser):
+        """Patch an argparse.ArgumentParser instance to support argument grouping.
         
-    #     '''
-    #     Note that --input-results-dir option and --job-desc-file are mutually exclusive.
-    #     If --job-desc-file is set, then extract value of "input_result-dir" and set it
-    #     to the Namespace.
-    #     '''
-    #     if kwargs.get('job_desc_file'):
-    #         # Read job-description file, and set the pointer back to beginning
-    #         # in case it needs to be read again
-    #         jd_content = json.load(args.job_desc_file)
-    #         args.job_desc_file.seek(0)
-            
-    #         preprocess_result_dir = jd_content[0]['expected_outputs'][0]
-    #         preprocess_result_dir = Path(preprocess_result_dir).parent
-            
-    #         setattr(args, 'postprocess_input_dir', preprocess_result_dir)
+        This helper function adds group functionality to any parser by modifying its add_argument
+        method to support an optional 'group' parameter. Arguments can be organized into logical
+        groups which will be displayed together in the help output.
 
+        Args:
+            parser (argparse.ArgumentParser): The parser instance to patch
 
-    def format_exec_name(self, name):
-        pname = name.replace('-', '_')
-        # pname = [_.capitalize() for _ in pname]
-        # return ''.join(pname)
-        return pname
-    
-    def generate_random_filename(self, length=10):
-        """Generates a random filename with the specified length and extension."""
+        Returns:
+            argparse.ArgumentParser: The patched parser with group functionality
 
-        letters = string.ascii_letters
-        filename = ''.join(random.choice(letters) for i in range(length))
-        return filename
+        Example:
+            parser.add_argument('--flag', help='Some help text', group='My Group')
+            # This will add the argument to a group named 'My Group' in the help output
+        """
+        if not hasattr(parser, '_argument_groups'):
+            parser._argument_groups = {}
 
-
-    # def create_job_descriptions_file(self, params_dir):
-    def create_job_descriptions_file(self, **kwargs):
-        params_dir = kwargs.get('preprocess_parameters_dir')
+        original_add_argument = parser.add_argument
         
-        # output path
-        OUTPUT_DIR_PATH = kwargs.get('output_dir')
+        def add_argument_with_groups(*args, **kwargs):
+            group_name = kwargs.pop('group', None)
 
-        # final result directory path
-        PRED_OUTPUT_DIR = OUTPUT_DIR_PATH / 'predict-outputs'
-
-        # job description file path
-        JD_PATH = self.PROJECT_ROOT_PATH / 'job_descriptions.json'
-
-        # exec file path
-        PROJ_NAME = self.PROJECT_ROOT_PATH.name.split('/')[-1]
-        PROJ_NAME = self.format_exec_name(PROJ_NAME)
-        EXEC_FILE_PATH = Path(__file__).resolve().parent / f'run_{PROJ_NAME}.py'
-        
-        files_with_ctime = []
-
-        for file_path in Path(params_dir).iterdir():
-            if file_path.is_file():
-                # Get the creation time of the file
-                creation_time = file_path.stat().st_ctime
-                
-                # Store the file path and its creation time as a tuple
-                files_with_ctime.append((file_path, creation_time))
-
-        # Sort files by creation time
-        files_with_ctime.sort(key=lambda x: x[1])
-
-        '''
-        In case user forgets to or doesn't want to remove previous input files
-        in the directory, then group the files by timeframe, then
-        create job_description file by taking only the last group.
-        '''
-        grouped_files = []
-        current_group = []
-        timeframe_seconds=0.1
-
-        for i, (file, ctime) in enumerate(files_with_ctime):
-            if not current_group:
-                current_group.append(file)  # Start a new group
-            else:
-                # Check if the current file's creation time is within the timeframe
-                if ctime - files_with_ctime[i - 1][1] <= timeframe_seconds:
-                    current_group.append(file)
-                else:
-                    grouped_files.append(current_group)  # Save the current group
-                    current_group = [file]  # Start a new group
-
-        # Add the last group if it exists
-        if current_group:
-            grouped_files.append(current_group)
-
-        '''
-        Take the last group that was newly created, and create
-        job_description file out of it.
-        '''
-        job_files = grouped_files[-1]
-        with open(JD_PATH, 'w') as f :
-            jd_cmds = []
-            for i, job in enumerate(job_files):
-                param_file_path = str(job)
-                
-                shell_cmd = f'{EXEC_FILE_PATH} predict -j {param_file_path} -o {PRED_OUTPUT_DIR}/result.{i} -f json'
-                job_id = i
-                job_type = 'prediction'
-                expected_outputs = [
-                    f'{PRED_OUTPUT_DIR}/result.{i}.json'
-                ]
-
-                jd: JobDescriptionParams = {
-                    'shell_cmd': shell_cmd,
-                    'job_id': job_id,
-                    'job_type': job_type,
-                    'depends_on_job_ids': [],
-                    'expected_outputs': expected_outputs,
-                }
-
-                jd_cmds.append(jd)
-
-            # Add command for postprocessing
-            i += 1
-            shell_cmd = f'{EXEC_FILE_PATH} postprocess --job-desc-file={JD_PATH} --postprocessed-results-dir={OUTPUT_DIR_PATH}'
-            job_id = i
-            job_type = 'postprocess'
-            depends_on_job_ids = list(range(i))
-            expected_outputs = [
-                f'{OUTPUT_DIR_PATH}/final-result.json'
-            ]
-
-            jd: JobDescriptionParams = {
-                'shell_cmd': shell_cmd,
-                'job_id': job_id,
-                'job_type': job_type,
-                'depends_on_job_ids': depends_on_job_ids,
-                'expected_outputs': expected_outputs,
+            group_mapping = {
+                group.title: group
+                for group in getattr(parser, '_action_groups', [])
             }
 
-            jd_cmds.append(jd)
+            if group_name:
+                if group_name in group_mapping:
+                    return group_mapping[group_name].add_argument(*args, **kwargs)
+                else:
+                    # Create new group if not in mapping
+                    if group_name not in parser._argument_groups:
+                        parser._argument_groups[group_name] = parser.add_argument_group(group_name)
+                    return parser._argument_groups[group_name].add_argument(*args, **kwargs)
+            return original_add_argument(*args, **kwargs)
+        
+        parser.add_argument = add_argument_with_groups
+        return parser
 
-            # Write the entire list of jobs to job description file
-            json.dump(jd_cmds, f, indent=4)
+
+
+    def remove_argument(self, argument_name, subparser_name):
+        """Remove a specific argument from a specified subparser.
+
+        This method removes an argument (identified by its name/flag) from a specified subparser
+        and its associated action groups. The removal is done both from the subparser's action
+        groups and from the subparser's main actions list.
+
+        Args:
+            argument_name (str): The name of the argument to remove (e.g., '--output-format')
+            subparser_name (str): The name of the subparser ('predict', 'preprocess', or 'postprocess')
+                                from which to remove the argument
+
+        Note:
+            The method handles removal from both the argument group and the main subparser
+            to ensure complete cleanup of the argument.
+        """
+
+        actions_to_remove = []
+        subparser = None
+
+        if subparser_name == 'predict':
+            subparser = self.parser_predict
+
+        if subparser_name == 'preprocess':
+            subparser = self.parser_preprocess
+
+        if subparser_name == 'postprocess':
+            subparser = self.parser_postprocess
+
+        for group in subparser._action_groups:
+            for action in group._group_actions:
+                if argument_name in action.option_strings:
+                    actions_to_remove.append((action, group._group_actions))
+
+        for action, group_actions in actions_to_remove:
+            # Need to remove from both the group and the subparser
+            group_actions.remove(action)
+            subparser._actions.remove(action)
+
 
 
     @staticmethod
