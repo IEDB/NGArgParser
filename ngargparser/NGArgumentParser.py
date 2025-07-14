@@ -9,6 +9,77 @@ from pathlib import Path
 from typing import TypedDict, List
 
 
+class SubparserWrapper:
+    """
+    A wrapper class for argparse subparsers that allows setting help text 
+    using the .help attribute, which will automatically update the correct 
+    location in the argument parser structure.
+    """
+    def __init__(self, subparser, subparser_name, parent_parser):
+        self._subparser = subparser
+        self._subparser_name = subparser_name
+        self._parent_parser = parent_parser
+        
+        # Capture the initial help text from the subparser action
+        self._help_text = self._get_current_help_from_action()
+    
+    def __getattr__(self, name):
+        """Delegate attribute access to the wrapped subparser"""
+        return getattr(self._subparser, name)
+    
+    def __setattr__(self, name, value):
+        if name.startswith('_'):
+            # Internal attributes
+            super().__setattr__(name, value)
+        elif name == 'help':
+            # Intercept help attribute setting
+            self._help_text = value
+            self._update_help_in_subparser_action()
+        else:
+            # Delegate to the wrapped subparser
+            setattr(self._subparser, name, value)
+    
+    @property
+    def help(self):
+        """Get the current help text"""
+        return self._help_text
+    
+    @help.setter
+    def help(self, value):
+        """Set the help text and update the subparser action"""
+        self._help_text = value
+        self._update_help_in_subparser_action()
+    
+    def _update_help_in_subparser_action(self):
+        """Update the help text in the _SubParsersAction"""
+        # Find the _SubParsersAction in the parent parser
+        subparser_action = None
+        for action in self._parent_parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                subparser_action = action
+                break
+        
+        if subparser_action and hasattr(subparser_action, '_choices_actions'):
+            for choice_action in subparser_action._choices_actions:
+                if choice_action.dest == self._subparser_name:
+                    choice_action.help = self._help_text
+                    break
+
+    def _get_current_help_from_action(self):
+        """Get the current help text from the subparser action"""
+        subparser_action = None
+        for action in self._parent_parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                subparser_action = action
+                break
+        
+        if subparser_action and hasattr(subparser_action, '_choices_actions'):
+            for choice_action in subparser_action._choices_actions:
+                if choice_action.dest == self._subparser_name:
+                    return choice_action.help
+        return None
+
+
 class CustomHelpFormatter(argparse.HelpFormatter):
     def _format_usage(self, usage, actions, groups, prefix):
         if usage is not None:
@@ -67,10 +138,13 @@ class NGArgumentParser(argparse.ArgumentParser):
         
         # Create subparser 'preprocess'
         # -----------------------------------------------------
-        self.parser_preprocess = self.subparser.add_parser('preprocess', 
+        preprocess_parser = self.subparser.add_parser('preprocess', 
                                                  help='Preprocess jobs.',
                                                  description='Preprocess JSON input files into smaller units, if possible and create a job_descriptions.json file that includes all commands to run the workflow')
         
+        # Wrap the preprocess parser to enable help text modification
+        self.parser_preprocess = SubparserWrapper(preprocess_parser, 'preprocess', self)
+
         # Create argument groups
         self.preprocess_required_group = self.parser_preprocess.add_argument_group('required parameters')
         self.preprocess_optional_group = self.parser_preprocess.add_argument_group('optional parameters')
@@ -117,11 +191,14 @@ class NGArgumentParser(argparse.ArgumentParser):
         
         # Create subparser 'postprocess'
         # -----------------------------------------------------
-        self.parser_postprocess = self.subparser.add_parser('postprocess', 
+        postprocess_parser = self.subparser.add_parser('postprocess', 
                                                         help='Postprocess jobs.',
                                                         description='results from individual prediction jobs are aggregated',
                                                         epilog='Note: Exactly one of --job-desc-file or --input-results-dir must be specified.',
                                                         formatter_class=CustomHelpFormatter)
+
+        # Wrap the postprocess parser to enable help text modification
+        self.parser_postprocess = SubparserWrapper(postprocess_parser, 'postprocess', self)
 
         # Create input source group (mutually exclusive options)
         self.postprocess_required_input_group = self.parser_postprocess.add_argument_group('input source (choose exactly one)')
@@ -178,11 +255,16 @@ class NGArgumentParser(argparse.ArgumentParser):
             description (str): Detailed description shown in the predict command's help
 
         Returns:
-            ArgumentParser: The configured predict subparser that can be customized with
-                          additional tool-specific arguments
+            SubparserWrapper: The configured predict subparser wrapper that can be customized with
+                            additional tool-specific arguments and allows help text modification
         '''
         # add subparser
-        self.parser_predict = self.subparser.add_parser('predict', help=help, description=description)
+        predict_parser = self.subparser.add_parser('predict', help=help, description=description)
+        
+        # Wrap the predict parser to enable help text modification
+        self.parser_predict = SubparserWrapper(predict_parser, 'predict', self)
+
+        # Add patch for groups
         self.patch_parser_for_groups(self.parser_predict)
 
         # add common arguments across tools
