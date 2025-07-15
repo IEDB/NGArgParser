@@ -80,24 +80,6 @@ class SubparserWrapper:
         return None
 
 
-class CustomHelpFormatter(argparse.HelpFormatter):
-    def _format_usage(self, usage, actions, groups, prefix):
-        if usage is not None:
-            usage = usage % dict(prog=self._prog)
-        elif usage is None:
-            # Create custom usage line
-            usage = f'{self._prog} --input-results-dir POSTPROCESS_INPUT_DIR \\\n' + \
-                   f'{" " * len(self._prog + " postprocess ")}--postprocessed-results-dir POSTPROCESS_RESULT_DIR\n' + \
-                   f'{" " * len(self._prog + " postprocess ")}[-h]'
-        
-        # Handle None prefix - default to "usage: "
-        if prefix is None:
-            prefix = "usage: "
-        
-        # Format with proper prefix
-        return f'{prefix}{usage}\n\n'
-
-
 class NGArgumentParser(argparse.ArgumentParser):
     ''' Setting default paths '''
     # defaults for preprocessing
@@ -195,7 +177,7 @@ class NGArgumentParser(argparse.ArgumentParser):
                                                         help='Postprocess jobs.',
                                                         description='results from individual prediction jobs are aggregated',
                                                         epilog='Note: Exactly one of --job-desc-file or --input-results-dir must be specified.',
-                                                        formatter_class=CustomHelpFormatter)
+                                                        )
 
         # Wrap the postprocess parser to enable help text modification
         self.parser_postprocess = SubparserWrapper(postprocess_parser, 'postprocess', self)
@@ -241,7 +223,7 @@ class NGArgumentParser(argparse.ArgumentParser):
         self.patch_parser_for_groups(self.parser_postprocess)
 
 
-    def add_predict_subparser(self, help='', description=''):
+    def add_predict_subparser(self, help='', description='', formatter_class=argparse.HelpFormatter):
         '''
         Creates and returns a 'predict' subparser with customizable help and description text.
         
@@ -258,8 +240,11 @@ class NGArgumentParser(argparse.ArgumentParser):
             SubparserWrapper: The configured predict subparser wrapper that can be customized with
                             additional tool-specific arguments and allows help text modification
         '''
-        # add subparser
-        predict_parser = self.subparser.add_parser('predict', help=help, description=description)
+        # add subparser with RawDescriptionHelpFormatter to preserve line breaks
+        predict_parser = self.subparser.add_parser('predict', 
+                                                  help=help, 
+                                                  description=description,
+                                                  formatter_class=formatter_class)
         
         # Wrap the predict parser to enable help text modification
         self.parser_predict = SubparserWrapper(predict_parser, 'predict', self)
