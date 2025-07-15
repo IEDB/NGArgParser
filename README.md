@@ -790,36 +790,6 @@ This step will create a single file called `final-result.json`, which will look 
 }
 ```
 
-## Framework Documentation
-
-### Additional Resources
-
-- **`CUSTOMIZATION_GUIDE.md`**: Comprehensive guide for customizing parsers, help text, and argument organization
-- **`BUILD_SYSTEM.md`**: Complete documentation of the build system, including cross-platform compatibility and dependency management
-- **Template Files**: Pre-configured templates in `ngargparser/templates/` for rapid development
-
-### Recent Improvements
-
-#### Version 0.1.12 Features
-- **SubparserWrapper Class**: Enables easy modification of help text using simple syntax like `self.parser_preprocess.help = 'text'`
-- **Enhanced Configure Script**: Automatically cleans up removed dependencies and regenerates `.env` files
-- **Build System**: Robust cross-platform build system with automatic dependency packaging
-- **Formatter Classes**: Support for multiline descriptions with preserved formatting
-- **Argument Grouping**: Organize arguments into logical groups for better help display
-- **Cross-Platform Compatibility**: Automatic shell detection and platform-specific handling
-
-#### Build System Enhancements
-- **Automatic Dependency Detection**: Dynamically detects and packages dependencies
-- **Cross-Platform Shell Scripts**: Handles bash/dash differences automatically
-- **Version Management**: Automatic version substitution in documentation files
-- **Clean Distribution**: Comprehensive file exclusion system for clean packages
-
-#### Dependency Management Improvements
-- **Smart Cleanup**: Removes old shell scripts and environment variables for deleted dependencies
-- **APP_ROOT Preservation**: Ensures `APP_ROOT` is always maintained in `.env` files
-- **Environment Isolation**: Creates dedicated environment setup scripts for each dependency
-- **Automatic Detection**: Dynamically detects dependencies from `paths.py` configuration
-
 ## Notes
 
 - These specifications are subject to change in the future.
