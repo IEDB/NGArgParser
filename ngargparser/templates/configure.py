@@ -3,6 +3,7 @@
 import os
 import importlib.util
 import re
+import glob
 
 CONFIG_PATH = "paths.py"
 DOT_ENV_PATH = ".env"
@@ -57,8 +58,6 @@ def write_env_info(config, output_path):
             
             f.write(f"{key.upper()}={value}\n")
 
-    print(f"* .env file created")
-
 def create_shell_script(config, tool_prefix, output_path):
     """
     Create shell script for a dependency tool.
@@ -106,26 +105,55 @@ def create_shell_script(config, tool_prefix, output_path):
     os.chmod(output_path, 0o755)
     print(f"* Shell script for '{tool_prefix}' created at '{output_path}'")
 
+def cleanup_old_shell_scripts(current_tools):
+    """
+    Remove shell scripts for tools that are no longer in paths.py
+    
+    Args:
+        current_tools: Set of current tool prefixes from paths.py
+    """
+    # Find all existing setup_*_env.sh files
+    existing_scripts = glob.glob("setup_*_env.sh")
+    
+    for script_path in existing_scripts:
+        # Extract tool prefix from filename (setup_TOOL_env.sh -> TOOL)
+        filename = os.path.basename(script_path)
+        if filename.startswith("setup_") and filename.endswith("_env.sh"):
+            tool_prefix = filename[6:-7]  # Remove "setup_" and "_env.sh"
+            
+            # If this tool is no longer in paths.py, remove the script
+            if tool_prefix not in current_tools:
+                os.remove(script_path)
+                print(f"* Removed shell script for '{tool_prefix}' (no longer in paths.py)")
+
 def main():
     config = load_config(CONFIG_PATH)
     
-    # Check if .env file already exists
-    if os.path.exists(DOT_ENV_PATH):
-        print(f"* .env file already exists at '{DOT_ENV_PATH}'")
+    # Always ensure APP_ROOT is present in config
+    app_root = os.path.abspath(".")
+    if 'APP_ROOT' not in config:
+        config['APP_ROOT'] = app_root
+    
+    # Always regenerate .env file based on current paths.py content
+    # This ensures removed dependencies are cleaned up
+    env_exists = os.path.exists(DOT_ENV_PATH)
+    action = "updated" if env_exists else "created"
+    
+    if not config or len(config) == 1:  # Only APP_ROOT or completely empty
+        print("* paths.py is empty, creating minimal .env file")
+        # Create minimal .env file with just APP_ROOT
+        with open(DOT_ENV_PATH, "w") as f:
+            f.write(f"APP_ROOT={app_root}\n")
+        print(f"* .env file {action}")
     else:
-        # Create .env file even if paths.py is empty
-        if not config:
-            print("* paths.py is empty, creating minimal .env file")
-            # Create minimal .env file with just APP_ROOT
-            app_root = os.path.abspath(".")
-            with open(DOT_ENV_PATH, "w") as f:
-                f.write(f"APP_ROOT={app_root}\n")
-            print(f"* .env file created")
-        else:
-            write_env_info(config, DOT_ENV_PATH)
+        write_env_info(config, DOT_ENV_PATH)
+        print(f"* .env file {action}")
 
     # Dynamically detect all dependency tools from paths.py
     detected_tools = detect_dependency_tools(config)
+    
+    # Clean up shell scripts for removed dependencies
+    cleanup_old_shell_scripts(set(detected_tools.keys()))
     
     if not detected_tools:
         print("* No dependency tools detected in paths.py")
