@@ -10,7 +10,7 @@ DOT_ENV_PATH = ".env"
 
 def load_config(path):
     if not os.path.exists(path):
-        print(f"❌ Config file '{path}' not found.")
+        print(f"\033[91m✗\033[0m Config file '\033[1m{path}\033[0m' not found.")
         return {}
     
     # Treat 'path' as a module and load everything into 'config'
@@ -76,7 +76,7 @@ def create_shell_script(config, tool_prefix, output_path):
 
     # Check if required path is None or empty
     if tool_path is None or (isinstance(tool_path, str) and tool_path.strip() == ""):
-        print(f"❌ Shell script for '{tool_prefix}' not created: required path is None or empty")
+        print(f"\033[91m✗\033[0m Shell script for '\033[1m{tool_prefix}\033[0m' not created: \033[91mrequired path is None or empty\033[0m")
         return
 
     lines = ["#!/bin/bash\n"]

@@ -77,7 +77,7 @@ def create_example_structure():
 
         print(f"Created '{project_name}' project structure successfully.")
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"\033[91m✗ Error: {e}\033[0m")
 
 
 def create_project_structure(project_name):
@@ -137,7 +137,7 @@ def create_project_structure(project_name):
 
         print(f"Created '{project_name}' project structure successfully.")
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"\033[91m✗ Error: {e}\033[0m")
 
 
 def update_and_place_readme(file_path, app_name, is_example=False):
@@ -182,7 +182,7 @@ def replace_text_in_place(file_path, old_text, new_text):
             file.write(modified_content)
         
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"\033[91m✗ An error occurred: {e}\033[0m")
 
 
 def normalize_content_ending(content):
@@ -319,7 +319,7 @@ def create_paths_file(project_name_or_path):
     try:
         # Check if paths.py already exists
         if Path(paths_file_path).exists():
-            print("\n⚠️  'paths.py' already exists!")
+            print("\n\033[93m⚠\033[0m  'paths.py' already exists!")
             while True:
                 response = input("Do you want to overwrite it? (y/n): ").lower().strip()
                 if response in ['y', 'yes']:
@@ -338,7 +338,7 @@ def create_paths_file(project_name_or_path):
             # Create empty file
             with open(paths_file_path, 'w', encoding='utf-8') as f:
                 f.write('')
-            print(f"\n✓ Created empty '{paths_file_path}'.")
+            print(f"\n\033[92m✓\033[0m Created empty '\033[92m{paths_file_path}\033[0m'.")
             return
         else:
             print(f"Found {len(dependencies)} dependencies:")
@@ -360,13 +360,13 @@ def create_paths_file(project_name_or_path):
         with open(paths_file_path, 'w', encoding='utf-8') as f:
             f.write(content)
         
-        print(f"\n✓ Created '{paths_file_path}' with {len(dependencies)} dependencies.")
+        print(f"\n\033[92m✓\033[0m Created '\033[92m{paths_file_path}\033[0m' with \033[92m{len(dependencies)}\033[0m dependencies.")
         print(f"You can now edit '{paths_file_path}' to set the actual paths for your dependencies.")
         
     except KeyboardInterrupt:
-        print("\n\nPaths.py configuration cancelled.")
+        print("\n\n\033[91m✗\033[0m Paths.py configuration cancelled.")
     except Exception as e:
-        print(f"\nError creating paths.py: {e}")
+        print(f"\n\033[91m✗\033[0m Error creating paths.py: \033[91m{e}\033[0m")
 
 
 
@@ -400,7 +400,7 @@ def parse_existing_paths_file(file_path):
         return content, existing_deps
         
     except Exception as e:
-        print(f"Error reading existing file: {e}")
+        print(f"\n\033[91m✗\033[0m Error reading existing file: \033[91m{e}\033[0m")
         return None, {}
 
 
@@ -476,11 +476,11 @@ def update_paths_file(file_path, existing_content, existing_deps):
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(updated_content)
         
-        print(f"\n✓ Updated '{file_path}' with {len(new_sections)} new dependencies.")
+        print(f"\n\033[92m✓\033[0m Updated '\033[92m{file_path}\033[0m' with \033[92m{len(new_sections)}\033[0m new dependencies.")
         print(f"You can now edit '{file_path}' to set the actual paths for your dependencies.")
         
     except Exception as e:
-        print(f"Error updating file: {e}")
+        print(f"\n\033[91m✗\033[0m Error updating file: \033[91m{e}\033[0m")
 
 
 def remove_dependencies_from_file(file_path, existing_content, existing_deps):
@@ -578,10 +578,10 @@ def remove_dependencies_from_file(file_path, existing_content, existing_deps):
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(updated_content)
         
-        print(f"\n✓ Removed {len(deps_to_remove)} dependencies from '{file_path}'.")
+        print(f"\n\033[92m✓\033[0m Removed \033[92m{len(deps_to_remove)}\033[0m dependencies from '\033[92m{file_path}\033[0m'.")
         
     except Exception as e:
-        print(f"Error updating file: {e}")
+        print(f"\n\033[91m✗\033[0m Error updating file: \033[91m{e}\033[0m")
 
 
 def setup_paths_file(file_path):
