@@ -30,24 +30,31 @@ class AACounterArgumentParser(NGArgumentParser):
                                 type=argparse.FileType('r'),
                                 default=None,
                                 help="Perform counting given a TSV file.",
+                                group="Input method (mutually exclusive)"
                                 )
         pred_parser.add_argument("--amino-acid", "-a",
                                 dest="aa",
                                 default=None,
                                 help="Define the amino acid that needs to be counted.",
+                                group="Input TSV-specific options"
                                 )
         pred_parser.add_argument("--input-json", "-j",
                                 dest="input_json",
                                 type=argparse.FileType('r'),
                                 default=None,
                                 help="Perform counting given a JSON file.",
+                                group="Input method (mutually exclusive)",
                                 )
         pred_parser.add_argument("--output-prefix", "-o",
                                 dest="output_prefix",
                                 help="prediction result output prefix.",
-                                metavar="OUTPUT_PREFIX")
+                                metavar="OUTPUT_PREFIX",
+                                group="Output options"
+                                )
         pred_parser.add_argument("--output-format", "-f",
                                 dest="output_format",
                                 default="json",
                                 help="prediction result output format (Default=tsv)",
-                                metavar="OUTPUT_FORMAT")
+                                metavar="OUTPUT_FORMAT",
+                                group="Output options"
+                                )
