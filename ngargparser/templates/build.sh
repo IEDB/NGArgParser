@@ -15,14 +15,19 @@ TOOL_NAME=ng_bcell
 TOOL_VERSION="${TOOL_VERSION:-local}"
 TOOL_DIR=$TOOL_NAME-$TOOL_VERSION
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR=$SRC_DIR/build/$TOOL_DIR
+PROJECT_ROOT="$(cd "$SRC_DIR/.." && pwd)"
+BUILD_DIR=$PROJECT_ROOT/build/$TOOL_DIR
 
 # Clean and recreate build directory
 rm -rf $BUILD_DIR
 mkdir -p $BUILD_DIR
 
-# Copy everything first
-rsync --cvs-exclude --exclude build --exclude-from='do-not-distribute.txt' -a --delete $SRC_DIR/ $BUILD_DIR/
+# Copy project files from project root, excluding build directory and do-not-distribute files
+if [ -f "$PROJECT_ROOT/do-not-distribute.txt" ]; then
+    rsync --cvs-exclude --exclude build --exclude-from="$PROJECT_ROOT/do-not-distribute.txt" -a --delete $PROJECT_ROOT/ $BUILD_DIR/
+else
+    rsync --cvs-exclude --exclude build -a --delete $PROJECT_ROOT/ $BUILD_DIR/
+fi
 
 # Create libs directory (this will be a real directory, not a symlink)
 mkdir -p $BUILD_DIR/libs
@@ -31,37 +36,41 @@ mkdir -p $BUILD_DIR/libs
 # This will be replaced with symbolic links
 find $BUILD_DIR -mindepth 1 -maxdepth 1 ! -name 'libs' -exec rm -rf {} +
 
-# Create symbolic links for all files from source directory
+# Create symbolic links for all files from project root directory
 # This ensures everything can be synced back to source except VERSION, libs/, and README files
-for item in $SRC_DIR/*; do
+for item in $PROJECT_ROOT/*; do
     if [ -e "$item" ]; then
         item_name=$(basename "$item")
         # Skip if it's the build directory, README files, or do-not-distribute files
-        if [ "$item_name" != "build" ] && [ "$item_name" != "README" ] && [ "$item_name" != "README.md" ] && [ -f "$SRC_DIR/do-not-distribute.txt" ]; then
-            if ! grep -q "^$item_name$" "$SRC_DIR/do-not-distribute.txt" 2>/dev/null; then
+        if [ "$item_name" != "build" ] && [ "$item_name" != "README" ] && [ "$item_name" != "README.md" ]; then
+            if [ -f "$PROJECT_ROOT/do-not-distribute.txt" ]; then
+                if ! grep -q "^$item_name$" "$PROJECT_ROOT/do-not-distribute.txt" 2>/dev/null; then
+                    ln -sf "$item" "$BUILD_DIR/$item_name"
+                fi
+            else
                 ln -sf "$item" "$BUILD_DIR/$item_name"
             fi
-        elif [ "$item_name" != "build" ] && [ "$item_name" != "README" ] && [ "$item_name" != "README.md" ]; then
-            ln -sf "$item" "$BUILD_DIR/$item_name"
         fi
     fi
 done
 
 # Copy README files as real files (not symlinks)
-if [ -f "$SRC_DIR/README" ]; then
-    cp "$SRC_DIR/README" "$BUILD_DIR/README"
+if [ -f "$PROJECT_ROOT/README" ]; then
+    cp "$PROJECT_ROOT/README" "$BUILD_DIR/README"
 fi
-if [ -f "$SRC_DIR/README.md" ]; then
-    cp "$SRC_DIR/README.md" "$BUILD_DIR/README.md"
+if [ -f "$PROJECT_ROOT/README.md" ]; then
+    cp "$PROJECT_ROOT/README.md" "$BUILD_DIR/README.md"
 fi
 
 # Use sed to replace the string with the environment variable
-if [[ "$(uname)" == "Darwin" ]]; then
-    # For MacOS
-    sed -i "" "s/TOOL_VERSION/${TOOL_VERSION}/g" "$BUILD_DIR/README"
-else
-    # For Linux
-    sed -i "s/TOOL_VERSION/${TOOL_VERSION}/g" "$BUILD_DIR/README"
+if [ -f "$BUILD_DIR/README" ]; then
+    if [[ "$(uname)" == "Darwin" ]]; then
+        # For MacOS
+        sed -i "" "s/TOOL_VERSION/${TOOL_VERSION}/g" "$BUILD_DIR/README"
+    else
+        # For Linux
+        sed -i "s/TOOL_VERSION/${TOOL_VERSION}/g" "$BUILD_DIR/README"
+    fi
 fi
 
 # All dependencies should be in the libs directory
@@ -88,8 +97,8 @@ date >> VERSION
 # remove all ._ files
 find . -type f -name '._*' -delete
 
-# Create tarball
-cd $BUILD_DIR/..
+# Create tarball in build directory
+cd $PROJECT_ROOT/build
 TAR_NAME="IEDB_$(echo $TOOL_NAME | tr '[:lower:]' '[:upper:]')-${TOOL_VERSION}.tar.gz"
 tar -chzf $TAR_NAME $TOOL_DIR
 

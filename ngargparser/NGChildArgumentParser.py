@@ -1,7 +1,7 @@
 import textwrap
 import argparse
 import validators
-from NGArgumentParser import NGArgumentParser
+from core.NGArgumentParser import NGArgumentParser
 
 
 class ChildArgumentParser(NGArgumentParser):

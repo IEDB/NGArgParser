@@ -33,10 +33,8 @@ def create_example_structure():
         # Create directory structure
         os.makedirs(project_name)
         os.makedirs(os.path.join(project_name, 'src'))
-        # os.makedirs(os.path.join(project_name, 'output-directory'))
-        # os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'data'))
-        # os.makedirs(os.path.join(project_name, 'output-directory', 'predict-inputs', 'params'))
-        # os.makedirs(os.path.join(project_name, 'output-directory', 'predict-outputs'))
+        os.makedirs(os.path.join(project_name, 'src', 'core'))
+        os.makedirs(os.path.join(project_name, 'packaging'))
         
 
         # Create necessary files
@@ -52,18 +50,22 @@ def create_example_structure():
         shutil.copy(f'{TEMPLATE_DIR}/configure.py', f'{project_name}/src/configure.py')     
         # Make configure.py executable
         os.chmod(f'{project_name}/src/configure.py', 0o755)
-        shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/NGArgumentParser.py')
+        
+        # Copy core files to protected core/ directory
+        shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/core/NGArgumentParser.py')
+        shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core/core_validators.py')
+        
+        # Copy user-modifiable files to src/
         shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
-        shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core_validators.py')
 
-        # Copy build.sh, Makefile, and do-not-distribute.txt to project root
-        shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/build.sh')
-        shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/Makefile')
-        shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/do-not-distribute.txt')
+        # Copy packaging files to packaging/ directory
+        shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/packaging/build.sh')
+        shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/packaging/Makefile')
+        shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/packaging/do-not-distribute.txt')
         # Make build.sh executable
-        os.chmod(f'{project_name}/build.sh', 0o755)
+        os.chmod(f'{project_name}/packaging/build.sh', 0o755)
         # Replace TOOL_NAME in build.sh for example app
-        replace_text_in_place(f'{project_name}/build.sh', 'TOOL_NAME=ng_appname', 'TOOL_NAME=ng_aa-counter')
+        replace_text_in_place(f'{project_name}/packaging/build.sh', 'TOOL_NAME=ng_bcell', 'TOOL_NAME=ng_aa-counter')
 
         # Create configure executable file
         configure_file = f'{project_name}/configure'
@@ -85,6 +87,8 @@ def create_project_structure(project_name):
         # Create directory structure
         os.makedirs(project_name)
         os.makedirs(os.path.join(project_name, 'src'))
+        os.makedirs(os.path.join(project_name, 'src', 'core'))
+        os.makedirs(os.path.join(project_name, 'packaging'))
 
         
         # Create necessary files
@@ -99,19 +103,23 @@ def create_project_structure(project_name):
         shutil.copy(f'{TEMPLATE_DIR}/configure.py', f'{project_name}/src/configure.py')     
         # Make configure.py executable
         os.chmod(f'{project_name}/src/configure.py', 0o755)
-        shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/NGArgumentParser.py')
-        shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
-        shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core_validators.py')
         
-        # Copy build.sh, Makefile, and do-not-distribute.txt to project root
-        shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/build.sh')
-        shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/Makefile')
-        shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/do-not-distribute.txt')
+        # Copy core files to protected core/ directory
+        shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/core/NGArgumentParser.py')
+        shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core/core_validators.py')
+        
+        # Copy user-modifiable files to src/
+        shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
+        
+        # Copy packaging files to packaging/ directory
+        shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/packaging/build.sh')
+        shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/packaging/Makefile')
+        shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/packaging/do-not-distribute.txt')
         # Make build.sh executable
-        os.chmod(f'{project_name}/build.sh', 0o755)
+        os.chmod(f'{project_name}/packaging/build.sh', 0o755)
         # Replace TOOL_NAME in build.sh
-        replace_text_in_place(f'{project_name}/build.sh', 'TOOL_NAME=ng_appname', f'TOOL_NAME=ng_{project_name}')
-
+        replace_text_in_place(f'{project_name}/packaging/build.sh', 'TOOL_NAME=ng_bcell', f'TOOL_NAME=ng_{project_name}')
+        
         # Try to copy license file, but don't fail if it's not available
         license_source = f'{NGPARSER_DIR}/license-LJI.txt'
         if os.path.exists(license_source):
@@ -653,11 +661,65 @@ def setup_paths_command(args):
     setup_paths_file(args.paths_file)
 
 
+def build_command(args):
+    """Run the make build command using the Makefile."""
+    try:
+        import subprocess
+        import os
+        
+        # Check if we're in a project directory with a Makefile
+        if os.path.exists('packaging/Makefile'):
+            print("Running make build from packaging directory...")
+            result = subprocess.run(['make', '-f', 'packaging/Makefile', 'build'], check=True)
+            print(f"\033[92m✓\033[0m Build completed successfully.")
+        elif os.path.exists('Makefile'):
+            print("Running make build from current directory...")
+            result = subprocess.run(['make', 'build'], check=True)
+            print(f"\033[92m✓\033[0m Build completed successfully.")
+        else:
+            print(f"\033[91m✗\033[0m Error: Makefile not found in packaging/ or current directory")
+            print("Make sure you're in a project directory with a Makefile.")
+            return 1
+    except subprocess.CalledProcessError as e:
+        print(f"\033[91m✗\033[0m Build failed with exit code {e.returncode}")
+        return e.returncode
+    except Exception as e:
+        print(f"\033[91m✗\033[0m Error running build: {e}")
+        return 1
+
+
+def clean_command(args):
+    """Run the make clean command using the Makefile."""
+    try:
+        import subprocess
+        import os
+        
+        # Check if we're in a project directory with a Makefile
+        if os.path.exists('packaging/Makefile'):
+            print("Running make clean from packaging directory...")
+            result = subprocess.run(['make', '-f', 'packaging/Makefile', 'clean'], check=True)
+            print(f"\033[92m✓\033[0m Clean completed successfully.")
+        elif os.path.exists('Makefile'):
+            print("Running make clean from current directory...")
+            result = subprocess.run(['make', 'clean'], check=True)
+            print(f"\033[92m✓\033[0m Clean completed successfully.")
+        else:
+            print(f"\033[91m✗\033[0m Error: Makefile not found in packaging/ or current directory")
+            print("Make sure you're in a project directory with a Makefile.")
+            return 1
+    except subprocess.CalledProcessError as e:
+        print(f"\033[91m✗\033[0m Clean failed with exit code {e.returncode}")
+        return e.returncode
+    except Exception as e:
+        print(f"\033[91m✗\033[0m Error running clean: {e}")
+        return 1
+
+
 def main():
     parser = argparse.ArgumentParser(description='NG Argument Parser Framework')
     subparsers = parser.add_subparsers(dest='command')
 
-    # Create 'startapp' sub-command
+    # Create 'generate' sub-command
     startapp_parser = subparsers.add_parser('generate',  aliases=["g"], allow_abbrev=True, help='Create a new custom app project structure')
     startapp_parser.add_argument('project_name', type=str, help='Name of the project to create')
 
@@ -665,14 +727,24 @@ def main():
     setup_paths_parser = subparsers.add_parser('setup-paths', help='Setup or update paths.py with tool dependencies')
     setup_paths_parser.add_argument('paths_file', type=str, help='Path to the paths.py file to create or update')
 
+    # Create 'build' sub-command
+    build_parser = subparsers.add_parser('build', help='Build the project')
+    
+    # Create 'clean' sub-command
+    clean_parser = subparsers.add_parser('clean', help='Clean the project')
+
     args = parser.parse_args()
 
     if args.command == 'generate' or args.command == 'g':
         startapp_command(args)
     elif args.command == 'setup-paths':
         setup_paths_command(args)
+    elif args.command == 'build':
+        build_command(args)
+    elif args.command == 'clean':
+        clean_command(args)
     else:
-        parser.print_help()  # Print help message if 'startapp' command is not specified
+        parser.print_help()  # Print help message if no command is specified
 
 if __name__ == '__main__':
     main()

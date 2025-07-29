@@ -1,6 +1,6 @@
 import textwrap
 import argparse
-from NGArgumentParser import NGArgumentParser
+from core.NGArgumentParser import NGArgumentParser
 
 
 class AACounterArgumentParser(NGArgumentParser):

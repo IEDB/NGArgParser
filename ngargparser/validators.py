@@ -7,7 +7,7 @@
 #           type=validators.validate_directory)
 # ====================================================================================
 # Import all core validators (DO NOT MODIFY)
-from core_validators import (
+from core.core_validators import (
     get_dependencies_from_paths,
     create_directory_structure_for_dependencies,
     validate_file,
