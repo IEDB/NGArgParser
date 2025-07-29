@@ -79,6 +79,86 @@ class SubparserWrapper:
                     return choice_action.help
         return None
 
+    def update_arguments(self, *args, **new_kwargs):
+        """Update an existing argument with new properties.
+
+        This method finds an existing argument in this subparser and redefines it with new properties
+        such as help text, default value, group, etc.
+
+        Args:
+            *args: Argument name and option string (e.g., "--output-format", "-f")
+            **new_kwargs: New properties to apply to the argument (help, default, group, metavar, etc.)
+
+        Returns:
+            bool: True if the argument was successfully updated, False otherwise
+
+        Example:
+            self.parser_postprocess.update_arguments("--custom-output-format", "-c",
+                                dest="custom_output_format",
+                                default="json",
+                                help="Custom output format for postprocessed results (Default=json)",
+                                metavar="CUSTOM_OUTPUT_FORMAT",
+                                group="custom options"
+                                )
+        """
+        if not args:
+            return False
+        
+        # Get the primary argument name (first argument)
+        argument_name = args[0]
+        
+        # Find the argument in any existing group
+        target_action = None
+        original_group = None
+        
+        for group in self._subparser._action_groups:
+            for action in group._group_actions:
+                if argument_name in action.option_strings:
+                    target_action = action
+                    original_group = group
+                    break
+            if target_action:
+                break
+        
+        if not target_action or not original_group:
+            return False
+        
+        # Remove from original group
+        original_group._group_actions.remove(target_action)
+        
+        # Update option strings if new ones are provided
+        if len(args) > 1:
+            target_action.option_strings = list(args)
+        
+        # Apply new properties to the action
+        for key, value in new_kwargs.items():
+            if hasattr(target_action, key):
+                setattr(target_action, key, value)
+        
+        # Handle group change if specified
+        new_group_name = new_kwargs.get('group')
+        if new_group_name:
+            # Find or create the new group
+            new_group = None
+            for group in self._subparser._action_groups:
+                if group.title == new_group_name:
+                    new_group = group
+                    break
+            
+            if not new_group:
+                # Create new group if it doesn't exist
+                new_group = self._subparser.add_argument_group(new_group_name)
+            
+            # Add to new group
+            new_group._group_actions.append(target_action)
+        else:
+            # Keep in original group
+            original_group._group_actions.append(target_action)
+        
+        return True
+
+
+
 
 class NGArgumentParser(argparse.ArgumentParser):
     ''' Setting default paths '''
@@ -380,7 +460,6 @@ class NGArgumentParser(argparse.ArgumentParser):
             # Need to remove from both the group and the subparser
             group_actions.remove(action)
             subparser._actions.remove(action)
-
 
 
     @staticmethod
