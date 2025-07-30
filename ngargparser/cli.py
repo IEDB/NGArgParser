@@ -77,6 +77,14 @@ def create_example_structure():
         # Make the file executable
         os.chmod(configure_file, 0o755)
 
+        # Create empty requirements.txt file
+        requirements_file = f'{project_name}/requirements.txt'
+        with open(requirements_file, 'w') as f:
+            f.write('# Add your project dependencies here\n')
+            f.write('# Example:\n')
+            f.write('# numpy>=1.21.0\n')
+            f.write('# pandas>=1.3.0\n')
+
         print(f"Created '{project_name}' project structure successfully.")
     except Exception as e:
         print(f"\033[91m✗ Error: {e}\033[0m")
@@ -142,6 +150,14 @@ def create_project_structure(project_name):
         
         # Make the file executable
         os.chmod(configure_file, 0o755)
+
+        # Create empty requirements.txt file
+        requirements_file = f'{project_name}/requirements.txt'
+        with open(requirements_file, 'w') as f:
+            f.write('# Add your project dependencies here\n')
+            f.write('# Example:\n')
+            f.write('# numpy>=1.21.0\n')
+            f.write('# pandas>=1.3.0\n')
 
         print(f"Created '{project_name}' project structure successfully.")
     except Exception as e:
