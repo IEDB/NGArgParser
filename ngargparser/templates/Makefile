@@ -1,22 +1,22 @@
 SHELL := /bin/bash
 
-# download all dependencies and build a tar archive
-.PHONY: build
+# Makefile for ngargparser projects
+
+.PHONY: build clean
+
 build:
-	@if [ -f "./packaging/build.sh" ]; then \
-		cd packaging && ./build.sh; \
-	elif [ -f "./build.sh" ]; then \
-		./build.sh; \
+	@if [ -f "./scripts/build.sh" ]; then \
+		cd scripts && ./build.sh; \
 	else \
-		echo "Error: build.sh not found in packaging/ or current directory"; \
+		echo "Error: build.sh not found in scripts/ or current directory"; \
 		exit 1; \
 	fi
 
-# clean the build directory
-.PHONY: clean
 clean:
-	@if [ -f "./packaging/build.sh" ]; then \
+	@if [ -f "./scripts/build.sh" ]; then \
 		rm -rf build; \
+		echo "Build directory cleaned."; \
 	else \
-		rm -rf build; \
+		echo "Error: build.sh not found in scripts/ or current directory"; \
+		exit 1; \
 	fi

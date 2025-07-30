@@ -34,7 +34,7 @@ def create_example_structure():
         os.makedirs(project_name)
         os.makedirs(os.path.join(project_name, 'src'))
         os.makedirs(os.path.join(project_name, 'src', 'core'))
-        os.makedirs(os.path.join(project_name, 'packaging'))
+        os.makedirs(os.path.join(project_name, 'scripts'))
         
 
         # Create necessary files
@@ -58,14 +58,14 @@ def create_example_structure():
         # Copy user-modifiable files to src/
         shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
 
-        # Copy packaging files to packaging/ directory
-        shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/packaging/build.sh')
-        shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/packaging/Makefile')
-        shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/packaging/do-not-distribute.txt')
+        # Copy scripts files to scripts/ directory
+        shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/scripts/build.sh')
+        shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/scripts/Makefile')
+        shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/scripts/do-not-distribute.txt')
         # Make build.sh executable
-        os.chmod(f'{project_name}/packaging/build.sh', 0o755)
+        os.chmod(f'{project_name}/scripts/build.sh', 0o755)
         # Replace TOOL_NAME in build.sh for example app
-        replace_text_in_place(f'{project_name}/packaging/build.sh', 'TOOL_NAME=ng_bcell', 'TOOL_NAME=ng_aa-counter')
+        replace_text_in_place(f'{project_name}/scripts/build.sh', 'TOOL_NAME=ng_bcell', 'TOOL_NAME=ng_aa-counter')
 
         # Create configure executable file
         configure_file = f'{project_name}/configure'
@@ -96,7 +96,7 @@ def create_project_structure(project_name):
         os.makedirs(project_name)
         os.makedirs(os.path.join(project_name, 'src'))
         os.makedirs(os.path.join(project_name, 'src', 'core'))
-        os.makedirs(os.path.join(project_name, 'packaging'))
+        os.makedirs(os.path.join(project_name, 'scripts'))
 
         
         # Create necessary files
@@ -119,14 +119,14 @@ def create_project_structure(project_name):
         # Copy user-modifiable files to src/
         shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
         
-        # Copy packaging files to packaging/ directory
-        shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/packaging/build.sh')
-        shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/packaging/Makefile')
-        shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/packaging/do-not-distribute.txt')
+        # Copy scripts files to scripts/ directory
+        shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/scripts/build.sh')
+        shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/scripts/Makefile')
+        shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/scripts/do-not-distribute.txt')
         # Make build.sh executable
-        os.chmod(f'{project_name}/packaging/build.sh', 0o755)
+        os.chmod(f'{project_name}/scripts/build.sh', 0o755)
         # Replace TOOL_NAME in build.sh
-        replace_text_in_place(f'{project_name}/packaging/build.sh', 'TOOL_NAME=ng_bcell', f'TOOL_NAME=ng_{project_name}')
+        replace_text_in_place(f'{project_name}/scripts/build.sh', 'TOOL_NAME=ng_bcell', f'TOOL_NAME=ng_{project_name}')
         
         # Try to copy license file, but don't fail if it's not available
         license_source = f'{NGPARSER_DIR}/license-LJI.txt'
@@ -684,16 +684,16 @@ def build_command(args):
         import os
         
         # Check if we're in a project directory with a Makefile
-        if os.path.exists('packaging/Makefile'):
-            print("Running make build from packaging directory...")
-            result = subprocess.run(['make', '-f', 'packaging/Makefile', 'build'], check=True)
+        if os.path.exists('scripts/Makefile'):
+            print("Running make build from scripts directory...")
+            result = subprocess.run(['make', '-f', 'scripts/Makefile', 'build'], check=True)
             print(f"\033[92m✓\033[0m Build completed successfully.")
         elif os.path.exists('Makefile'):
             print("Running make build from current directory...")
             result = subprocess.run(['make', 'build'], check=True)
             print(f"\033[92m✓\033[0m Build completed successfully.")
         else:
-            print(f"\033[91m✗\033[0m Error: Makefile not found in packaging/ or current directory")
+            print(f"\033[91m✗\033[0m Error: Makefile not found in scripts/ or current directory")
             print("Make sure you're in a project directory with a Makefile.")
             return 1
     except subprocess.CalledProcessError as e:
@@ -711,16 +711,16 @@ def clean_command(args):
         import os
         
         # Check if we're in a project directory with a Makefile
-        if os.path.exists('packaging/Makefile'):
-            print("Running make clean from packaging directory...")
-            result = subprocess.run(['make', '-f', 'packaging/Makefile', 'clean'], check=True)
+        if os.path.exists('scripts/Makefile'):
+            print("Running make clean from scripts directory...")
+            result = subprocess.run(['make', '-f', 'scripts/Makefile', 'clean'], check=True)
             print(f"\033[92m✓\033[0m Clean completed successfully.")
         elif os.path.exists('Makefile'):
             print("Running make clean from current directory...")
             result = subprocess.run(['make', 'clean'], check=True)
             print(f"\033[92m✓\033[0m Clean completed successfully.")
         else:
-            print(f"\033[91m✗\033[0m Error: Makefile not found in packaging/ or current directory")
+            print(f"\033[91m✗\033[0m Error: Makefile not found in scripts/ or current directory")
             print("Make sure you're in a project directory with a Makefile.")
             return 1
     except subprocess.CalledProcessError as e:
