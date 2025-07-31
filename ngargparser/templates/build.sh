@@ -25,7 +25,90 @@ mkdir -p $BUILD_DIR
 # Create libs directory (this will be a real directory, not a symlink)
 mkdir -p $BUILD_DIR/libs
 
+# Process requirements.txt if it exists
+if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
+    echo "Processing requirements.txt..."
 
+    # Check if there are any git repositories in requirements.txt
+    has_git_repos=false
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Skip empty lines and comments
+        if [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]]; then
+            continue
+        fi
+        # Check if line contains a Git repository
+        if [[ "$line" =~ ^git\+ || "$line" =~ github\.com || "$line" =~ gitlab\.com || "$line" =~ gitlab\. ]]; then
+            has_git_repos=true
+            break
+        fi
+    done < "$PROJECT_ROOT/requirements.txt"
+
+    if [ "$has_git_repos" = true ]; then
+        echo "Git repositories detected, creating filtered requirements.txt..."
+        
+        # Create filtered requirements.txt for build directory (Python packages only)
+        > "$BUILD_DIR/requirements.txt"
+
+        # Process each line in requirements.txt
+        while IFS= read -r line || [ -n "$line" ]; do
+            # Skip empty lines and comments
+            if [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]]; then
+                continue
+            fi
+            # Check if line contains a Git repository
+            if [[ "$line" =~ ^git\+ || "$line" =~ github\.com || "$line" =~ gitlab\.com || "$line" =~ gitlab\. ]]; then
+                echo "Installing Git repository: $line"
+                
+                # Parse repository name and clone
+                repo_name=""
+                if [[ "$line" =~ ^git\+ ]]; then
+                    # Parse git+ URL format
+                    base_url=$(echo "$line" | sed 's/^git+//' | sed 's/@[^@]*#.*$//' | sed 's/#.*$//')
+                    branch=""
+                    if [[ "$line" =~ @ ]]; then
+                        branch=$(echo "$line" | sed -n 's/.*@\([^#]*\).*/\1/p')
+                    fi
+                    repo_name=$(echo "$base_url" | sed 's/.*\///' | sed 's/\.git.*//')
+                    
+                    cd "$BUILD_DIR/libs"
+                    if [[ -n "$branch" ]]; then
+                        git clone -b "$branch" --single-branch --depth 1 "$base_url" "$repo_name" 2>/dev/null && rm -rf "$repo_name/.git"
+                    else
+                        git clone --single-branch --depth 1 "$base_url" "$repo_name" 2>/dev/null && rm -rf "$repo_name/.git"
+                    fi
+                    cd "$BUILD_DIR"
+                else
+                    # Handle regular GitHub/GitLab URLs
+                    if [[ "$line" =~ github\.com ]]; then
+                        repo_name=$(echo "$line" | sed -n 's/.*github\.com\/[^\/]*\/\([^\/@]*\).*/\1/p')
+                    elif [[ "$line" =~ gitlab\.com ]]; then
+                        repo_name=$(echo "$line" | sed -n 's/.*gitlab\.com\/[^\/]*\/\([^\/@]*\).*/\1/p')
+                    elif [[ "$line" =~ gitlab\. ]]; then
+                        repo_name=$(echo "$line" | sed -n 's/.*gitlab\.[^\/]*\/[^\/]*\/\([^\/@]*\).*/\1/p')
+                    else
+                        repo_name=$(echo "$line" | sed 's/.*\///' | sed 's/\.git.*//' | sed 's/@.*//' | sed 's/#.*//')
+                    fi
+                    
+                    if [[ -z "$repo_name" ]]; then
+                        repo_name="repo_$(date +%s)"
+                    fi
+                    
+                    cd "$BUILD_DIR/libs"
+                    git clone "$line" "$repo_name" 2>/dev/null && rm -rf "$repo_name/.git"
+                    cd "$BUILD_DIR"
+                fi
+            else
+                # This is a Python package, add to filtered requirements.txt
+                echo "$line" >> "$BUILD_DIR/requirements.txt"
+            fi
+        done < "$PROJECT_ROOT/requirements.txt"
+
+        echo "✓ Processed requirements.txt with Git repository filtering"
+    else
+        echo "No Git repositories detected, symlinking requirements.txt..."
+        # No git repos found, just symlink the original file (will be handled in the main loop)
+    fi
+fi
 
 # Copy only the libs directory and create symlinks for everything else
 # Function to handle src directory
@@ -91,6 +174,12 @@ handle_item() {
             ;;
         "README"|"README.md")
             cp "$item" "$build_dir/$item_name"
+            ;;
+        "requirements.txt")
+            # Only symlink if not already processed as filtered file
+            if [ ! -f "$build_dir/requirements.txt" ]; then
+                ln -sf "$item" "$build_dir/$item_name"
+            fi
             ;;
         *)
             ln -sf "$item" "$build_dir/$item_name"
