@@ -673,8 +673,8 @@ def startapp_command(args):
     create_paths_file(args.project_name)
 
 
-def setup_paths_command(args):
-    setup_paths_file(args.paths_file)
+def config_paths_command(args):
+    setup_paths_file('paths.py')
 
 
 def build_command(args):
@@ -739,9 +739,8 @@ def main():
     startapp_parser = subparsers.add_parser('generate',  aliases=["g"], allow_abbrev=True, help='Create a new custom app project structure')
     startapp_parser.add_argument('project_name', type=str, help='Name of the project to create')
 
-    # Create 'setup-paths' sub-command
-    setup_paths_parser = subparsers.add_parser('setup-paths', help='Setup or update paths.py with tool dependencies')
-    setup_paths_parser.add_argument('paths_file', type=str, help='Path to the paths.py file to create or update')
+    # Create 'config-paths' sub-command
+    config_paths_parser = subparsers.add_parser('config-paths', aliases=["c"], allow_abbrev=True, help='Configure paths.py with tool dependencies in current directory')
 
     # Create 'build' sub-command
     build_parser = subparsers.add_parser('build', help='Build the project')
@@ -753,8 +752,8 @@ def main():
 
     if args.command == 'generate' or args.command == 'g':
         startapp_command(args)
-    elif args.command == 'setup-paths':
-        setup_paths_command(args)
+    elif args.command == 'config-paths' or args.command == 'c':
+        config_paths_command(args)
     elif args.command == 'build':
         build_command(args)
     elif args.command == 'clean':
