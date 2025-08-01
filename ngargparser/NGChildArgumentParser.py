@@ -26,30 +26,30 @@ class ChildArgumentParser(NGArgumentParser):
 
         # ADD subparser prediction descriptions
         # -----------------------------------------------------
-        pred_parser = self.add_predict_subparser(
+        self.parser_predict = self.add_predict_subparser(
             help='',
             description=''
         )
 
         # ADD tool-specific params 
         # -----------------------------------------------------
-        pred_parser.add_argument("--input-tsv", "-t",
+        self.parser_predict.add_argument("--input-tsv", "-t",
                                 dest="input_tsv",
                                 type=argparse.FileType('r'),
                                 default=None,
                                 help="Perform counting given a TSV file.",
                                 )
-        pred_parser.add_argument("--input-json", "-j",
+        self.parser_predict.add_argument("--input-json", "-j",
                                 dest="input_json",
                                 type=argparse.FileType('r'),
                                 default=None,
                                 help="Perform counting given a JSON file.",
                                 )
-        pred_parser.add_argument("--output-prefix", "-o",
+        self.parser_predict.add_argument("--output-prefix", "-o",
                                 dest="output_prefix",
                                 help="prediction result output prefix.",
                                 metavar="OUTPUT_PREFIX")
-        pred_parser.add_argument("--output-format", "-f",
+        self.parser_predict.add_argument("--output-format", "-f",
                                 dest="output_format",
                                 default="json",
                                 help="prediction result output format (Default=tsv)",

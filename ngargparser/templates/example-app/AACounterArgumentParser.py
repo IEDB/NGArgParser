@@ -18,40 +18,40 @@ class AACounterArgumentParser(NGArgumentParser):
 
         # Add/Modify subparser prediction descriptions
         # -----------------------------------------------------
-        pred_parser = self.add_predict_subparser(
+        self.parser_predict = self.add_predict_subparser(
             help='Performs counting given a peptide and an amino acid.',
             description='Given a set of peptides and an amino acid, count the number of times that amino acid occurs in each of the peptides.'
         )
 
         # Add tool-specific params 
         # -----------------------------------------------------
-        pred_parser.add_argument("--input-tsv", "-t",
+        self.parser_predict.add_argument("--input-tsv", "-t",
                                 dest="input_tsv",
                                 type=argparse.FileType('r'),
                                 default=None,
                                 help="Perform counting given a TSV file.",
                                 group="Input method (mutually exclusive)"
                                 )
-        pred_parser.add_argument("--amino-acid", "-a",
+        self.parser_predict.add_argument("--amino-acid", "-a",
                                 dest="aa",
                                 default=None,
                                 help="Define the amino acid that needs to be counted.",
                                 group="Input TSV-specific options"
                                 )
-        pred_parser.add_argument("--input-json", "-j",
+        self.parser_predict.add_argument("--input-json", "-j",
                                 dest="input_json",
                                 type=argparse.FileType('r'),
                                 default=None,
                                 help="Perform counting given a JSON file.",
                                 group="Input method (mutually exclusive)",
                                 )
-        pred_parser.add_argument("--output-prefix", "-o",
+        self.parser_predict.add_argument("--output-prefix", "-o",
                                 dest="output_prefix",
                                 help="prediction result output prefix.",
                                 metavar="OUTPUT_PREFIX",
                                 group="Output options"
                                 )
-        pred_parser.add_argument("--output-format", "-f",
+        self.parser_predict.add_argument("--output-format", "-f",
                                 dest="output_format",
                                 default="json",
                                 help="prediction result output format (Default=tsv)",

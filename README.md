@@ -51,14 +51,14 @@ cli --help
 ```
 
 ```
-usage: cli [-h] {generate,g,setup-paths,build,clean} ...
+usage: cli [-h] {generate,g,config-paths,c,build,clean} ...
 
 NG Argument Parser Framework
 
 positional arguments:
-  {generate,g,setup-paths,build,clean}
+  {generate,g,config-paths,c,build,clean}
     generate (g)        Create a new custom app project structure
-    setup-paths         Setup or update paths.py with tool dependencies
+    config-paths (c)    Configure paths.py with tool dependencies in current directory
     build               Build the project
     clean               Clean the project
 
@@ -152,7 +152,7 @@ self.parser_preprocess.description = 'Detailed preprocessing instructions'
 Arguments can be organized into logical groups for better help display:
 
 ```python
-pred_parser.add_argument("--output-prefix", "-o",
+self.parser_predict.add_argument("--output-prefix", "-o",
                         dest="output_prefix",
                         help="prediction result output prefix.",
                         group="output options")  # Groups related arguments
@@ -217,7 +217,7 @@ The `predict` subparser is customizable by developers. It supports various forma
 
 ```python
 # Use RawDescriptionHelpFormatter to preserve line breaks
-pred_parser = self.add_predict_subparser(
+self.parser_predict = self.add_predict_subparser(
     help='Run prediction algorithms',
     description=textwrap.dedent('''
         Prediction stage executes the core analysis:
@@ -248,20 +248,20 @@ class ExampleArgumentParser(NGArgumentParser):
         ''')
         
         # Add predict subparser with custom configuration
-        pred_parser = self.add_predict_subparser(
+        self.parser_predict = self.add_predict_subparser(
             help='Perform individual prediction.',
             description='This is where users can perform individual predictions.',
             formatter_class=argparse.RawDescriptionHelpFormatter
         )
         
         # Add tool-specific parameters with grouping
-        pred_parser.add_argument("--output-prefix", "-o",
+        self.parser_predict.add_argument("--output-prefix", "-o",
                                 dest="output_prefix",
                                 help="prediction result output prefix.",
                                 metavar="OUTPUT_PREFIX",
                                 group="output options")
         
-        pred_parser.add_argument("--output-format", "-f",
+        self.parser_predict.add_argument("--output-format", "-f",
                                 dest="output_format",
                                 default="json",
                                 help="prediction result output format (Default=json)",
@@ -276,7 +276,7 @@ Modify existing arguments dynamically:
 
 ```python
 # Update an existing argument with new properties
-pred_parser.update_arguments("--output-format", "-f",
+self.parser_predict.update_arguments("--output-format", "-f",
                             default="tsv",
                             help="Updated output format description",
                             group="modified options")
@@ -294,7 +294,7 @@ def validate_custom_input(value):
     return value
 
 # In ArgumentParser
-pred_parser.add_argument("--custom-input",
+self.parser_predict.add_argument("--custom-input",
                         type=validate_custom_input,
                         help="Custom input file (must be .txt)")
 ```
@@ -303,7 +303,7 @@ pred_parser.add_argument("--custom-input",
 
 ### Configuration
 
-After adding dependencies with `cli setup-paths`, configure the project:
+After adding dependencies with `cli config-paths` (or `cli c`), configure the project:
 
 ```bash
 ./configure

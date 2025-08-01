@@ -70,10 +70,10 @@ To customize the app descriptions, help, arguments, etc., developers can modify 
 
 For example, let's add the followings:
 ```python
-pred_parser = self.add_predict_subparser(
+self.parser_predict = self.add_predict_subparser(
             description='This is an example Argument Parser'
         )
-pred_parser.add_argument("--fasta", "-fa",
+self.parser_predict.add_argument("--fasta", "-fa",
                         dest="fasta_file",
                         type=argparse.FileType('r'),
                         default=None,
@@ -126,7 +126,7 @@ def validate_fasta_file(path_str):
 
 Add the validation as a `type` in the **{TOOL_NAME_CAP}ArgumentParser.py**:
 ```python
-pred_parser.add_argument("--fasta", "-fa",
+self.parser_predict.add_argument("--fasta", "-fa",
                         dest="fasta_file",
                         type=validators.validate_fasta_file,
                         default=None,
