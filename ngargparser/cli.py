@@ -54,6 +54,11 @@ def create_example_structure():
         # Copy core files to protected core/ directory
         shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/core/NGArgumentParser.py')
         shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core/core_validators.py')
+        shutil.copy(f'{TEMPLATE_DIR}/set_pythonpath.py', f'{project_name}/src/core/set_pythonpath.py')
+        
+        # Create __init__.py for core package
+        with open(f'{project_name}/src/core/__init__.py', 'w') as f:
+            f.write('')
         
         # Copy user-modifiable files to src/
         shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
@@ -115,6 +120,11 @@ def create_project_structure(project_name):
         # Copy core files to protected core/ directory
         shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/core/NGArgumentParser.py')
         shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core/core_validators.py')
+        shutil.copy(f'{TEMPLATE_DIR}/set_pythonpath.py', f'{project_name}/src/core/set_pythonpath.py')
+        
+        # Create __init__.py for core package
+        with open(f'{project_name}/src/core/__init__.py', 'w') as f:
+            f.write('')
         
         # Copy user-modifiable files to src/
         shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
