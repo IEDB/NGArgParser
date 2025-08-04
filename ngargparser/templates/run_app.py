@@ -2,6 +2,7 @@ import os
 import preprocess
 import postprocess
 import validators
+import core.set_pythonpath  # This automatically configures PYTHONPATH
 from CHILDPARSER import CHILDPARSER
 from dotenv import load_dotenv
 load_dotenv()
