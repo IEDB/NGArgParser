@@ -15,6 +15,37 @@ EXAMPLE_DIR = TEMPLATE_DIR / 'example-app'
 # print(TEMPLATE_DIR, type(TEMPLATE_DIR))
 # print(EXAMPLE_DIR, type(EXAMPLE_DIR))
 
+# Import version from setup.py
+def get_version():
+    try:
+        # Try to get version from installed package metadata first
+        import importlib.metadata
+        return importlib.metadata.version('ngargparser')
+    except ImportError:
+        # Fallback for older Python versions
+        try:
+            import pkg_resources
+            return pkg_resources.get_distribution('ngargparser').version
+        except Exception:
+            pass
+    
+    # Fallback: try to read from setup.py (development mode)
+    try:
+        import re
+        # Look for setup.py in the project root (parent of the package directory)
+        setup_file = NGPARSER_DIR.parent / 'setup.py'
+        with open(setup_file, 'r') as f:
+            content = f.read()
+            version_match = re.search(r"version\s*=\s*['\"]([^'\"]+)['\"]", content)
+            if version_match:
+                return version_match.group(1)
+    except Exception:
+        pass
+    
+    return 'unknown'
+
+__version__ = get_version()
+
 
 def format_project_name(name, capitalize=False):
     name = name.replace('-', '_')
@@ -743,6 +774,10 @@ def clean_command(args):
 
 def main():
     parser = argparse.ArgumentParser(description='NG Argument Parser Framework')
+    
+    # Add version argument
+    parser.add_argument('-v', '--version', action='version', version=f'%(prog)s {__version__}')
+    
     subparsers = parser.add_subparsers(dest='command')
 
     # Create 'generate' sub-command
