@@ -470,6 +470,129 @@ class NGArgumentParser(argparse.ArgumentParser):
             group_actions.remove(action)
             subparser._actions.remove(action)
 
+    def create_job_descriptions_file(self, args):
+        import json
+        from pathlib import Path
+        
+        kwargs = vars(args)
+        params_dir = kwargs.get('preprocess_parameters_dir')
+        
+        # output path
+        OUTPUT_DIR_PATH = kwargs.get('output_dir')
+
+        # job description file path - use the output directory
+        JD_PATH = Path(OUTPUT_DIR_PATH) / 'job_descriptions.json'
+
+        # exec file path - get the current working directory name
+        import os
+        PROJ_NAME = os.path.basename(os.getcwd())
+        PROJ_NAME = self.format_exec_name(PROJ_NAME)
+        EXEC_FILE_PATH = str(Path(__file__).parent.parent) + f'/run_{PROJ_NAME}.py'
+        files_with_ctime = []
+
+        for file_path in Path(params_dir).iterdir():
+            if file_path.is_file():
+                # Get the creation time of the file
+                creation_time = file_path.stat().st_ctime
+                
+                # Store the file path and its creation time as a tuple
+                files_with_ctime.append((file_path, creation_time))
+
+        # Sort files by creation time
+        files_with_ctime.sort(key=lambda x: x[1])
+
+        '''
+        In case user forgets to or doesn't want to remove previous input files
+        in the directory, then group the files by timeframe, then
+        create job_description file by taking only the last group.
+        '''
+        grouped_files = []
+        current_group = []
+        timeframe_seconds=0.1
+
+        for i, (file, ctime) in enumerate(files_with_ctime):
+            if not current_group:
+                current_group.append(file)  # Start a new group
+            else:
+                # Check if the current file's creation time is within the timeframe
+                if ctime - files_with_ctime[i - 1][1] <= timeframe_seconds:
+                    current_group.append(file)
+                else:
+                    grouped_files.append(current_group)  # Save the current group
+                    current_group = [file]  # Start a new group
+
+        # Add the last group if it exists
+        if current_group:
+            grouped_files.append(current_group)
+
+        # for i, gfiles in enumerate(grouped_files):
+        #     print('========================')
+        #     print(f'GROUP {i+1}:')
+        #     print('========================')
+        #     for file in gfiles:
+        #         print(str(file))
+
+        '''
+        Take the last group that was newly created, and create
+        job_description file out of it.
+        '''
+        job_files = grouped_files[-1]
+        with open(JD_PATH, 'w') as f :
+            jd_cmds = []
+            for i, job in enumerate(job_files):
+                param_file_path = str(job)
+                
+                shell_cmd = f'{EXEC_FILE_PATH} predict -j {param_file_path} -o {OUTPUT_DIR_PATH}/predict-outputs/result.{i} -f json'
+                job_id = i
+                job_type = 'prediction'
+                expected_outputs = [
+                    f'{OUTPUT_DIR_PATH}/predict-outputs/result.{i}.json'
+                ]
+
+                jd: JobDescriptionParams = {
+                    'shell_cmd': shell_cmd,
+                    'job_id': job_id,
+                    'job_type': job_type,
+                    'depends_on_job_ids': [],
+                    'expected_outputs': expected_outputs,
+                }
+
+                jd_cmds.append(jd)
+
+            # Add command for postprocessing
+            i += 1
+            shell_cmd = f'{EXEC_FILE_PATH} postprocess --job-desc-file={JD_PATH} -o {OUTPUT_DIR_PATH}/aggregate/final-result -f json'
+            job_id = i
+            job_type = 'postprocess'
+            depends_on_job_ids = list(range(i))
+            expected_outputs = [
+                f'{OUTPUT_DIR_PATH}/aggregate/final-result.json'
+            ]
+
+            jd: JobDescriptionParams = {
+                'shell_cmd': shell_cmd,
+                'job_id': job_id,
+                'job_type': job_type,
+                'depends_on_job_ids': depends_on_job_ids,
+                'expected_outputs': expected_outputs,
+            }
+
+            jd_cmds.append(jd)
+
+            # Write the entire list of jobs to job description file
+            json.dump(jd_cmds, f, indent=4)
+        
+        print(f"Created job descriptions file: {JD_PATH}")
+        print(f"Total jobs: {len(jd_cmds)}")
+
+    def format_exec_name(self, name):
+        """Format the project name for use in executable file names."""
+        # Convert to lowercase and replace spaces/hyphens with underscores
+        formatted = name.lower().replace(' ', '_').replace('-', '_')
+        return formatted
+
+
+
 
     @staticmethod
     def get_app_root_dir(start_dir=None, anchor_files=None):

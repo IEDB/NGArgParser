@@ -183,20 +183,14 @@ def main():
             # raise parser.error("Please define the output file using the '-o' flag.")
             print(json.dumps(result_json, indent=4))
 
-    if args.subcommand == 'preprocess':
-        # Validate Arguments
-        parser.validate_args(args)
-        
+    if args.subcommand == 'preprocess':        
         # Run preprocess logic
         preprocess.run(**vars(args))
         
         # Create job description file
-        parser.create_job_descriptions_file(**vars(args))
+        parser.create_job_descriptions_file(args)
 
     if args.subcommand == 'postprocess':
-        # Validate Arguments
-        parser.validate_args(args)
-
         # Run postprocess logic
         postprocess.run(**vars(args))
 

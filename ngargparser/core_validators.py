@@ -4,8 +4,16 @@
 
 import argparse
 import re
+import os
 import sys
+import dotenv
 from pathlib import Path
+
+# Load environment variables from .env file
+dotenv.load_dotenv()
+
+# Get the project root directory from environment variable
+APP_ROOT = os.getenv('APP_ROOT')
 
 
 def get_dependencies_from_paths(file_path='paths.py'):
@@ -66,7 +74,8 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
     """
     # Handle paths.py file location
     if paths_file_path is None:
-        paths_file = Path(__file__).resolve().parent / "paths.py"
+        # Look for paths.py in the project root (2 levels up from core_validators.py)
+        paths_file = Path(APP_ROOT) / "paths.py"
     else:
         paths_file = Path(paths_file_path)
     

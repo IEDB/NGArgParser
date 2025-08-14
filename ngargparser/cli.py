@@ -83,7 +83,7 @@ def create_example_structure():
         os.chmod(f'{project_name}/src/configure.py', 0o755)
         
         # Copy core files to protected core/ directory
-        shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/core/NGArgumentParser.py')
+        shutil.copy(f'{EXAMPLE_DIR}/NGArgumentParser.py', f'{project_name}/src/core/NGArgumentParser.py')
         shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core/core_validators.py')
         shutil.copy(f'{TEMPLATE_DIR}/set_pythonpath.py', f'{project_name}/src/core/set_pythonpath.py')
         

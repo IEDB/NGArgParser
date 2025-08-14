@@ -84,5 +84,11 @@ def run(**kwargs):
     data = read_json(data)
     input_dir_path = kwargs.get('preprocess_inputs_dir')
     param_dir_path = kwargs.get('preprocess_parameters_dir')
+    
+    # Convert string paths to Path objects
+    if input_dir_path:
+        input_dir_path = Path(input_dir_path)
+    if param_dir_path:
+        param_dir_path = Path(param_dir_path)
 
     split_by_length(data, input_dir_path, param_dir_path)
