@@ -10,12 +10,14 @@ fi
 
 set -ex
 
-TOOL_NAME=ng_bcell
+# Get the app name from the project root directory name
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SRC_DIR/.." && pwd)"
+APP_NAME=$(basename "$PROJECT_ROOT")
+TOOL_NAME=ng_${APP_NAME}
 # pull the tool version from the environment, otherwise set it to 'local'
 TOOL_VERSION="${TOOL_VERSION:-local}"
 TOOL_DIR=$TOOL_NAME-$TOOL_VERSION
-SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SRC_DIR/.." && pwd)"
 BUILD_DIR=$PROJECT_ROOT/build/$TOOL_DIR
 
 # Clean and recreate build directory
@@ -24,6 +26,26 @@ mkdir -p $BUILD_DIR
 
 # Create libs directory (this will be a real directory, not a symlink)
 mkdir -p $BUILD_DIR/libs
+
+# Function to ensure __init__.py files exist in directories
+ensure_init_files() {
+    local dir_name="$1"
+    local full_path="$BUILD_DIR/libs/$dir_name"
+    
+    if [ -d "$full_path" ]; then
+        echo "Ensuring __init__.py files exist in $dir_name..."
+        
+        # Find all subdirectories and create __init__.py files if they don't exist
+        find "$full_path" -type d | while read -r subdir; do
+            if [ ! -f "$subdir/__init__.py" ]; then
+                echo "  Creating __init__.py in: $subdir"
+                echo "# Auto-generated __init__.py file" > "$subdir/__init__.py"
+            fi
+        done
+        
+        echo "✓ __init__.py files ensured in $dir_name"
+    fi
+}
 
 # Process requirements.txt if it exists
 if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
@@ -76,6 +98,10 @@ if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
                     else
                         git clone --single-branch --depth 1 "$base_url" "$repo_name" 2>/dev/null && rm -rf "$repo_name/.git"
                     fi
+                    
+                    # Ensure __init__.py files exist in the cloned repository
+                    ensure_init_files "$repo_name"
+                    
                     cd "$BUILD_DIR"
                 else
                     # Handle regular GitHub/GitLab URLs
@@ -95,6 +121,10 @@ if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
                     
                     cd "$BUILD_DIR/libs"
                     git clone "$line" "$repo_name" 2>/dev/null && rm -rf "$repo_name/.git"
+                    
+                    # Ensure __init__.py files exist in the cloned repository
+                    ensure_init_files "$repo_name"
+                    
                     cd "$BUILD_DIR"
                 fi
             else
@@ -228,6 +258,7 @@ cd $BUILD_DIR/libs
 # =====================================================================
 
 
+
 cd $BUILD_DIR
 
 # create a version file and add the version and date
@@ -236,6 +267,16 @@ date >> VERSION
 
 # remove all ._ files
 find . -type f -name '._*' -delete
+
+# Ensure all directories in libs/ have __init__.py files
+echo "Ensuring __init__.py files exist in all libs directories..."
+find "$BUILD_DIR/libs" -type d | while read -r subdir; do
+    if [ ! -f "$subdir/__init__.py" ]; then
+        echo "  Creating __init__.py in: $subdir"
+        echo "# Auto-generated __init__.py file" > "$subdir/__init__.py"
+    fi
+done
+echo "✓ All __init__.py files ensured"
 
 # Create tarball in build directory
 cd $PROJECT_ROOT/build

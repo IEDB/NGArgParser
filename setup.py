@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
   name = 'ngargparser',         
-  version = '0.1.15',      
+  version = '0.1.16',      
   license='MIT',
   description = 'This is a standardized parser framework for CLI tools. This class will enforce certain properties or abstract methods to be implemented to properly create an Argument Parser class for other CLI tools.',   # Give a short description about your library
   url = 'https://github.com/IEDB/NGArgParser',
