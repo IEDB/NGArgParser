@@ -78,9 +78,9 @@ def create_example_structure():
         shutil.copy(f'{EXAMPLE_DIR}/{parser_file}', f'{project_name}/src/{parser_file}')
         shutil.copy(f'{EXAMPLE_DIR}/preprocess.py', f'{project_name}/src/preprocess.py')
         shutil.copy(f'{EXAMPLE_DIR}/postprocess.py', f'{project_name}/src/postprocess.py')
-        shutil.copy(f'{TEMPLATE_DIR}/configure.py', f'{project_name}/src/configure.py')     
+        shutil.copy(f'{TEMPLATE_DIR}/configure.py', f'{project_name}/src/core/configure.py')     
         # Make configure.py executable
-        os.chmod(f'{project_name}/src/configure.py', 0o755)
+        os.chmod(f'{project_name}/src/core/configure.py', 0o755)
         
         # Copy core files to protected core/ directory
         shutil.copy(f'{EXAMPLE_DIR}/NGArgumentParser.py', f'{project_name}/src/core/NGArgumentParser.py')
@@ -108,7 +108,7 @@ def create_example_structure():
 
         # Create and write the line into the configure file
         with open(configure_file, 'w') as f:
-            f.write(f'./src/configure.py')
+            f.write(f'./src/core/configure.py')
         
         # Make the file executable
         os.chmod(configure_file, 0o755)
@@ -144,9 +144,9 @@ def create_project_structure(project_name):
         shutil.copy(f'{NGPARSER_DIR}/NGChildArgumentParser.py', f'{project_name}/src/{parser_file}')
         shutil.copy(f'{TEMPLATE_DIR}/preprocess.py', f'{project_name}/src/preprocess.py')
         shutil.copy(f'{TEMPLATE_DIR}/postprocess.py', f'{project_name}/src/postprocess.py')
-        shutil.copy(f'{TEMPLATE_DIR}/configure.py', f'{project_name}/src/configure.py')     
+        shutil.copy(f'{TEMPLATE_DIR}/configure.py', f'{project_name}/src/core/configure.py')     
         # Make configure.py executable
-        os.chmod(f'{project_name}/src/configure.py', 0o755)
+        os.chmod(f'{project_name}/src/core/configure.py', 0o755)
         
         # Copy core files to protected core/ directory
         shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/core/NGArgumentParser.py')
@@ -164,8 +164,11 @@ def create_project_structure(project_name):
         shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/scripts/build.sh')
         shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/scripts/Makefile')
         shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/scripts/do-not-distribute.txt')
+        shutil.copy(f'{TEMPLATE_DIR}/dependencies.sh', f'{project_name}/scripts/dependencies.sh')
         # Make build.sh executable
         os.chmod(f'{project_name}/scripts/build.sh', 0o755)
+        # Make dependencies.sh executable
+        os.chmod(f'{project_name}/scripts/dependencies.sh', 0o755)
         # Replace TOOL_NAME in build.sh
         replace_text_in_place(f'{project_name}/scripts/build.sh', 'TOOL_NAME=ng_bcell', f'TOOL_NAME=ng_{project_name}')
         
@@ -180,14 +183,14 @@ def create_project_structure(project_name):
         # Add default content to all the files
         replace_text_in_place(f'{project_name}/src/{exec_file}', 'CHILDPARSER', parser_name)
         replace_text_in_place(f'{project_name}/src/{parser_file}', 'ChildArgumentParser', parser_name)        
-        replace_text_in_place(f'{project_name}/src/configure.py', 'PROJECT_NAME', project_name)
+        replace_text_in_place(f'{project_name}/src/core/configure.py', 'PROJECT_NAME', project_name)
 
         # Create configure executable file
         configure_file = f'{project_name}/configure'
 
         # Create and write the line into the configure file
         with open(configure_file, 'w') as f:
-            f.write(f'./src/configure.py')
+            f.write(f'./src/core/configure.py')
         
         # Make the file executable
         os.chmod(configure_file, 0o755)

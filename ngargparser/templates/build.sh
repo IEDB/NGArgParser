@@ -252,11 +252,29 @@ cd $BUILD_DIR/libs
 # This is where you should add commands to download/install dependencies
 # that should be included in the libs/ directory.
 #
+# You can either:
+# 1. Add your dependency commands directly below this comment, OR
+# 2. Create a custom dependencies.sh script in your scripts/ directory
+#
 # Examples:
 #   - git clone https://github.com/IEDB/nxg-tools.git
 #   - wget https://example.com/allele-validator.tar.gz && tar xf allele-validator.tar.gz
 # =====================================================================
 
+# Check if a custom dependencies script exists and execute it
+if [ -f "$SRC_DIR/dependencies.sh" ]; then
+    echo "Executing custom dependencies script: $SRC_DIR/dependencies.sh"
+    if [ -x "$SRC_DIR/dependencies.sh" ]; then
+        # Script is executable, run it directly
+        "$SRC_DIR/dependencies.sh"
+    else
+        # Script is not executable, run it with bash
+        bash "$SRC_DIR/dependencies.sh"
+    fi
+    echo "✓ Custom dependencies script completed"
+else
+    echo "No custom dependencies script found. Add dependency commands above or create scripts/dependencies.sh"
+fi
 
 
 cd $BUILD_DIR
