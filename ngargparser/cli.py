@@ -775,6 +775,114 @@ def clean_command(args):
         return 1
 
 
+def sync_command(args):
+    """Synchronize framework files in existing projects to the latest version."""
+    try:
+        import os
+        import shutil
+        import filecmp
+        
+        # Check if we're in a project directory
+        if not os.path.exists('src/core') or not os.path.exists('scripts'):
+            print(f"\033[91m✗\033[0m Error: This doesn't appear to be a valid ngargparser project directory")
+            print("Make sure you're in a project directory with src/core/ and scripts/ subdirectories.")
+            return 1
+        
+        print("Synchronizing framework files to latest version...")
+        
+        # Get the project name from current directory
+        project_name = os.path.basename(os.getcwd())
+        print(f"Project: {project_name}")
+        
+        # Update core files (src/core/*)
+        print("\nUpdating src/core/ files...")
+        core_files_updated = 0
+        
+        # Update NGArgumentParser.py
+        if os.path.exists('src/core/NGArgumentParser.py'):
+            if not filecmp.cmp(f'{NGPARSER_DIR}/NGArgumentParser.py', 'src/core/NGArgumentParser.py', shallow=False):
+                shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', 'src/core/NGArgumentParser.py')
+                print("  └ Updated NGArgumentParser.py")
+                core_files_updated += 1
+            else:
+                print("  └ NGArgumentParser.py is already up to date")
+        
+        # Update core_validators.py
+        if os.path.exists('src/core/core_validators.py'):
+            if not filecmp.cmp(f'{NGPARSER_DIR}/core_validators.py', 'src/core/core_validators.py', shallow=False):
+                shutil.copy(f'{NGPARSER_DIR}/core_validators.py', 'src/core/core_validators.py')
+                print("  └ Updated core_validators.py")
+                core_files_updated += 1
+            else:
+                print("  └ core_validators.py is already up to date")
+        
+        # Update set_pythonpath.py
+        if os.path.exists('src/core/set_pythonpath.py'):
+            if not filecmp.cmp(f'{TEMPLATE_DIR}/set_pythonpath.py', 'src/core/set_pythonpath.py', shallow=False):
+                shutil.copy(f'{TEMPLATE_DIR}/set_pythonpath.py', 'src/core/set_pythonpath.py')
+                print("  └ Updated set_pythonpath.py")
+                core_files_updated += 1
+            else:
+                print("  └ set_pythonpath.py is already up to date")
+        
+        # Update configure.py
+        if os.path.exists('src/core/configure.py'):
+            if not filecmp.cmp(f'{TEMPLATE_DIR}/configure.py', 'src/core/configure.py', shallow=False):
+                shutil.copy(f'{TEMPLATE_DIR}/configure.py', 'src/core/configure.py')
+                os.chmod('src/core/configure.py', 0o755)  # Make executable
+                print("  └ Updated configure.py")
+                core_files_updated += 1
+            else:
+                print("  └ configure.py is already up to date")
+        
+        # Update scripts files (except dependencies.sh)
+        print("\nUpdating scripts/ files...")
+        script_files_updated = 0
+        
+        # Update build.sh
+        if os.path.exists('scripts/build.sh'):
+            if not filecmp.cmp(f'{TEMPLATE_DIR}/build.sh', 'scripts/build.sh', shallow=False):
+                shutil.copy(f'{TEMPLATE_DIR}/build.sh', 'scripts/build.sh')
+                os.chmod('scripts/build.sh', 0o755)  # Make executable
+                print("  └ Updated build.sh")
+                script_files_updated += 1
+            else:
+                print("  └ build.sh is already up to date")
+        
+        # Update Makefile
+        if os.path.exists('scripts/Makefile'):
+            if not filecmp.cmp(f'{TEMPLATE_DIR}/Makefile', 'scripts/Makefile', shallow=False):
+                shutil.copy(f'{TEMPLATE_DIR}/Makefile', 'scripts/Makefile')
+                print("  └ Updated Makefile")
+                script_files_updated += 1
+            else:
+                print("  └ Makefile is already up to date")
+        
+        # # Update do-not-distribute.txt
+        # if os.path.exists('scripts/do-not-distribute.txt'):
+        #     shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', 'scripts/do-not-distribute.txt')
+        #     print("  └ Updated do-not-distribute.txt")
+        #     script_files_updated += 1
+        
+        # Summary
+        print(f"\nSynchronization Summary:")
+        print(f"  └ Core files updated: \033[92m{core_files_updated}\033[0m")
+        print(f"  └ Script files updated: \033[92m{script_files_updated}\033[0m")
+        print(f"  └ Total files updated: \033[92m{core_files_updated + script_files_updated}\033[0m")
+        
+        if core_files_updated + script_files_updated > 0:
+            print(f"\n\033[92m✓\033[0m Framework synchronization completed successfully!")
+            print(f"Your {project_name} project now has the latest framework files.")
+        else:
+            print(f"\n\033[93m⚠\033[0m No files needed updating - your project is already up to date!")
+        
+        return 0
+        
+    except Exception as e:
+        print(f"\033[91m✗\033[0m Error during synchronization: {e}")
+        return 1
+
+
 def main():
     parser = argparse.ArgumentParser(description='NG Argument Parser Framework')
     
@@ -790,6 +898,9 @@ def main():
     # Create 'config-paths' sub-command
     config_paths_parser = subparsers.add_parser('config-paths', aliases=["c"], allow_abbrev=True, help='Configure paths.py with tool dependencies in current directory')
 
+    # Create 'sync' sub-command
+    sync_parser = subparsers.add_parser('sync', aliases=["s"], allow_abbrev=True, help='Synchronize framework files in existing projects to the latest version.')
+
     # Create 'build' sub-command
     build_parser = subparsers.add_parser('build', help='Build the project')
     
@@ -802,6 +913,8 @@ def main():
         startapp_command(args)
     elif args.command == 'config-paths' or args.command == 'c':
         config_paths_command(args)
+    elif args.command == 'sync' or args.command == 's':
+        sync_command(args)
     elif args.command == 'build':
         build_command(args)
     elif args.command == 'clean':
