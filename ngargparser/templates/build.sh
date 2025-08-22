@@ -265,15 +265,30 @@ cd $BUILD_DIR/libs
 if [ -f "$SRC_DIR/dependencies.sh" ]; then
     echo "Executing custom dependencies script: $SRC_DIR/dependencies.sh"
     if [ -x "$SRC_DIR/dependencies.sh" ]; then
-        # Script is executable, run it directly
-        "$SRC_DIR/dependencies.sh"
+        # Script is executable, run it directly with all relevant variables as environment variables
+        SRC_DIR="$SRC_DIR" PROJECT_ROOT="$PROJECT_ROOT" APP_NAME="$APP_NAME" TOOL_NAME="$TOOL_NAME" TOOL_VERSION="$TOOL_VERSION" TOOL_DIR="$TOOL_DIR" BUILD_DIR="$BUILD_DIR" "$SRC_DIR/dependencies.sh"
     else
-        # Script is not executable, run it with bash
-        bash "$SRC_DIR/dependencies.sh"
+        # Script is not executable, run it with bash and all relevant variables as environment variables
+        SRC_DIR="$SRC_DIR" PROJECT_ROOT="$PROJECT_ROOT" APP_NAME="$APP_NAME" TOOL_NAME="$TOOL_NAME" TOOL_VERSION="$TOOL_VERSION" TOOL_DIR="$TOOL_DIR" BUILD_DIR="$BUILD_DIR" bash "$SRC_DIR/dependencies.sh"
     fi
     echo "✓ Custom dependencies script completed"
 else
     echo "No custom dependencies script found. Add dependency commands above or create scripts/dependencies.sh"
+fi
+
+# Check for any new dependency directories and ensure they have __init__.py files
+# Only process directories if they exist
+# Only process directories if libs/ is not empty and contains directories
+if [ "$(find . -mindepth 1 -maxdepth 1 -type d)" ]; then
+    for dir in */; do
+        if [ -d "$dir" ]; then
+            # Get directory name without trailing slash
+            dir_name=${dir%/}
+            ensure_init_files "$dir_name"
+        fi
+    done
+else
+    echo "No directories found in libs/ to process"
 fi
 
 
