@@ -783,9 +783,9 @@ def sync_command(args):
         import filecmp
         
         # Check if we're in a project directory
-        if not os.path.exists('src/core') or not os.path.exists('scripts'):
+        if not os.path.exists('src') or not os.path.exists('scripts'):
             print(f"\033[91m✗\033[0m Error: This doesn't appear to be a valid ngargparser project directory")
-            print("Make sure you're in a project directory with src/core/ and scripts/ subdirectories.")
+            print("Make sure you're in a project directory with src/ and scripts/ subdirectories.")
             return 1
         
         print("Synchronizing framework files to latest version...")
@@ -793,6 +793,11 @@ def sync_command(args):
         # Get the project name from current directory
         project_name = os.path.basename(os.getcwd())
         print(f"Project: {project_name}")
+        
+        # Ensure src/core/ directory exists
+        if not os.path.exists('src/core'):
+            os.makedirs('src/core', exist_ok=True)
+            print("  └ Created src/core/ directory")
         
         # Update core files (src/core/*)
         print("\nUpdating src/core/ files...")
@@ -806,6 +811,11 @@ def sync_command(args):
                 core_files_updated += 1
             else:
                 print("  └ NGArgumentParser.py is already up to date")
+        else:
+            # Create the file in the correct location
+            shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', 'src/core/NGArgumentParser.py')
+            print("  └ Created NGArgumentParser.py in src/core/")
+            core_files_updated += 1
         
         # Update core_validators.py
         if os.path.exists('src/core/core_validators.py'):
@@ -815,6 +825,11 @@ def sync_command(args):
                 core_files_updated += 1
             else:
                 print("  └ core_validators.py is already up to date")
+        else:
+            # Create the file in the correct location
+            shutil.copy(f'{NGPARSER_DIR}/core_validators.py', 'src/core/core_validators.py')
+            print("  └ Created core_validators.py in src/core/")
+            core_files_updated += 1
         
         # Update set_pythonpath.py
         if os.path.exists('src/core/set_pythonpath.py'):
@@ -824,6 +839,11 @@ def sync_command(args):
                 core_files_updated += 1
             else:
                 print("  └ set_pythonpath.py is already up to date")
+        else:
+            # Create the file in the correct location
+            shutil.copy(f'{TEMPLATE_DIR}/set_pythonpath.py', 'src/core/set_pythonpath.py')
+            print("  └ Created set_pythonpath.py in src/core/")
+            core_files_updated += 1
         
         # Update configure.py
         if os.path.exists('src/core/configure.py'):
@@ -834,6 +854,12 @@ def sync_command(args):
                 core_files_updated += 1
             else:
                 print("  └ configure.py is already up to date")
+        else:
+            # Create the file in the correct location
+            shutil.copy(f'{TEMPLATE_DIR}/configure.py', 'src/core/configure.py')
+            os.chmod('src/core/configure.py', 0o755)  # Make executable
+            print("  └ Created configure.py in src/core/")
+            core_files_updated += 1
         
         # Update scripts files (except dependencies.sh)
         print("\nUpdating scripts/ files...")
@@ -848,6 +874,12 @@ def sync_command(args):
                 script_files_updated += 1
             else:
                 print("  └ build.sh is already up to date")
+        else:
+            # Create the file in the correct location
+            shutil.copy(f'{TEMPLATE_DIR}/build.sh', 'scripts/build.sh')
+            os.chmod('scripts/build.sh', 0o755)  # Make executable
+            print("  └ Created build.sh in scripts/")
+            script_files_updated += 1
         
         # Update Makefile
         if os.path.exists('scripts/Makefile'):
@@ -857,6 +889,11 @@ def sync_command(args):
                 script_files_updated += 1
             else:
                 print("  └ Makefile is already up to date")
+        else:
+            # Create the file in the correct location
+            shutil.copy(f'{TEMPLATE_DIR}/Makefile', 'scripts/Makefile')
+            print("  └ Created Makefile in scripts/")
+            script_files_updated += 1
         
         # # Update do-not-distribute.txt
         # if os.path.exists('scripts/do-not-distribute.txt'):
