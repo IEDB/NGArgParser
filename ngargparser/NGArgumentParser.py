@@ -7,6 +7,13 @@ import os
 import core.core_validators as validators
 from pathlib import Path
 from typing import TypedDict, List
+import dotenv
+
+# Load environment variables from .env file
+dotenv.load_dotenv()
+
+# Get the project root directory from environment variable
+APP_ROOT = os.getenv('APP_ROOT')
 
 
 class SubparserWrapper:
@@ -566,9 +573,13 @@ class NGArgumentParser(argparse.ArgumentParser):
         """
         Custom validator that creates the output directory structure and returns
         default values for preprocess directories.
+        
+        NEW LOGIC:
+        - If there are dependencies: Set defaults to main tool's directories
+        - If no dependencies: Set defaults to output directory's directories
         """
         from pathlib import Path
-        from .core_validators import create_directory_structure_for_dependencies
+        from .core_validators import create_directory_structure_for_dependencies, get_dependencies_from_paths
         
         output_path = Path(output_dir)
         
@@ -582,9 +593,28 @@ class NGArgumentParser(argparse.ArgumentParser):
             for dir_path in dirs:
                 print(f"  - {dir_path}")
         
-        # Set the default values as attributes of the parser instance
-        self._default_inputs_dir = str(output_path / "predict-inputs" / "data")
-        self._default_params_dir = str(output_path / "predict-inputs" / "params")
+        # Determine the correct default paths based on whether there are dependencies
+        try:
+            # Check if there are dependencies by looking for paths.py
+            paths_file = Path(APP_ROOT) / "paths.py" if APP_ROOT else Path(__file__).resolve().parent.parent / "paths.py"
+            dependencies = get_dependencies_from_paths(paths_file)
+            
+            if dependencies:
+                # With dependencies: Use main tool's directories
+                # Get the current app name using the same logic as core_validators
+                curr_app_name = self._get_current_app_name(paths_file)
+                self._default_inputs_dir = str(output_path / curr_app_name / "predict-inputs" / "data")
+                self._default_params_dir = str(output_path / curr_app_name / "predict-inputs" / "params")
+            else:
+                # No dependencies: Use output directory's directories
+                self._default_inputs_dir = str(output_path / "predict-inputs" / "data")
+                self._default_params_dir = str(output_path / "predict-inputs" / "params")
+                
+        except Exception as e:
+            # Fallback to no-dependencies case if paths.py can't be read
+            print(f"Warning: Could not read paths.py, using default structure: {e}")
+            self._default_inputs_dir = str(output_path / "predict-inputs" / "data")
+            self._default_params_dir = str(output_path / "predict-inputs" / "params")
         
         return output_path
 
@@ -595,6 +625,46 @@ class NGArgumentParser(argparse.ArgumentParser):
     def _get_default_params_dir(self):
         """Get the default params directory if it was set by the output-dir validator."""
         return getattr(self, '_default_params_dir', None)
+
+    def _get_current_app_name(self, paths_file=None):
+        """Get the current app name using multiple detection methods."""
+        curr_app_name = None
+        
+        # Method 1: Try to get from current working directory (most reliable)
+        try:
+            cwd = Path.cwd()
+            # Look for the app name in the current working directory path
+            # This should be something like /path/to/test/cd4ep
+            if 'test' in cwd.parts:
+                test_index = cwd.parts.index('test')
+                if test_index + 1 < len(cwd.parts):
+                    curr_app_name = cwd.parts[test_index + 1]
+        except Exception:
+            pass
+        
+        # Method 2: Fallback to the old method if Method 1 fails
+        if not curr_app_name:
+            curr_app_name = Path(__file__).resolve().parents[1].name
+        
+        # Method 3: If still not found, try to extract from the paths.py file location
+        if not curr_app_name or curr_app_name == 'src':
+            try:
+                # Look for the app name in the paths.py file path
+                if paths_file:
+                    paths_file = Path(paths_file)
+                    # If paths.py is in test/appname/paths.py, extract appname
+                    if 'test' in paths_file.parts:
+                        test_index = paths_file.parts.index('test')
+                        if test_index + 1 < len(paths_file.parts):
+                            curr_app_name = paths_file.parts[test_index + 1]
+            except Exception:
+                pass
+        
+        # Final fallback
+        if not curr_app_name or curr_app_name == 'src':
+            curr_app_name = 'app'  # Generic fallback
+            
+        return curr_app_name
 
 
 class JobDescriptionParams(TypedDict):
