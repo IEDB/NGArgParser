@@ -9,6 +9,7 @@ if [ -z "$BASH_VERSION" ]; then
 fi
 
 set -ex
+set -o pipefail
 
 # Get the app name from the project root directory name
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,6 +20,16 @@ TOOL_NAME=ng_${APP_NAME}
 TOOL_VERSION="${TOOL_VERSION:-local}"
 TOOL_DIR=$TOOL_NAME-$TOOL_VERSION
 BUILD_DIR=$PROJECT_ROOT/build/$TOOL_DIR
+
+# Ensure we clean up the build directory on failure
+trap 'status=$?; if [ $status -ne 0 ]; then \
+  echo "Build failed; removing $BUILD_DIR"; \
+  [ -n "$BUILD_DIR" ] && rm -rf "$BUILD_DIR"; \
+  # Remove top-level build dir if empty
+  if [ -d "$PROJECT_ROOT/build" ] && [ -z "$(ls -A "$PROJECT_ROOT/build")" ]; then \
+    rmdir "$PROJECT_ROOT/build"; \
+  fi; \
+fi; exit $status' EXIT
 
 # Clean and recreate build directory
 rm -rf $BUILD_DIR
@@ -78,11 +89,12 @@ if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
                 continue
             fi
             # Check if line contains a Git repository
-            if [[ "$line" =~ ^git\+ || "$line" =~ github\.com || "$line" =~ gitlab\.com || "$line" =~ gitlab\. ]]; then
+            if [[ "$line" =~ ^git\+ || "$line" =~ ^git[[:space:]]+clone || "$line" =~ github\.com || "$line" =~ gitlab\.com || "$line" =~ gitlab\. ]]; then
                 echo "Installing Git repository: $line"
                 
                 # Parse repository name and clone
                 repo_name=""
+                # Case 1: pip-style VCS URL (git+https://...@branch)
                 if [[ "$line" =~ ^git\+ ]]; then
                     # Parse git+ URL format
                     base_url=$(echo "$line" | sed 's/^git+//' | sed 's/@[^@]*#.*$//' | sed 's/#.*$//')
@@ -102,6 +114,38 @@ if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
                     # Ensure __init__.py files exist in the cloned repository
                     ensure_init_files "$repo_name"
                     
+                    cd "$BUILD_DIR"
+                # Case 2: shell-style 'git clone ... URL' line
+                elif [[ "$line" =~ ^git[[:space:]]+clone ]]; then
+                    # Extract URL (last http/https or git@ token)
+                    url=$(echo "$line" | grep -Eo '(https?://[^ ]+|git@[^ ]+)' | tail -n1)
+                    # Extract branch by tokenizing and taking the arg after -b
+                    branch=""
+                    read -r -a parts <<< "$line"
+                    for i in "${!parts[@]}"; do
+                        if [[ "${parts[$i]}" == "-b" && $((i+1)) -lt ${#parts[@]} ]]; then
+                            branch="${parts[$((i+1))]}"
+                            # Strip single quotes if present
+                            branch="${branch%\'}"
+                            branch="${branch#\'}"
+                        fi
+                    done
+                    repo_name=$(echo "$url" | sed 's/.*\///' | sed 's/\.git.*//')
+                    cd "$BUILD_DIR/libs"
+                    if [[ -n "$branch" ]]; then
+                        if git clone -b "$branch" --single-branch --depth 1 "$url" "$repo_name"; then
+                            rm -rf "$repo_name/.git"
+                        else
+                            echo "ERROR: git clone failed for $url (branch: $branch)" >&2
+                        fi
+                    else
+                        if git clone --single-branch --depth 1 "$url" "$repo_name"; then
+                            rm -rf "$repo_name/.git"
+                        else
+                            echo "ERROR: git clone failed for $url" >&2
+                        fi
+                    fi
+                    ensure_init_files "$repo_name"
                     cd "$BUILD_DIR"
                 else
                     # Handle regular GitHub/GitLab URLs
@@ -151,6 +195,9 @@ handle_src_dir() {
             src_file_name=$(basename "$src_file")
             if [ "$src_file_name" = "core" ]; then
                 cp -r "$src_file" "$build_src_dir/$src_file_name"
+            elif [[ "$src_file_name" == run_*.py ]]; then
+                # Ensure run_*.py are copied, not symlinked
+                cp "$src_file" "$build_src_dir/$src_file_name"
             else
                 ln -sf "$src_file" "$build_src_dir/$src_file_name"
             fi
@@ -192,6 +239,23 @@ handle_item() {
     case "$item_name" in
         "src")
             handle_src_dir "$item" "$build_dir/src"
+            ;;
+        "libs")
+            # Merge project-level libs/* into build/libs (flattened) to avoid build/libs/libs
+            echo "Merging project libs/* into $build_dir/libs"
+            mkdir -p "$build_dir/libs"
+            for libentry in "$item"/*; do
+                [ -e "$libentry" ] || continue
+                name=$(basename "$libentry")
+                if [ -d "$libentry" ]; then
+                    cp -r "$libentry" "$build_dir/libs/$name"
+                    # remove VCS metadata if present
+                    rm -rf "$build_dir/libs/$name/.git" "$build_dir/libs/$name/.github" "$build_dir/libs/$name/.gitlab"
+                    ensure_init_files "$name"
+                else
+                    cp "$libentry" "$build_dir/libs/$name"
+                fi
+            done
             ;;
         "scripts")
             handle_scripts_dir "$item" "$build_dir/scripts"
