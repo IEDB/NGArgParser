@@ -12,8 +12,9 @@ from pathlib import Path
 # Load environment variables from .env file
 dotenv.load_dotenv()
 
-# Get the project root directory from environment variable
+# Get the project root directory and app name from environment variables
 APP_ROOT = os.getenv('APP_ROOT')
+APP_NAME = os.getenv('APP_NAME')
 
 
 def get_dependencies_from_paths(file_path='paths.py'):
@@ -120,40 +121,36 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
                     dependency_tools.append(tool_name)
                     break  # Only need one valid path per tool
     
-    # Get the current app name - try to find it from the current working directory
-    # or from the project structure
-    curr_app_name = None
-    
-    # Method 1: Try to get from current working directory (most reliable)
-    try:
-        cwd = Path.cwd()
-        # Look for the app name in the current working directory path
-        # This should be something like /path/to/test/cd4ep
-        if 'test' in cwd.parts:
-            test_index = cwd.parts.index('test')
-            if test_index + 1 < len(cwd.parts):
-                curr_app_name = cwd.parts[test_index + 1]
-    except Exception:
-        pass
-    
+    # Get the current app name - prefer APP_NAME from environment (.env),
+    # then fall back to existing detection methods.
+    curr_app_name = APP_NAME
+
+    # Method 1: Try to get from current working directory
+    if not curr_app_name:
+        try:
+            cwd = Path.cwd()
+            if 'test' in cwd.parts:
+                test_index = cwd.parts.index('test')
+                if test_index + 1 < len(cwd.parts):
+                    curr_app_name = cwd.parts[test_index + 1]
+        except Exception:
+            pass
+
     # Method 2: Fallback to the old method if Method 1 fails
     if not curr_app_name:
         curr_app_name = Path(__file__).resolve().parents[1].name
-    
+
     # Method 3: If still not found, try to extract from the paths.py file location
-    if not curr_app_name or curr_app_name == 'src':
+    if (not curr_app_name or curr_app_name == 'src') and paths_file_path:
         try:
-            # Look for the app name in the paths.py file path
-            if paths_file_path:
-                paths_file = Path(paths_file_path)
-                # If paths.py is in test/appname/paths.py, extract appname
-                if 'test' in paths_file.parts:
-                    test_index = paths_file.parts.index('test')
-                    if test_index + 1 < len(paths_file.parts):
-                        curr_app_name = paths_file.parts[test_index + 1]
+            paths_file = Path(paths_file_path)
+            if 'test' in paths_file.parts:
+                test_index = paths_file.parts.index('test')
+                if test_index + 1 < len(paths_file.parts):
+                    curr_app_name = paths_file.parts[test_index + 1]
         except Exception:
             pass
-    
+
     # Final fallback
     if not curr_app_name or curr_app_name == 'src':
         curr_app_name = 'app'  # Generic fallback

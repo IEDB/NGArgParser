@@ -4,9 +4,11 @@ import os
 import importlib.util
 import re
 import glob
+from dotenv import load_dotenv
 
 CONFIG_PATH = "paths.py"
 DOT_ENV_PATH = ".env"
+load_dotenv()
 
 def load_config(path):
     if not os.path.exists(path):
@@ -134,10 +136,15 @@ def main():
     if 'APP_ROOT' not in config:
         config['APP_ROOT'] = app_root
     
-    # Ensure APP_NAME is set based on the project root directory name
-    # This keeps APP_NAME persistent in the generated .env file
-    if 'APP_NAME' not in config:
-        config['APP_NAME'] = os.path.basename(app_root)
+    # Ensure APP_NAME is set. Prefer persisted APP_NAME from .env (created by 'cli g').
+    # If not present, derive from build dir name pattern 'ng_<name>-local' or fall back to directory name.
+    env_app_name = os.getenv('APP_NAME')
+    if env_app_name:
+        config['APP_NAME'] = env_app_name
+    elif 'APP_NAME' not in config:
+        base_name = os.path.basename(app_root)
+        match = re.match(r'^ng[_-]([A-Za-z0-9_]+?)-local$', base_name)
+        config['APP_NAME'] = match.group(1) if match else base_name
     
     # Always regenerate .env file based on current paths.py content
     # This ensures removed dependencies are cleaned up
