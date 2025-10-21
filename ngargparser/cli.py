@@ -716,6 +716,18 @@ def startapp_command(args):
     # Create paths.py file
     create_paths_file(args.project_name)
 
+    # Write initial .env with APP_NAME and APP_ROOT in the new project root
+    try:
+        project_dir_name = 'aa-counter' if args.project_name == 'example' else args.project_name
+        project_root_abs = os.path.abspath(project_dir_name)
+        env_file_path = os.path.join(project_dir_name, '.env')
+        with open(env_file_path, 'w', encoding='utf-8') as f:
+            f.write(f"APP_ROOT={project_root_abs}\n")
+            f.write(f"APP_NAME={project_dir_name}\n")
+        print(f"\n\033[92m✓\033[0m Created initial '.env' at '\033[92m{env_file_path}\033[0m'")
+    except Exception as e:
+        print(f"\033[91m✗\033[0m Error writing initial .env: \033[91m{e}\033[0m")
+
 
 def config_paths_command(args):
     setup_paths_file('paths.py')

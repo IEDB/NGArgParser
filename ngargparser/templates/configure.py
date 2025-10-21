@@ -134,16 +134,22 @@ def main():
     if 'APP_ROOT' not in config:
         config['APP_ROOT'] = app_root
     
+    # Ensure APP_NAME is set based on the project root directory name
+    # This keeps APP_NAME persistent in the generated .env file
+    if 'APP_NAME' not in config:
+        config['APP_NAME'] = os.path.basename(app_root)
+    
     # Always regenerate .env file based on current paths.py content
     # This ensures removed dependencies are cleaned up
     env_exists = os.path.exists(DOT_ENV_PATH)
     action = "updated" if env_exists else "created"
     
-    if not config or len(config) == 1:  # Only APP_ROOT or completely empty
+    if not config or (set(config.keys()) <= {'APP_ROOT', 'APP_NAME'}):  # Only minimal keys present
         print("* paths.py is empty, creating minimal .env file")
-        # Create minimal .env file with just APP_ROOT
+        # Create minimal .env file with APP_ROOT and APP_NAME
         with open(DOT_ENV_PATH, "w") as f:
             f.write(f"APP_ROOT={app_root}\n")
+            f.write(f"APP_NAME={config['APP_NAME']}\n")
         print(f"* .env file {action}")
     else:
         write_env_info(config, DOT_ENV_PATH)
