@@ -210,7 +210,7 @@ def create_project_structure(project_name):
 
 def update_and_place_readme(file_path, app_name, is_example=False):
     # Copy over the README blueprint
-    app_readme_path = f'{app_name}/README'
+    app_readme_path = f'{app_name}/README.md'
     shutil.copy(file_path, app_readme_path)
 
     with open(app_readme_path, 'r') as file:
