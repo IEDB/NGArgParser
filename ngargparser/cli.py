@@ -96,7 +96,7 @@ def create_example_structure():
 
         # Copy scripts files to scripts/ directory
         shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/scripts/build.sh')
-        shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/scripts/Makefile')
+        shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/Makefile')
         shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/scripts/do-not-distribute.txt')
         # Make build.sh executable
         os.chmod(f'{project_name}/scripts/build.sh', 0o755)
@@ -162,7 +162,7 @@ def create_project_structure(project_name):
         
         # Copy scripts files to scripts/ directory
         shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/scripts/build.sh')
-        shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/scripts/Makefile')
+        shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/Makefile')
         shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/scripts/do-not-distribute.txt')
         shutil.copy(f'{TEMPLATE_DIR}/dependencies.sh', f'{project_name}/scripts/dependencies.sh')
         # Make build.sh executable
@@ -950,11 +950,6 @@ def main():
     # Create 'sync' sub-command
     sync_parser = subparsers.add_parser('sync', aliases=["s"], allow_abbrev=True, help='Synchronize framework files in existing projects to the latest version.')
 
-    # Create 'build' sub-command
-    build_parser = subparsers.add_parser('build', help='Build the project')
-    
-    # Create 'clean' sub-command
-    clean_parser = subparsers.add_parser('clean', help='Clean the project')
 
     args = parser.parse_args()
 
@@ -964,10 +959,6 @@ def main():
         config_paths_command(args)
     elif args.command == 'sync' or args.command == 's':
         sync_command(args)
-    elif args.command == 'build':
-        build_command(args)
-    elif args.command == 'clean':
-        clean_command(args)
     else:
         parser.print_help()  # Print help message if no command is specified
 
