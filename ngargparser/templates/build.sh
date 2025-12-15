@@ -266,7 +266,7 @@ handle_item() {
         "license-LJI.txt")
             cp "$item" "$build_dir/$item_name"
             ;;
-        "README"|"README.md")
+        "README")
             cp "$item" "$build_dir/$item_name"
             ;;
         "requirements.txt")
