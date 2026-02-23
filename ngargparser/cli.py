@@ -895,18 +895,18 @@ def sync_command(args):
             print("  └ Created build.sh in scripts/")
             script_files_updated += 1
         
-        # Update Makefile
-        if os.path.exists('scripts/Makefile'):
-            if not filecmp.cmp(f'{TEMPLATE_DIR}/Makefile', 'scripts/Makefile', shallow=False):
-                shutil.copy(f'{TEMPLATE_DIR}/Makefile', 'scripts/Makefile')
-                print("  └ Updated Makefile")
+        # Update root-level Makefile (no longer under scripts/)
+        if os.path.exists('Makefile'):
+            if not filecmp.cmp(f'{TEMPLATE_DIR}/Makefile', 'Makefile', shallow=False):
+                shutil.copy(f'{TEMPLATE_DIR}/Makefile', 'Makefile')
+                print("  └ Updated root Makefile")
                 script_files_updated += 1
             else:
-                print("  └ Makefile is already up to date")
+                print("  └ Root Makefile is already up to date")
         else:
-            # Create the file in the correct location
-            shutil.copy(f'{TEMPLATE_DIR}/Makefile', 'scripts/Makefile')
-            print("  └ Created Makefile in scripts/")
+            # Create the file in the project root
+            shutil.copy(f'{TEMPLATE_DIR}/Makefile', 'Makefile')
+            print("  └ Created root Makefile")
             script_files_updated += 1
         
         # # Update do-not-distribute.txt
