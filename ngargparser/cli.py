@@ -97,6 +97,7 @@ def create_example_structure():
         # Copy scripts files to scripts/ directory
         shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/scripts/build.sh')
         shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/Makefile')
+        shutil.copy(f'{TEMPLATE_DIR}/build.conf', f'{project_name}/scripts/build.conf')
         shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/scripts/do-not-distribute.txt')
         # Make build.sh executable
         os.chmod(f'{project_name}/scripts/build.sh', 0o755)
@@ -139,7 +140,7 @@ def create_project_structure(project_name):
         exec_file = f'run_{format_project_name(project_name)}.py'
         parser_file = f'{format_project_name(project_name, capitalize=True)}ArgumentParser.py'
         parser_name = f'{format_project_name(project_name, capitalize=True)}ArgumentParser'
-        update_and_place_readme(f'{TEMPLATE_DIR}/README', project_name)
+        update_and_place_readme(f'{TEMPLATE_DIR}/README.md', project_name)
         shutil.copy(f'{TEMPLATE_DIR}/run_app.py', f'{project_name}/src/{exec_file}')
         shutil.copy(f'{NGPARSER_DIR}/NGChildArgumentParser.py', f'{project_name}/src/{parser_file}')
         shutil.copy(f'{TEMPLATE_DIR}/preprocess.py', f'{project_name}/src/preprocess.py')
@@ -163,6 +164,7 @@ def create_project_structure(project_name):
         # Copy scripts files to scripts/ directory
         shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/scripts/build.sh')
         shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/Makefile')
+        shutil.copy(f'{TEMPLATE_DIR}/build.conf', f'{project_name}/scripts/build.conf')
         shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/scripts/do-not-distribute.txt')
         shutil.copy(f'{TEMPLATE_DIR}/dependencies.sh', f'{project_name}/scripts/dependencies.sh')
         # Make build.sh executable
@@ -209,11 +211,13 @@ def create_project_structure(project_name):
 
 
 def update_and_place_readme(file_path, app_name, is_example=False):
-    # Copy over the README blueprint
-    app_readme_path = f'{app_name}/README.md'
-    shutil.copy(file_path, app_readme_path)
+    # Copy over and generate README files (both README.md and README)
+    readme_md_path = f'{app_name}/README.md'
+    readme_plain_path = f'{app_name}/README'
+    # Ensure we have a starting file to read from
+    shutil.copy(file_path, readme_md_path)
 
-    with open(app_readme_path, 'r') as file:
+    with open(readme_md_path, 'r') as file:
         content = file.read()
 
     # Replace variables in README
@@ -224,9 +228,11 @@ def update_and_place_readme(file_path, app_name, is_example=False):
     else:
         updated_content = content.replace("{TOOL_NAME_CAP}", format_project_name(app_name, capitalize=True))
 
-    # Write the updated content back to the file
-    with open(app_readme_path, 'w') as file:
-        file.write(updated_content)
+    # Write the updated content to both README.md and README
+    with open(readme_md_path, 'w') as f_md:
+        f_md.write(updated_content)
+    with open(readme_plain_path, 'w') as f_plain:
+        f_plain.write(updated_content)
     
 
 def replace_text_in_place(file_path, old_text, new_text):

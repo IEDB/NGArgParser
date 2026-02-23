@@ -352,6 +352,46 @@ class NGArgumentParser(argparse.ArgumentParser):
         
         return self.parser_predict
 
+    def set_subcommand_order(self, order):
+        """Reorder subcommands in help output.
+        
+        This method changes the display order of subcommands in the help text
+        without affecting the actual parsing behavior.
+        
+        Args:
+            order (list): List of subcommand names in desired display order.
+                         e.g., ['predict', 'preprocess', 'postprocess']
+        """
+        # Find the _SubParsersAction
+        for action in self._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                # Build a dict of choice actions by their dest (subcommand name)
+                choices_dict = {ca.dest: ca for ca in action._choices_actions}
+                # Reorder _choices_actions based on the provided order
+                new_choices_actions = []
+                for name in order:
+                    if name in choices_dict:
+                        new_choices_actions.append(choices_dict[name])
+                # Add any remaining choices not in the order list (to be safe)
+                for ca in action._choices_actions:
+                    if ca not in new_choices_actions:
+                        new_choices_actions.append(ca)
+                action._choices_actions = new_choices_actions
+                
+                # Also reorder the choices dict to fix the {a,b,c} metavar display
+                # Python 3.7+ dicts maintain insertion order
+                old_choices = action.choices
+                new_choices = {}
+                for name in order:
+                    if name in old_choices:
+                        new_choices[name] = old_choices[name]
+                # Add any remaining choices not in the order list
+                for name, parser in old_choices.items():
+                    if name not in new_choices:
+                        new_choices[name] = parser
+                action.choices = new_choices
+                break
+
     def validate_mutually_exclusive_args(self, args):
         """Manually validate that exactly one of the mutually exclusive args is provided"""
         job_desc_provided = args.job_desc_file is not None

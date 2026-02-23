@@ -31,6 +31,9 @@ class ChildArgumentParser(NGArgumentParser):
             description=''
         )
 
+        # Set the display order of subcommands in help output
+        self.set_subcommand_order(['predict', 'preprocess', 'postprocess'])
+
         # ADD tool-specific params 
         # -----------------------------------------------------
         self.parser_predict.add_argument("--input-tsv", "-t",

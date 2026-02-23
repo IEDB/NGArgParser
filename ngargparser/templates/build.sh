@@ -1,15 +1,67 @@
 #!/bin/bash
+#
+# -----------------------------------------------------------------------------
+# This file may only be modified by the admin responsible for the IEDB build system.
+# General contributors must not edit this file.
+#
+# Build script for the IEDB project
+# -----------------------------------------------------------------------------
 
-# Build script for the application
+# Parse command line arguments
+PROGRESS_MODE=false
+for arg in "$@"; do
+    case $arg in
+        --progress|-p)
+            PROGRESS_MODE=true
+            shift
+            ;;
+    esac
+done
 
-# Ensure this script always runs with bash, regardless of how it's invoked
-if [ -z "$BASH_VERSION" ]; then
-    # Re-execute this script with bash if not already running with bash
-    exec bash "$0" "$@"
+# Progress bar configuration
+TOTAL_STEPS=8
+CURRENT_STEP=0
+PROGRESS_BAR_WIDTH=40
+
+# Function to show progress bar
+show_progress() {
+    if [ "$PROGRESS_MODE" = true ]; then
+        local message="$1"
+        CURRENT_STEP=$((CURRENT_STEP + 1))
+        local percent=$((CURRENT_STEP * 100 / TOTAL_STEPS))
+        local filled=$((CURRENT_STEP * PROGRESS_BAR_WIDTH / TOTAL_STEPS))
+        local empty=$((PROGRESS_BAR_WIDTH - filled))
+        
+        # Build progress bar string
+        local bar=""
+        for ((i=0; i<filled; i++)); do bar+="█"; done
+        for ((i=0; i<empty; i++)); do bar+="░"; done
+        
+        # Print progress bar (overwrite previous line)
+        printf "\r\033[K[%s] %3d%% - %s" "$bar" "$percent" "$message"
+        
+        # Print newline on completion
+        if [ "$CURRENT_STEP" -eq "$TOTAL_STEPS" ]; then
+            echo ""
+        fi
+    fi
+}
+
+# Function for verbose logging (only prints in non-progress mode)
+log_verbose() {
+    if [ "$PROGRESS_MODE" != true ]; then
+        echo "$@"
+    fi
+}
+
+# Set error handling based on mode
+if [ "$PROGRESS_MODE" = true ]; then
+    set -e
+    set -o pipefail
+else
+    set -ex
+    set -o pipefail
 fi
-
-set -ex
-set -o pipefail
 
 # Get the app name from the project root directory name
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,6 +72,26 @@ TOOL_NAME=ng_${APP_NAME}
 TOOL_VERSION="${TOOL_VERSION:-local}"
 TOOL_DIR=$TOOL_NAME-$TOOL_VERSION
 BUILD_DIR=$PROJECT_ROOT/build/$TOOL_DIR
+
+# Load build configuration (optional). Defaults make the script generic for any project.
+BUILD_ENTRY_SCRIPT=""
+BUILD_SYMLINK_SRC_DIRS=""
+BUILD_COPY_TOPLEVEL_FILES=""
+TARBALL_PREFIX=""
+if [ -f "$SRC_DIR/build.conf" ]; then
+    # shellcheck source=build.conf
+    source "$SRC_DIR/build.conf"
+fi
+
+# Apply defaults when not set by build.conf
+if [ -z "$BUILD_ENTRY_SCRIPT" ] && [ -d "$PROJECT_ROOT/src" ]; then
+    run_scripts=( "$PROJECT_ROOT/src"/run_*.py )
+    if [ -e "${run_scripts[0]}" ] && [ ${#run_scripts[@]} -eq 1 ]; then
+        BUILD_ENTRY_SCRIPT=$(basename "${run_scripts[0]}")
+    fi
+fi
+[ -z "$BUILD_COPY_TOPLEVEL_FILES" ] && BUILD_COPY_TOPLEVEL_FILES="configure license-LJI.txt README"
+[ -z "$TARBALL_PREFIX" ] && TARBALL_PREFIX="IEDB_"
 
 # Ensure we clean up the build directory on failure
 trap 'status=$?; if [ $status -ne 0 ]; then \
@@ -32,35 +104,31 @@ trap 'status=$?; if [ $status -ne 0 ]; then \
 fi; exit $status' EXIT
 
 # Clean and recreate build directory
+show_progress "Setting up build directory"
 rm -rf $BUILD_DIR
 mkdir -p $BUILD_DIR
 
 # Create libs directory (this will be a real directory, not a symlink)
 mkdir -p $BUILD_DIR/libs
 
-# Function to ensure __init__.py files exist in directories
+# Function to ensure __init__.py files exist in a directory tree
 ensure_init_files() {
-    local dir_name="$1"
-    local full_path="$BUILD_DIR/libs/$dir_name"
+    local target_dir="$1"
     
-    if [ -d "$full_path" ]; then
-        echo "Ensuring __init__.py files exist in $dir_name..."
-        
-        # Find all subdirectories and create __init__.py files if they don't exist
-        find "$full_path" -type d | while read -r subdir; do
+    if [ -d "$target_dir" ]; then
+        find "$target_dir" -type d | while read -r subdir; do
             if [ ! -f "$subdir/__init__.py" ]; then
-                echo "  Creating __init__.py in: $subdir"
+                log_verbose "  Creating __init__.py in: $subdir"
                 echo "# Auto-generated __init__.py file" > "$subdir/__init__.py"
             fi
         done
-        
-        echo "✓ __init__.py files ensured in $dir_name"
     fi
 }
 
 # Process requirements.txt if it exists
+show_progress "Processing requirements.txt"
 if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
-    echo "Processing requirements.txt..."
+    log_verbose "Processing requirements.txt..."
 
     # Check if there are any git repositories in requirements.txt
     has_git_repos=false
@@ -77,7 +145,7 @@ if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
     done < "$PROJECT_ROOT/requirements.txt"
 
     if [ "$has_git_repos" = true ]; then
-        echo "Git repositories detected, creating filtered requirements.txt..."
+        log_verbose "Git repositories detected, creating filtered requirements.txt..."
         
         # Create filtered requirements.txt for build directory (Python packages only)
         > "$BUILD_DIR/requirements.txt"
@@ -90,7 +158,7 @@ if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
             fi
             # Check if line contains a Git repository
             if [[ "$line" =~ ^git\+ || "$line" =~ ^git[[:space:]]+clone || "$line" =~ github\.com || "$line" =~ gitlab\.com || "$line" =~ gitlab\. ]]; then
-                echo "Installing Git repository: $line"
+                log_verbose "Installing Git repository: $line"
                 
                 # Parse repository name and clone
                 repo_name=""
@@ -112,7 +180,7 @@ if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
                     fi
                     
                     # Ensure __init__.py files exist in the cloned repository
-                    ensure_init_files "$repo_name"
+                    ensure_init_files "$BUILD_DIR/libs/$repo_name"
                     
                     cd "$BUILD_DIR"
                 # Case 2: shell-style 'git clone ... URL' line
@@ -167,7 +235,7 @@ if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
                     git clone "$line" "$repo_name" 2>/dev/null && rm -rf "$repo_name/.git"
                     
                     # Ensure __init__.py files exist in the cloned repository
-                    ensure_init_files "$repo_name"
+                    ensure_init_files "$BUILD_DIR/libs/$repo_name"
                     
                     cd "$BUILD_DIR"
                 fi
@@ -177,43 +245,73 @@ if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
             fi
         done < "$PROJECT_ROOT/requirements.txt"
 
-        echo "✓ Processed requirements.txt with Git repository filtering"
+        log_verbose "✓ Processed requirements.txt with Git repository filtering"
     else
-        echo "No Git repositories detected, symlinking requirements.txt..."
+        log_verbose "No Git repositories detected, symlinking requirements.txt..."
         # No git repos found, just symlink the original file (will be handled in the main loop)
     fi
 fi
 
 # Copy only the libs directory and create symlinks for everything else
+show_progress "Copying source files"
+
+# Function to symlink directory contents recursively
+symlink_directory_contents() {
+    local src_dir="$1"
+    local build_dir="$2"
+    mkdir -p "$build_dir"
+    
+    for item in "$src_dir"/*; do
+        [ -e "$item" ] || continue
+        local item_name=$(basename "$item")
+        local abs_item=$(cd "$(dirname "$item")" && pwd)/$(basename "$item")
+        
+        if [ -d "$item" ]; then
+            symlink_directory_contents "$item" "$build_dir/$item_name"
+        else
+            log_verbose "Symlinking: $item_name"
+            ln -sf "$abs_item" "$build_dir/$item_name"
+        fi
+    done
+}
+
+# Function to check if a value is in a space-separated list
+is_in_list() {
+    local item="$1"
+    local list="$2"
+    for x in $list; do
+        [ "$x" = "$item" ] && return 0
+    done
+    return 1
+}
+
 # Function to handle src directory
 handle_src_dir() {
     local src_dir="$1"
     local build_src_dir="$2"
     mkdir -p "$build_src_dir"
+    
     for src_file in "$src_dir"/*; do
-        if [ -e "$src_file" ]; then
-            src_file_name=$(basename "$src_file")
-            if [ "$src_file_name" = "core" ]; then
-                cp -r "$src_file" "$build_src_dir/$src_file_name"
-            elif [[ "$src_file_name" == run_*.py ]]; then
-                # Ensure run_*.py are copied, not symlinked
-                cp "$src_file" "$build_src_dir/$src_file_name"
+        [ -e "$src_file" ] || continue
+        
+        local src_file_name=$(basename "$src_file")
+        local abs_src_file=$(cd "$(dirname "$src_file")" && pwd)/$(basename "$src_file")
+        
+        if [ -d "$src_file" ]; then
+            # Symlink directory contents if in BUILD_SYMLINK_SRC_DIRS; otherwise copy
+            if is_in_list "$src_file_name" "$BUILD_SYMLINK_SRC_DIRS"; then
+                log_verbose "Symlinking directory contents: $src_file_name"
+                symlink_directory_contents "$src_file" "$build_src_dir/$src_file_name"
             else
-                ln -sf "$src_file" "$build_src_dir/$src_file_name"
+                log_verbose "Copying directory: $src_file_name"
+                cp -r "$src_file" "$build_src_dir/$src_file_name"
             fi
-        fi
-    done
-}
-
-# Function to handle scripts directory
-handle_scripts_dir() {
-    local scripts_dir="$1"
-    local build_scripts_dir="$2"
-    mkdir -p "$build_scripts_dir"
-    for scripts_file in "$scripts_dir"/*; do
-        if [ -e "$scripts_file" ]; then
-            scripts_file_name=$(basename "$scripts_file")
-            ln -sf "$scripts_file" "$build_scripts_dir/$scripts_file_name"
+        elif is_in_list "$src_file_name" "$BUILD_ENTRY_SCRIPT"; then
+            log_verbose "Copying entry script: $src_file_name"
+            cp "$src_file" "$build_src_dir/$src_file_name"
+        else
+            log_verbose "Symlinking file: $src_file_name"
+            ln -sf "$abs_src_file" "$build_src_dir/$src_file_name"
         fi
     done
 }
@@ -242,7 +340,7 @@ handle_item() {
             ;;
         "libs")
             # Merge project-level libs/* into build/libs (flattened) to avoid build/libs/libs
-            echo "Merging project libs/* into $build_dir/libs"
+            log_verbose "Merging project libs/* into $build_dir/libs"
             mkdir -p "$build_dir/libs"
             for libentry in "$item"/*; do
                 [ -e "$libentry" ] || continue
@@ -251,23 +349,17 @@ handle_item() {
                     cp -r "$libentry" "$build_dir/libs/$name"
                     # remove VCS metadata if present
                     rm -rf "$build_dir/libs/$name/.git" "$build_dir/libs/$name/.github" "$build_dir/libs/$name/.gitlab"
-                    ensure_init_files "$name"
+                    ensure_init_files "$build_dir/libs/$name"
                 else
                     cp "$libentry" "$build_dir/libs/$name"
                 fi
             done
             ;;
         "scripts")
-            handle_scripts_dir "$item" "$build_dir/scripts"
-            ;;
-        "configure")
-            cp "$item" "$build_dir/$item_name"
-            ;;
-        "license-LJI.txt")
-            cp "$item" "$build_dir/$item_name"
-            ;;
-        "README")
-            cp "$item" "$build_dir/$item_name"
+            mkdir -p "$build_dir/scripts"
+            for scripts_file in "$item"/*; do
+                [ -e "$scripts_file" ] && ln -sf "$scripts_file" "$build_dir/scripts/$(basename "$scripts_file")"
+            done
             ;;
         "requirements.txt")
             # Only symlink if not already processed as filtered file
@@ -276,11 +368,16 @@ handle_item() {
             fi
             ;;
         *)
-            ln -sf "$item" "$build_dir/$item_name"
+            if is_in_list "$item_name" "$BUILD_COPY_TOPLEVEL_FILES"; then
+                cp "$item" "$build_dir/$item_name"
+            else
+                ln -sf "$item" "$build_dir/$item_name"
+            fi
             ;;
     esac
 }
 
+show_progress "Processing project files"
 # Process all items in PROJECT_ROOT
 for item in "$PROJECT_ROOT"/*; do
     if [ -f "$SRC_DIR/do-not-distribute.txt" ]; then
@@ -290,12 +387,7 @@ for item in "$PROJECT_ROOT"/*; do
     fi
 done
 
-
-
-
-
-
-
+show_progress "Updating version info"
 # Use sed to replace the string with the environment variable
 if [ -f "$BUILD_DIR/README" ]; then
     if [[ "$(uname)" == "Darwin" ]]; then
@@ -310,62 +402,51 @@ fi
 # All dependencies should be in the libs directory
 cd $BUILD_DIR/libs
 
-# =====================================================================
-# CALLING CUSTOM DEPENDENCIES.SH
-# =====================================================================
-# Check if a custom dependencies script exists and execute it
+show_progress "Installing dependencies"
+# Execute custom dependencies script if it exists
 if [ -f "$SRC_DIR/dependencies.sh" ]; then
-    echo "Executing custom dependencies script: $SRC_DIR/dependencies.sh"
-    if [ -x "$SRC_DIR/dependencies.sh" ]; then
-        # Script is executable, run it directly with all relevant variables as environment variables
-        SRC_DIR="$SRC_DIR" PROJECT_ROOT="$PROJECT_ROOT" APP_NAME="$APP_NAME" TOOL_NAME="$TOOL_NAME" TOOL_VERSION="$TOOL_VERSION" TOOL_DIR="$TOOL_DIR" BUILD_DIR="$BUILD_DIR" "$SRC_DIR/dependencies.sh"
+    log_verbose "Executing custom dependencies script: $SRC_DIR/dependencies.sh"
+    
+    # Set environment variables for dependencies script
+    export SRC_DIR PROJECT_ROOT APP_NAME TOOL_NAME TOOL_VERSION TOOL_DIR BUILD_DIR
+    
+    # Run script (suppress output in progress mode)
+    if [ "$PROGRESS_MODE" = true ]; then
+        bash "$SRC_DIR/dependencies.sh" > /dev/null 2>&1
     else
-        # Script is not executable, run it with bash and all relevant variables as environment variables
-        SRC_DIR="$SRC_DIR" PROJECT_ROOT="$PROJECT_ROOT" APP_NAME="$APP_NAME" TOOL_NAME="$TOOL_NAME" TOOL_VERSION="$TOOL_VERSION" TOOL_DIR="$TOOL_DIR" BUILD_DIR="$BUILD_DIR" bash "$SRC_DIR/dependencies.sh"
+        bash "$SRC_DIR/dependencies.sh"
     fi
-    echo "✓ Custom dependencies script completed"
-else
-    echo "No custom dependencies script found. Add dependency commands above or create scripts/dependencies.sh"
+    
+    log_verbose "✓ Custom dependencies script completed"
 fi
-
-# Check for any new dependency directories and ensure they have __init__.py files
-# Only process directories if they exist
-# Only process directories if libs/ is not empty and contains directories
-if [ "$(find . -mindepth 1 -maxdepth 1 -type d)" ]; then
-    for dir in */; do
-        if [ -d "$dir" ]; then
-            # Get directory name without trailing slash
-            dir_name=${dir%/}
-            ensure_init_files "$dir_name"
-        fi
-    done
-else
-    echo "No directories found in libs/ to process"
-fi
-
 
 cd $BUILD_DIR
 
-# create a version file and add the version and date
+# Create version file
 echo ${TOOL_VERSION} > VERSION
 date >> VERSION
 
-# remove all ._ files
+# Remove macOS resource fork files
 find . -type f -name '._*' -delete
 
 # Ensure all directories in libs/ have __init__.py files
-echo "Ensuring __init__.py files exist in all libs directories..."
-find "$BUILD_DIR/libs" -type d | while read -r subdir; do
-    if [ ! -f "$subdir/__init__.py" ]; then
-        echo "  Creating __init__.py in: $subdir"
-        echo "# Auto-generated __init__.py file" > "$subdir/__init__.py"
-    fi
-done
-echo "✓ All __init__.py files ensured"
+log_verbose "Ensuring __init__.py files exist in all libs directories..."
+ensure_init_files "$BUILD_DIR/libs"
+log_verbose "✓ All __init__.py files ensured"
 
 # Create tarball in build directory
+show_progress "Creating tarball"
 cd $PROJECT_ROOT/build
-TAR_NAME="IEDB_$(echo $TOOL_NAME | tr '[:lower:]' '[:upper:]')-${TOOL_VERSION}.tar.gz"
-tar -chzf $TAR_NAME $TOOL_DIR
+if [ -n "$TARBALL_PREFIX" ]; then
+    TAR_NAME="${TARBALL_PREFIX}$(echo $TOOL_NAME | tr '[:lower:]' '[:upper:]')-${TOOL_VERSION}.tar.gz"
+else
+    TAR_NAME="${TOOL_NAME}-${TOOL_VERSION}.tar.gz"
+fi
+tar -chzf "$TAR_NAME" $TOOL_DIR
 
-echo "Build completed!"
+if [ "$PROGRESS_MODE" = true ]; then
+    echo ""
+    echo "Build completed: build/$TAR_NAME"
+else
+    echo "Build completed!"
+fi
