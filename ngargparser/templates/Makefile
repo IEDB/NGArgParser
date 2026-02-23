@@ -2,9 +2,17 @@ SHELL := /bin/bash
 
 # Makefile for ngargparser projects
 
-.PHONY: build clean
+.PHONY: build build-verbose clean
 
 build:
+	@if [ -f "./scripts/build.sh" ]; then \
+		cd scripts && ./build.sh --progress; \
+	else \
+		echo "Error: build.sh not found in scripts/ or current directory"; \
+		exit 1; \
+	fi
+
+build-verbose:
 	@if [ -f "./scripts/build.sh" ]; then \
 		cd scripts && ./build.sh; \
 	else \
