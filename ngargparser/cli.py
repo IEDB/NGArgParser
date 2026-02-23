@@ -744,19 +744,15 @@ def build_command(args):
     try:
         import subprocess
         import os
-        
-        # Check if we're in a project directory with a Makefile
-        if os.path.exists('scripts/Makefile'):
-            print("Running make build from scripts directory...")
-            result = subprocess.run(['make', '-f', 'scripts/Makefile', 'build'], check=True)
-            print(f"\033[92m✓\033[0m Build completed successfully.")
-        elif os.path.exists('Makefile'):
+
+        # Only use the root-level Makefile in the current directory
+        if os.path.exists('Makefile'):
             print("Running make build from current directory...")
-            result = subprocess.run(['make', 'build'], check=True)
+            subprocess.run(['make', 'build'], check=True)
             print(f"\033[92m✓\033[0m Build completed successfully.")
         else:
-            print(f"\033[91m✗\033[0m Error: Makefile not found in scripts/ or current directory")
-            print("Make sure you're in a project directory with a Makefile.")
+            print(f"\033[91m✗\033[0m Error: Makefile not found in current directory")
+            print("Make sure you're in a project directory with a root-level Makefile.")
             return 1
     except subprocess.CalledProcessError as e:
         print(f"\033[91m✗\033[0m Build failed with exit code {e.returncode}")
