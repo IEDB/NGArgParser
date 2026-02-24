@@ -2,6 +2,8 @@
 
 # NGArgumentParser Framework Documentation
 
+[![Version](https://img.shields.io/badge/version-0.1.20-blue.svg)](setup.py)
+
 ## Overview
 
 The NGArgumentParser Framework provides a structured approach to building command-line applications with standardized argument parsing, dependency management, and workflow orchestration. After installation, the framework exposes a `cli` command that facilitates project generation, configuration, and build management.
