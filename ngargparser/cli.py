@@ -228,6 +228,20 @@ def update_and_place_readme(file_path, app_name, is_example=False):
     else:
         updated_content = content.replace("{TOOL_NAME_CAP}", format_project_name(app_name, capitalize=True))
 
+    # Insert ngargparser version badge just below the title if possible
+    try:
+        badge_md = f"[![ngargparser](https://img.shields.io/badge/ngargparser-{__version__}-blue.svg)](https://github.com/IEDB/NGArgParser)"
+        lines = updated_content.splitlines(True)  # keep line endings
+        if len(lines) >= 2:
+            # Common template starts with title and an underline of dashes
+            lines.insert(2, f"\n{badge_md}\n\n")
+            updated_content = ''.join(lines)
+        else:
+            updated_content = f"{badge_md}\n\n" + updated_content
+    except Exception:
+        # If anything goes wrong, proceed without badge insertion
+        pass
+
     # Write the updated content to both README.md and README
     with open(readme_md_path, 'w') as f_md:
         f_md.write(updated_content)
@@ -258,6 +272,40 @@ def replace_text_in_place(file_path, old_text, new_text):
     except Exception as e:
         print(f"\033[91m✗ An error occurred: {e}\033[0m")
 
+
+def upsert_readme_badge(readme_path: str, version: str, color: str = "green") -> bool:
+    """
+    Update or insert the ngargparser version badge in the given README file.
+    Returns True if the file was modified, False otherwise.
+    """
+    try:
+        if not os.path.exists(readme_path):
+            return False
+        with open(readme_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        new_badge = f"[![ngargparser](https://img.shields.io/badge/ngargparser-{version}-{color}.svg)](https://github.com/IEDB/NGArgParser)"
+        import re
+        pattern = r"\[!\[ngargparser\]\(https://img\.shields\.io/badge/ngargparser-[^-/\s)]+-[^)\s]+\.svg\)\]\([^)]+\)"
+        if re.search(pattern, content):
+            updated = re.sub(pattern, new_badge, content, count=1)
+            if updated != content:
+                with open(readme_path, 'w', encoding='utf-8') as f:
+                    f.write(updated)
+                return True
+            return False
+        # If no existing badge, insert below title when possible, else prepend
+        lines = content.splitlines(True)
+        if len(lines) >= 2:
+            lines.insert(2, f"\n{new_badge}\n\n")
+            updated = ''.join(lines)
+        else:
+            updated = f"{new_badge}\n\n" + content
+        with open(readme_path, 'w', encoding='utf-8') as f:
+            f.write(updated)
+        return True
+    except Exception as e:
+        print(f"\033[93m⚠\033[0m Skipped updating README badge for {readme_path}: {e}")
+        return False
 
 def normalize_content_ending(content):
     """
@@ -921,6 +969,18 @@ def sync_command(args):
         print(f"  └ Script files updated: \033[92m{script_files_updated}\033[0m")
         print(f"  └ Total files updated: \033[92m{core_files_updated + script_files_updated}\033[0m")
         
+        # Update README badges to current ngargparser version (green)
+        print("\nUpdating README version badges...")
+        readme_updates = 0
+        if upsert_readme_badge('README.md', __version__, color='green'):
+            print("  └ Updated README.md badge")
+            readme_updates += 1
+        if upsert_readme_badge('README', __version__, color='green'):
+            print("  └ Updated README badge")
+            readme_updates += 1
+        if readme_updates == 0:
+            print("  └ No README files updated (none found or already current)")
+
         if core_files_updated + script_files_updated > 0:
             print(f"\n\033[92m✓\033[0m Framework synchronization completed successfully!")
             print(f"Your {project_name} project now has the latest framework files.")
