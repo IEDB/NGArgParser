@@ -224,29 +224,29 @@ def update_and_place_readme(file_path, app_name, is_example=False):
     content = content.replace("{TOOL_NAME}", app_name)
     content = content.replace("{TOOL_EXEC_NAME}", format_project_name(app_name))
     if is_example:
-        updated_content = content.replace("{TOOL_NAME_CAP}", 'AACounter')
+        base_updated_content = content.replace("{TOOL_NAME_CAP}", 'AACounter')
     else:
-        updated_content = content.replace("{TOOL_NAME_CAP}", format_project_name(app_name, capitalize=True))
+        base_updated_content = content.replace("{TOOL_NAME_CAP}", format_project_name(app_name, capitalize=True))
 
     # Insert ngargparser version badge just below the title if possible
     try:
         badge_md = f"[![ngargparser](https://img.shields.io/badge/ngargparser-{__version__}-blue.svg)](https://github.com/IEDB/NGArgParser)"
-        lines = updated_content.splitlines(True)  # keep line endings
+        lines = base_updated_content.splitlines(True)  # keep line endings
         if len(lines) >= 2:
             # Common template starts with title and an underline of dashes
             lines.insert(2, f"\n{badge_md}\n\n")
-            updated_content = ''.join(lines)
+            content_with_badge = ''.join(lines)
         else:
-            updated_content = f"{badge_md}\n\n" + updated_content
+            content_with_badge = f"{badge_md}\n\n" + base_updated_content
     except Exception:
         # If anything goes wrong, proceed without badge insertion
-        pass
+        content_with_badge = base_updated_content
 
     # Write the updated content to both README.md and README
     with open(readme_md_path, 'w') as f_md:
-        f_md.write(updated_content)
+        f_md.write(content_with_badge)  # README.md includes badge
     with open(readme_plain_path, 'w') as f_plain:
-        f_plain.write(updated_content)
+        f_plain.write(base_updated_content)  # README (no extension) has no badge
     
 
 def replace_text_in_place(file_path, old_text, new_text):
@@ -969,14 +969,11 @@ def sync_command(args):
         print(f"  └ Script files updated: \033[92m{script_files_updated}\033[0m")
         print(f"  └ Total files updated: \033[92m{core_files_updated + script_files_updated}\033[0m")
         
-        # Update README badges to current ngargparser version (green)
+        # Update README badges to current ngargparser version (green) — only in README.md
         print("\nUpdating README version badges...")
         readme_updates = 0
         if upsert_readme_badge('README.md', __version__, color='green'):
             print("  └ Updated README.md badge")
-            readme_updates += 1
-        if upsert_readme_badge('README', __version__, color='green'):
-            print("  └ Updated README badge")
             readme_updates += 1
         if readme_updates == 0:
             print("  └ No README files updated (none found or already current)")
