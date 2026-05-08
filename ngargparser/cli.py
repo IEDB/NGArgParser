@@ -809,56 +809,6 @@ def config_paths_command(args):
     setup_paths_file('paths.py')
 
 
-def build_command(args):
-    """Run the make build command using the Makefile."""
-    try:
-        import subprocess
-        import os
-
-        # Only use the root-level Makefile in the current directory
-        if os.path.exists('Makefile'):
-            print("Running make build from current directory...")
-            subprocess.run(['make', 'build'], check=True)
-            print(f"\033[92m✓\033[0m Build completed successfully.")
-        else:
-            print(f"\033[91m✗\033[0m Error: Makefile not found in current directory")
-            print("Make sure you're in a project directory with a root-level Makefile.")
-            return 1
-    except subprocess.CalledProcessError as e:
-        print(f"\033[91m✗\033[0m Build failed with exit code {e.returncode}")
-        return e.returncode
-    except Exception as e:
-        print(f"\033[91m✗\033[0m Error running build: {e}")
-        return 1
-
-
-def clean_command(args):
-    """Run the make clean command using the Makefile."""
-    try:
-        import subprocess
-        import os
-        
-        # Check if we're in a project directory with a Makefile
-        if os.path.exists('scripts/Makefile'):
-            print("Running make clean from scripts directory...")
-            result = subprocess.run(['make', '-f', 'scripts/Makefile', 'clean'], check=True)
-            print(f"\033[92m✓\033[0m Clean completed successfully.")
-        elif os.path.exists('Makefile'):
-            print("Running make clean from current directory...")
-            result = subprocess.run(['make', 'clean'], check=True)
-            print(f"\033[92m✓\033[0m Clean completed successfully.")
-        else:
-            print(f"\033[91m✗\033[0m Error: Makefile not found in scripts/ or current directory")
-            print("Make sure you're in a project directory with a Makefile.")
-            return 1
-    except subprocess.CalledProcessError as e:
-        print(f"\033[91m✗\033[0m Clean failed with exit code {e.returncode}")
-        return e.returncode
-    except Exception as e:
-        print(f"\033[91m✗\033[0m Error running clean: {e}")
-        return 1
-
-
 def sync_command(args):
     """Synchronize framework files in existing projects to the latest version."""
     try:

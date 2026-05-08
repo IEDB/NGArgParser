@@ -58,20 +58,22 @@ cli --help
 ```
 
 ```
-usage: cli [-h] {generate,g,config-paths,c,build,clean} ...
+usage: cli [-h] [-v] {generate,g,config-paths,c,sync,s} ...
 
 NG Argument Parser Framework
 
 positional arguments:
-  {generate,g,config-paths,c,build,clean}
+  {generate,g,config-paths,c,sync,s}
     generate (g)        Create a new custom app project structure
     config-paths (c)    Configure paths.py with tool dependencies in current directory
-    build               Build the project
-    clean               Clean the project
+    sync (s)            Synchronize framework files in existing projects to the latest version
 
 options:
   -h, --help            show this help message and exit
+  -v, --version         show program's version number and exit
 ```
+
+Build and clean are not `cli` subcommands — they're `make` targets in the generated project's root `Makefile`. See [Build System](#build-system).
 
 ## Project Generation
 
@@ -121,7 +123,7 @@ project-root/
 | File/Directory | Purpose |
 |----------------|---------|
 | `configure` | Main executable that runs the configuration process |
-| `pyproject.toml` | Python dependencies and project metadata (managed via `uv`) |
+| `pyproject.toml` | Python dependencies and project metadata (managed via `uv`); also contains `[tool.ngargparser] scaffold_version` stamp tracking the framework version this project was last synced against |
 | `uv.lock` | Locked dependency versions for reproducible installs |
 | `src/core/` | Framework core files (managed by framework, do not modify) |
 | `src/configure.py` | Configuration script for dependency setup |
@@ -355,17 +357,15 @@ This creates:
 
 ### Building Applications
 
-```bash
-# Build the application
-cli build
-# or
-make -f scripts/Makefile build
+Build and clean are `make` targets in the generated project's root `Makefile`. Run them from the project root:
 
-# Clean build artifacts  
-cli clean
-# or
-make -f scripts/Makefile clean
+```bash
+make build          # build a distributable tarball under build/
+make build-verbose  # same, with full build output (no progress bar)
+make clean          # remove the build/ directory
 ```
+
+Under the hood, `make build` invokes `scripts/build.sh`, which copies the source tree, runs `scripts/dependencies.sh` (your hook for vendoring external tools), and emits a tarball.
 
 ### Build Features
 
@@ -373,6 +373,39 @@ make -f scripts/Makefile clean
 - **Dependency inclusion**: Packages external dependencies correctly
 - **Clean distribution**: Excludes development files automatically
 - **Version management**: Automatic version handling
+
+## Upgrading an Existing Project
+
+When the framework gains a bugfix or new feature, run `cli sync` from inside an existing project to pull the latest framework files in without disturbing your application code:
+
+```bash
+cd path/to/your-app
+cli sync   # or `cli s`
+```
+
+`cli sync` only touches **framework-owned** files — it never overwrites your `validators.py`, your `<App>ArgumentParser.py`, your `paths.py`, or anything in `dependencies.sh`. Specifically it refreshes:
+
+- `src/core/NGArgumentParser.py`, `core_validators.py`, `set_pythonpath.py`, `configure.py`
+- `scripts/build.sh`
+- the root `Makefile`
+- the README badge (flips it to green to mark "synced")
+
+It also stamps the project with the framework version it was last synced against (see below), so future major-version migrations have a hook to dispatch from.
+
+### Framework version stamp
+
+Every generated project's `pyproject.toml` ends with:
+
+```toml
+[tool.ngargparser]
+scaffold_version = "0.1.20"
+```
+
+This records which `ngargparser` version scaffolded (or last synced) the project. `cli sync` keeps it current — adds it where missing, bumps it on framework upgrades, no-op when already current. You don't need to edit this by hand.
+
+### What `cli sync` cannot do
+
+For breaking changes (file layouts shifting, schema changes, removed APIs), `cli sync` will keep your core files current but won't transform user-edited content. The right move there is to read the release notes for the major bump, scaffold a fresh project with the new version, and port your application code over.
 
 ## Workflow Operations
 
