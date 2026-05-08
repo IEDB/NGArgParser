@@ -924,20 +924,31 @@ def startapp_command(args):
     else:
         create_project_structure(args.project_name)
 
-    # Create paths.py file
-    create_paths_file(args.project_name)
+    project_dir_name = 'aa-counter' if args.project_name == 'example' else args.project_name
+
+    # Create an empty paths.py — users declare external tool deps later via `cli deps add`.
+    paths_file_path = os.path.join(project_dir_name, 'paths.py')
+    with open(paths_file_path, 'w', encoding='utf-8') as f:
+        f.write('')
+    print(f"\033[92m✓\033[0m Created empty '\033[92m{paths_file_path}\033[0m'.")
 
     # Write initial .env with APP_NAME and APP_ROOT in the new project root
     try:
-        project_dir_name = 'aa-counter' if args.project_name == 'example' else args.project_name
         project_root_abs = os.path.abspath(project_dir_name)
         env_file_path = os.path.join(project_dir_name, '.env')
         with open(env_file_path, 'w', encoding='utf-8') as f:
             f.write(f"APP_ROOT={project_root_abs}\n")
             f.write(f"APP_NAME={project_dir_name}\n")
-        print(f"\n\033[92m✓\033[0m Created initial '.env' at '\033[92m{env_file_path}\033[0m'")
+        print(f"\033[92m✓\033[0m Created initial '.env' at '\033[92m{env_file_path}\033[0m'")
     except Exception as e:
         print(f"\033[91m✗\033[0m Error writing initial .env: \033[91m{e}\033[0m")
+
+    # Closing hint: tell users where to go from here.
+    print()
+    print(f"Project '\033[1m{project_dir_name}\033[0m' is ready. Next steps:")
+    print(f"  cd {project_dir_name}")
+    print(f"  uv sync                                  # install Python deps")
+    print(f"  cli deps add <tool> [<tool> ...]         # declare external tool deps (optional)")
 
 
 def config_paths_command(args):

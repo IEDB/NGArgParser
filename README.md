@@ -103,6 +103,14 @@ cli g example
 ```
 This will create an example app called `aa-counter` with a complete working implementation.
 
+`cli generate` is non-interactive and produces a clean slate — no prompts, no upfront questions. After it finishes, declare external tool dependencies (if any) and install Python deps as separate steps:
+
+```bash
+cd phbr
+uv sync                              # install Python deps from pyproject.toml
+cli deps add mhci-predictor pepx     # declare external tool deps (optional)
+```
+
 ### Generated Project Structure
 
 The framework creates a standardized project structure:
