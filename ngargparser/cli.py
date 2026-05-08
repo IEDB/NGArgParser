@@ -15,34 +15,12 @@ EXAMPLE_DIR = TEMPLATE_DIR / 'example-app'
 # print(TEMPLATE_DIR, type(TEMPLATE_DIR))
 # print(EXAMPLE_DIR, type(EXAMPLE_DIR))
 
-# Import version from setup.py
 def get_version():
     try:
-        # Try to get version from installed package metadata first
         import importlib.metadata
         return importlib.metadata.version('ngargparser')
-    except ImportError:
-        # Fallback for older Python versions
-        try:
-            import pkg_resources
-            return pkg_resources.get_distribution('ngargparser').version
-        except Exception:
-            pass
-    
-    # Fallback: try to read from setup.py (development mode)
-    try:
-        import re
-        # Look for setup.py in the project root (parent of the package directory)
-        setup_file = NGPARSER_DIR.parent / 'setup.py'
-        with open(setup_file, 'r') as f:
-            content = f.read()
-            version_match = re.search(r"version\s*=\s*['\"]([^'\"]+)['\"]", content)
-            if version_match:
-                return version_match.group(1)
     except Exception:
-        pass
-    
-    return 'unknown'
+        return 'unknown'
 
 __version__ = get_version()
 
@@ -56,6 +34,27 @@ def format_project_name(name, capitalize=False):
         name = ''.join(name)
 
     return name
+
+
+def write_pyproject_toml(project_dir, tool_name):
+    """Render templates/pyproject.toml.tmpl into project_dir with {TOOL_NAME} substituted,
+    then attempt to generate uv.lock via `uv lock` if uv is available."""
+    import subprocess
+
+    template_path = TEMPLATE_DIR / 'pyproject.toml.tmpl'
+    target_path = os.path.join(project_dir, 'pyproject.toml')
+
+    shutil.copy(template_path, target_path)
+    replace_text_in_place(target_path, '{TOOL_NAME}', tool_name)
+
+    if shutil.which('uv'):
+        try:
+            subprocess.run(['uv', 'lock'], cwd=project_dir, check=True)
+            print(f"\033[92m✓\033[0m Generated 'uv.lock' for '{project_dir}'.")
+        except subprocess.CalledProcessError as e:
+            print(f"\033[93m⚠\033[0m  'uv lock' failed (exit {e.returncode}); run it manually in '{project_dir}'.")
+    else:
+        print("\033[93m⚠\033[0m  'uv' not found on PATH; skipping 'uv lock'. Run 'uv lock' inside the project once uv is installed.")
 
 def create_example_structure():
     try:
@@ -114,13 +113,8 @@ def create_example_structure():
         # Make the file executable
         os.chmod(configure_file, 0o755)
 
-        # Create empty requirements.txt file
-        requirements_file = f'{project_name}/requirements.txt'
-        with open(requirements_file, 'w') as f:
-            f.write('# Add your project dependencies here\n')
-            f.write('# Example:\n')
-            f.write('# numpy>=1.21.0\n')
-            f.write('# pandas>=1.3.0\n')
+        # Render pyproject.toml from template (and lock with uv if available)
+        write_pyproject_toml(project_name, project_name)
 
         print(f"Created '{project_name}' project structure successfully.")
     except Exception as e:
@@ -197,13 +191,8 @@ def create_project_structure(project_name):
         # Make the file executable
         os.chmod(configure_file, 0o755)
 
-        # Create empty requirements.txt file
-        requirements_file = f'{project_name}/requirements.txt'
-        with open(requirements_file, 'w') as f:
-            f.write('# Add your project dependencies here\n')
-            f.write('# Example:\n')
-            f.write('# numpy>=1.21.0\n')
-            f.write('# pandas>=1.3.0\n')
+        # Render pyproject.toml from template (and lock with uv if available)
+        write_pyproject_toml(project_name, project_name)
 
         print(f"Created '{project_name}' project structure successfully.")
     except Exception as e:
@@ -963,6 +952,15 @@ def sync_command(args):
         #     print("  └ Updated do-not-distribute.txt")
         #     script_files_updated += 1
         
+        # Advisory: legacy projects without pyproject.toml
+        if not os.path.exists('pyproject.toml') and os.path.exists('requirements.txt'):
+            print(
+                "\n\033[93m⚠\033[0m  This project still uses 'requirements.txt'. "
+                "ngargparser scaffolds now generate 'pyproject.toml' + 'uv.lock'.\n"
+                f"   To migrate: copy '{TEMPLATE_DIR}/pyproject.toml.tmpl' to './pyproject.toml', "
+                "edit name/dependencies, then run 'uv lock'."
+            )
+
         # Summary
         print(f"\nSynchronization Summary:")
         print(f"  └ Core files updated: \033[92m{core_files_updated}\033[0m")

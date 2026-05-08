@@ -41,9 +41,9 @@ echo "Installing custom dependencies..."
 # echo "Copying local dependencies..."
 # cp -r /path/to/local/dependency .
 
-# Example 4: Install Python package from source
+# Example 4: Install Python package from source (uv preferred)
 # echo "Installing custom Python package..."
-# pip install --target . git+https://github.com/user/package.git
+# uv pip install --target . git+https://github.com/user/package.git
 
 # Example 5: Run a setup script
 # echo "Running dependency setup..."

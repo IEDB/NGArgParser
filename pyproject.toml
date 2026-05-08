@@ -1,0 +1,43 @@
+[project]
+name = "ngargparser"
+version = "0.1.20"
+description = "Standardized parser framework for CLI tools. Enforces structure for argument parsing, project scaffolding, dependency wiring, and build packaging across IEDB next-gen apps."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+keywords = ["iedb", "nextgen", "argumentparser", "iedb tools"]
+dependencies = [
+    "python-dotenv>=0.19.0",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Build Tools",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/IEDB/NGArgParser"
+Download = "https://github.com/IEDB/NGArgParser/archive/refs/tags/v0.1.tar.gz"
+
+[project.scripts]
+cli = "ngargparser.cli:main"
+
+[dependency-groups]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["ngargparser", "ngargparser.templates"]
+
+[tool.setuptools.package-data]
+"ngargparser.templates" = ["*", "example-app/*"]
+"ngargparser" = ["license-LJI.txt"]

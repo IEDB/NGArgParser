@@ -12,7 +12,12 @@ The framework features a unique `SubparserWrapper` class that simplifies customi
 
 ## Installation
 
-Install the framework with the following command:
+Install the framework with `uv` (preferred — all standalone IEDB tool apps now use uv):
+```bash
+uv pip install -e .
+```
+
+`pip` still works for environments that haven't picked up uv yet:
 ```bash
 pip install .
 ```
@@ -91,7 +96,8 @@ The framework creates a standardized project structure:
 ```
 project-root/
 ├── configure                    # Main configuration executable
-├── requirements.txt             # Project dependencies
+├── pyproject.toml               # Python deps + project metadata (uv-managed)
+├── uv.lock                      # Locked dependency versions (committed)
 ├── README                       # Usage instructions
 ├── license-LJI.txt             # Application license
 ├── src/                        # Source code directory
@@ -115,7 +121,8 @@ project-root/
 | File/Directory | Purpose |
 |----------------|---------|
 | `configure` | Main executable that runs the configuration process |
-| `requirements.txt` | Python dependencies for the project |
+| `pyproject.toml` | Python dependencies and project metadata (managed via `uv`) |
+| `uv.lock` | Locked dependency versions for reproducible installs |
 | `src/core/` | Framework core files (managed by framework, do not modify) |
 | `src/configure.py` | Configuration script for dependency setup |
 | `src/{AppName}ArgumentParser.py` | Application-specific argument parser |
@@ -302,6 +309,28 @@ self.parser_predict.add_argument("--custom-input",
 ```
 
 ## Dependency Management
+
+ngargparser separates two kinds of dependencies, and the tooling reflects that:
+
+| Kind | Managed by | Where it lives |
+|------|------------|----------------|
+| Python packages (numpy, pandas, etc.) | **`uv`** via `pyproject.toml` + `uv.lock` | project root |
+| External binaries / HPC tools / `module load` / `LD_LIBRARY_PATH` | **`paths.py`** + `./configure` (generates per-tool `setup_<tool>_env.sh`) | project root + `src/core/configure.py` |
+
+`uv` and `paths.py` do not overlap. Use `uv` for anything you'd `pip install`. Use `paths.py` for everything else (compiled scientific tools, environment modules, library paths).
+
+### Working with uv
+
+Inside a generated project:
+
+```bash
+uv sync                                 # create .venv and install locked deps
+uv add pandas                           # add a Python dep (updates pyproject.toml + uv.lock)
+uv remove pandas                        # remove a Python dep
+uv run python src/run_<app>.py --help   # run inside the project venv
+```
+
+`uv.lock` should be committed so deploys are reproducible.
 
 ### Configuration
 
