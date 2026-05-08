@@ -997,21 +997,26 @@ def sync_command(args):
         # Stamp the project with the framework version it was last synced against.
         # Future `cli` commands can read [tool.ngargparser] scaffold_version to dispatch
         # version-specific migrations.
+        stamp_updated = False
         if os.path.exists('pyproject.toml'):
             prev = write_scaffold_version('pyproject.toml', __version__)
             if prev is None:
                 print(f"\nStamping framework version...")
                 print(f"  └ Added scaffold_version = \033[92m{__version__}\033[0m to [tool.ngargparser] (was missing)")
+                stamp_updated = True
             elif prev != __version__:
                 print(f"\nStamping framework version...")
                 print(f"  └ scaffold_version: \033[93m{prev}\033[0m → \033[92m{__version__}\033[0m")
+                stamp_updated = True
 
         # Summary
         print(f"\nSynchronization Summary:")
         print(f"  └ Core files updated: \033[92m{core_files_updated}\033[0m")
         print(f"  └ Script files updated: \033[92m{script_files_updated}\033[0m")
         print(f"  └ Total files updated: \033[92m{core_files_updated + script_files_updated}\033[0m")
-        
+        if stamp_updated:
+            print(f"  └ scaffold_version stamp: \033[92mupdated\033[0m")
+
         # Update README badges to current ngargparser version (green) — only in README.md
         print("\nUpdating README version badges...")
         readme_updates = 0
@@ -1021,7 +1026,7 @@ def sync_command(args):
         if readme_updates == 0:
             print("  └ No README files updated (none found or already current)")
 
-        if core_files_updated + script_files_updated > 0:
+        if core_files_updated + script_files_updated > 0 or stamp_updated:
             print(f"\n\033[92m✓\033[0m Framework synchronization completed successfully!")
             print(f"Your {project_name} project now has the latest framework files.")
         else:
@@ -1056,13 +1061,15 @@ def main():
     args = parser.parse_args()
 
     if args.command == 'generate' or args.command == 'g':
-        startapp_command(args)
+        return startapp_command(args) or 0
     elif args.command == 'config-paths' or args.command == 'c':
-        config_paths_command(args)
+        return config_paths_command(args) or 0
     elif args.command == 'sync' or args.command == 's':
-        sync_command(args)
+        return sync_command(args) or 0
     else:
         parser.print_help()  # Print help message if no command is specified
+        return 0
 
 if __name__ == '__main__':
-    main()
+    import sys
+    sys.exit(main() or 0)
