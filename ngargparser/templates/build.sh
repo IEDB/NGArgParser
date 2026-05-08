@@ -73,9 +73,7 @@ APP_NAME=$(basename "$PROJECT_ROOT")
 # touching build.sh (which is framework-owned and gets overwritten by `cli sync`).
 APP_NAME_NORMALIZED=""
 TOOL_NAME=""
-BUILD_ENTRY_SCRIPT=""
 BUILD_SYMLINK_SRC_DIRS=""
-BUILD_COPY_TOPLEVEL_FILES=""
 TARBALL_PREFIX=""
 if [ -f "$SRC_DIR/build.conf" ]; then
     # shellcheck source=build.conf
@@ -90,13 +88,6 @@ TOOL_VERSION="${TOOL_VERSION:-local}"
 TOOL_DIR=$TOOL_NAME-$TOOL_VERSION
 BUILD_DIR=$PROJECT_ROOT/build/$TOOL_DIR
 
-if [ -z "$BUILD_ENTRY_SCRIPT" ] && [ -d "$PROJECT_ROOT/src" ]; then
-    run_scripts=( "$PROJECT_ROOT/src"/run_*.py )
-    if [ -e "${run_scripts[0]}" ] && [ ${#run_scripts[@]} -eq 1 ]; then
-        BUILD_ENTRY_SCRIPT=$(basename "${run_scripts[0]}")
-    fi
-fi
-[ -z "$BUILD_COPY_TOPLEVEL_FILES" ] && BUILD_COPY_TOPLEVEL_FILES="configure license-LJI.txt README"
 [ -z "$TARBALL_PREFIX" ] && TARBALL_PREFIX="IEDB_"
 
 # Ensure we clean up the build directory on failure
@@ -304,7 +295,7 @@ handle_src_dir() {
         local abs_src_file=$(cd "$(dirname "$src_file")" && pwd)/$(basename "$src_file")
         
         if [ -d "$src_file" ]; then
-            # Symlink directory contents if in BUILD_SYMLINK_SRC_DIRS; otherwise copy
+            # Symlink directory contents if in BUILD_SYMLINK_SRC_DIRS (opt-in); otherwise copy.
             if is_in_list "$src_file_name" "$BUILD_SYMLINK_SRC_DIRS"; then
                 log_verbose "Symlinking directory contents: $src_file_name"
                 symlink_directory_contents "$src_file" "$build_src_dir/$src_file_name"
@@ -312,12 +303,11 @@ handle_src_dir() {
                 log_verbose "Copying directory: $src_file_name"
                 cp -r "$src_file" "$build_src_dir/$src_file_name"
             fi
-        elif is_in_list "$src_file_name" "$BUILD_ENTRY_SCRIPT"; then
-            log_verbose "Copying entry script: $src_file_name"
-            cp "$src_file" "$build_src_dir/$src_file_name"
         else
-            log_verbose "Symlinking file: $src_file_name"
-            ln -sf "$abs_src_file" "$build_src_dir/$src_file_name"
+            # Default: copy individual src/ files (entry script + everything else).
+            # The build dir is meant to be a self-contained snapshot.
+            log_verbose "Copying file: $src_file_name"
+            cp "$src_file" "$build_src_dir/$src_file_name"
         fi
     done
 }
@@ -364,20 +354,22 @@ handle_item() {
         "scripts")
             mkdir -p "$build_dir/scripts"
             for scripts_file in "$item"/*; do
-                [ -e "$scripts_file" ] && ln -sf "$scripts_file" "$build_dir/scripts/$(basename "$scripts_file")"
+                [ -e "$scripts_file" ] && cp "$scripts_file" "$build_dir/scripts/$(basename "$scripts_file")"
             done
             ;;
         "requirements.txt")
-            # Only symlink if not already processed as filtered file
+            # Only copy if not already processed as a filtered file (with git deps stripped out).
             if [ ! -f "$build_dir/requirements.txt" ]; then
-                ln -sf "$item" "$build_dir/$item_name"
+                cp "$item" "$build_dir/$item_name"
             fi
             ;;
         *)
-            if is_in_list "$item_name" "$BUILD_COPY_TOPLEVEL_FILES"; then
-                cp "$item" "$build_dir/$item_name"
+            # Default: copy. The build dir is a self-contained snapshot, never a view onto the
+            # source tree. Symlinking ends up dereferenced by `tar -chzf` anyway.
+            if [ -d "$item" ]; then
+                cp -r "$item" "$build_dir/$item_name"
             else
-                ln -sf "$item" "$build_dir/$item_name"
+                cp "$item" "$build_dir/$item_name"
             fi
             ;;
     esac
