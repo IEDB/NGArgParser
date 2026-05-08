@@ -133,8 +133,6 @@ def create_example_structure():
         shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/scripts/do-not-distribute.txt')
         # Make build.sh executable
         os.chmod(f'{project_name}/scripts/build.sh', 0o755)
-        # Replace TOOL_NAME in build.sh for example app
-        replace_text_in_place(f'{project_name}/scripts/build.sh', 'TOOL_NAME=ng_bcell', 'TOOL_NAME=ng_aa-counter')
 
         # Create configure executable file
         configure_file = f'{project_name}/configure'
@@ -198,9 +196,7 @@ def create_project_structure(project_name):
         os.chmod(f'{project_name}/scripts/build.sh', 0o755)
         # Make dependencies.sh executable
         os.chmod(f'{project_name}/scripts/dependencies.sh', 0o755)
-        # Replace TOOL_NAME in build.sh
-        replace_text_in_place(f'{project_name}/scripts/build.sh', 'TOOL_NAME=ng_bcell', f'TOOL_NAME=ng_{project_name}')
-        
+
         # Try to copy license file, but don't fail if it's not available
         license_source = f'{NGPARSER_DIR}/license-LJI.txt'
         if os.path.exists(license_source):

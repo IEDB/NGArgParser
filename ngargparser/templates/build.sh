@@ -67,13 +67,12 @@ fi
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SRC_DIR/.." && pwd)"
 APP_NAME=$(basename "$PROJECT_ROOT")
-TOOL_NAME=ng_${APP_NAME}
-# pull the tool version from the environment, otherwise set it to 'local'
-TOOL_VERSION="${TOOL_VERSION:-local}"
-TOOL_DIR=$TOOL_NAME-$TOOL_VERSION
-BUILD_DIR=$PROJECT_ROOT/build/$TOOL_DIR
 
-# Load build configuration (optional). Defaults make the script generic for any project.
+# Initialize all build.conf-overridable variables to empty, source build.conf if present,
+# then apply defaults. This lets per-project build.conf override anything below without
+# touching build.sh (which is framework-owned and gets overwritten by `cli sync`).
+APP_NAME_NORMALIZED=""
+TOOL_NAME=""
 BUILD_ENTRY_SCRIPT=""
 BUILD_SYMLINK_SRC_DIRS=""
 BUILD_COPY_TOPLEVEL_FILES=""
@@ -84,6 +83,13 @@ if [ -f "$SRC_DIR/build.conf" ]; then
 fi
 
 # Apply defaults when not set by build.conf
+[ -z "$APP_NAME_NORMALIZED" ] && APP_NAME_NORMALIZED="$APP_NAME"
+[ -z "$TOOL_NAME" ] && TOOL_NAME="ng_${APP_NAME_NORMALIZED}"
+# pull the tool version from the environment, otherwise set it to 'local'
+TOOL_VERSION="${TOOL_VERSION:-local}"
+TOOL_DIR=$TOOL_NAME-$TOOL_VERSION
+BUILD_DIR=$PROJECT_ROOT/build/$TOOL_DIR
+
 if [ -z "$BUILD_ENTRY_SCRIPT" ] && [ -d "$PROJECT_ROOT/src" ]; then
     run_scripts=( "$PROJECT_ROOT/src"/run_*.py )
     if [ -e "${run_scripts[0]}" ] && [ ${#run_scripts[@]} -eq 1 ]; then
