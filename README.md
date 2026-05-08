@@ -58,20 +58,32 @@ cli --help
 ```
 
 ```
-usage: cli [-h] [-v] {generate,g,config-paths,c,sync,s} ...
+usage: cli [-h] [-v] {generate,g,deps,d,config-paths,c,sync,s} ...
 
 NG Argument Parser Framework
 
 positional arguments:
-  {generate,g,config-paths,c,sync,s}
+  {generate,g,deps,d,config-paths,c,sync,s}
     generate (g)        Create a new custom app project structure
-    config-paths (c)    Configure paths.py with tool dependencies in current directory
+    deps (d)            Manage external tool dependencies declared in paths.py
+    config-paths (c)    [deprecated] Use `cli deps` instead
     sync (s)            Synchronize framework files in existing projects to the latest version
 
 options:
   -h, --help            show this help message and exit
   -v, --version         show program's version number and exit
 ```
+
+`cli deps` itself has subcommands:
+
+```bash
+cli deps add <name> [<name> ...]     # add stub blocks to paths.py
+cli deps remove <name> [<name> ...]  # remove blocks (alias: rm)
+cli deps list                         # show declared deps and which have paths filled in (alias: ls)
+cli deps                              # bare → interactive add/remove menu
+```
+
+`cli config-paths` (and `cli c`) are kept as deprecated aliases that print a warning and forward to the interactive `cli deps` flow.
 
 Build and clean are not `cli` subcommands — they're `make` targets in the generated project's root `Makefile`. See [Build System](#build-system).
 
@@ -334,9 +346,24 @@ uv run python src/run_<app>.py --help   # run inside the project venv
 
 `uv.lock` should be committed so deploys are reproducible.
 
+### Working with `cli deps`
+
+Inside a generated project:
+
+```bash
+cli deps add mhci-predictor pepx        # add stub blocks to paths.py
+cli deps remove pepx                    # remove a block (alias: cli deps rm pepx)
+cli deps list                           # show what's declared + which paths are filled in (alias: ls)
+cli deps                                # bare → interactive add/remove menu
+```
+
+`cli deps add` only writes a stub block (`<name>_path = None`, `<name>_venv = None`, etc.). You then edit `paths.py` to fill in the actual paths. After editing, run `./configure` to regenerate the per-tool shell scripts and `.env`.
+
+`cli deps remove` accepts either the original name (`mhci-predictor`), the display form (`Mhci Predictor`), or the var-name form (`mhci_predictor`).
+
 ### Configuration
 
-After adding dependencies with `cli config-paths` (or `cli c`), configure the project:
+After declaring dependencies with `cli deps add <name>` (or interactively via `cli deps`), configure the project:
 
 ```bash
 ./configure

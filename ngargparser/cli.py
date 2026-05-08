@@ -728,12 +728,147 @@ def remove_dependencies_from_file(file_path, existing_content, existing_deps):
         print(f"\n\033[91m✗\033[0m Error updating file: \033[91m{e}\033[0m")
 
 
+def add_deps_to_paths(file_path, names):
+    """Non-interactive equivalent of `setup_paths_file`'s "add" path.
+    Appends a stub block for each name in `names` to `file_path`, skipping
+    any whose normalized var name already exists. Creates the file if
+    missing. Returns the count of blocks added."""
+    if not names:
+        return 0
+
+    target = Path(file_path)
+    if target.exists():
+        existing_content, existing_deps = parse_existing_paths_file(file_path)
+        if existing_content is None:
+            existing_content = ''
+            existing_deps = {}
+    else:
+        existing_content = ''
+        existing_deps = {}
+
+    had_existing_deps = bool(existing_deps)
+    new_sections = []
+    skipped = []
+    for name in names:
+        var_name = normalize_name(name)
+        if var_name in existing_deps:
+            skipped.append(name)
+        else:
+            new_sections.append(generate_dependency_section(name))
+            existing_deps[var_name] = format_display_name(name)
+
+    if skipped:
+        print(f"\033[93m⚠\033[0m  Skipped (already declared): {', '.join(skipped)}")
+
+    if not new_sections:
+        return 0
+
+    existing_content = existing_content.rstrip()
+    if not had_existing_deps:
+        first_section = new_sections[0].lstrip('\n')
+        remaining = ''.join(new_sections[1:])
+        if not existing_content.strip():
+            updated_content = first_section + remaining
+        else:
+            updated_content = existing_content + '\n' + first_section + remaining
+    else:
+        updated_content = existing_content + ''.join(new_sections)
+
+    updated_content = normalize_content_ending(updated_content)
+
+    with open(file_path, 'w', encoding='utf-8') as f:
+        f.write(updated_content)
+
+    added_names = [n for n in names if n not in skipped]
+    print(f"\033[92m✓\033[0m Added {len(new_sections)} dependency stub(s) to '{file_path}': {', '.join(added_names)}")
+    print(f"   Edit '{file_path}' to fill in the actual paths.")
+    return len(new_sections)
+
+
+def remove_deps_from_paths(file_path, names):
+    """Non-interactive equivalent of `setup_paths_file`'s "remove" path.
+    Deletes blocks whose display name OR var name matches any entry in `names`.
+    Returns the count of blocks removed."""
+    if not names:
+        return 0
+
+    if not Path(file_path).exists():
+        print(f"\033[91m✗\033[0m '{file_path}' not found. Nothing to remove.")
+        return 0
+
+    existing_content, existing_deps = parse_existing_paths_file(file_path)
+    if existing_content is None:
+        return 0
+
+    # Map display_name → var_name and var_name → var_name so users can pass either
+    name_to_var = {}
+    for var_name, display_name in existing_deps.items():
+        name_to_var[var_name] = (var_name, display_name)
+        name_to_var[display_name] = (var_name, display_name)
+        name_to_var[normalize_name(display_name)] = (var_name, display_name)
+
+    not_found = []
+    to_remove = []  # list of (var_name, display_name)
+    seen_vars = set()
+    for n in names:
+        match = name_to_var.get(n) or name_to_var.get(normalize_name(n))
+        if match is None:
+            not_found.append(n)
+            continue
+        var_name, display_name = match
+        if var_name in seen_vars:
+            continue
+        seen_vars.add(var_name)
+        to_remove.append((var_name, display_name))
+
+    if not_found:
+        print(f"\033[93m⚠\033[0m  Not in '{file_path}' (skipped): {', '.join(not_found)}")
+
+    if not to_remove:
+        return 0
+
+    updated_content = existing_content
+    for var_name, display_name in to_remove:
+        pattern = rf"'''\s*\[\s*{re.escape(display_name)}\s*\]\s*'''.*?{re.escape(var_name)}_lib_path\s*=\s*[^\n]*"
+        updated_content = re.sub(pattern, '', updated_content, flags=re.DOTALL)
+
+    updated_content = normalize_content_ending(updated_content)
+
+    with open(file_path, 'w', encoding='utf-8') as f:
+        f.write(updated_content)
+
+    print(f"\033[92m✓\033[0m Removed {len(to_remove)} dependency block(s) from '{file_path}': {', '.join(d for _, d in to_remove)}")
+    return len(to_remove)
+
+
+def list_deps_in_paths(file_path):
+    """Print the dependency blocks declared in `file_path`. Returns the count."""
+    if not Path(file_path).exists():
+        print(f"\033[93m⚠\033[0m  '{file_path}' not found — no dependencies declared.")
+        return 0
+
+    existing_content, existing_deps = parse_existing_paths_file(file_path)
+    if not existing_deps:
+        print(f"No dependencies declared in '{file_path}'.")
+        return 0
+
+    print(f"Dependencies declared in '{file_path}':")
+    for var_name, display_name in existing_deps.items():
+        # Try to surface whether _path has been filled in or is still None
+        m = re.search(rf"^{re.escape(var_name)}_path\s*=\s*(.+?)$", existing_content, re.MULTILINE)
+        path_value = m.group(1).strip() if m else 'None'
+        status = '\033[92m●\033[0m' if path_value not in ('None', "''", '""') else '\033[93m○\033[0m'
+        print(f"  {status} {display_name:<30} _path = {path_value}")
+    print(f"\n\033[92m●\033[0m = path filled in   \033[93m○\033[0m = stub (still None)")
+    return len(existing_deps)
+
+
 def setup_paths_file(file_path):
     """
     Setup or update a paths file at the specified location.
     If file exists, provides options to add or remove dependencies.
     If not, create a new one.
-    
+
     Args:
         file_path (str): Path where to create or update the paths file
     """
@@ -806,7 +941,36 @@ def startapp_command(args):
 
 
 def config_paths_command(args):
+    import sys
+    print(
+        "\033[93m⚠\033[0m  'cli config-paths' is deprecated; use 'cli deps' instead "
+        "('cli deps add <name>', 'cli deps remove <name>', 'cli deps list').",
+        file=sys.stderr,
+    )
     setup_paths_file('paths.py')
+
+
+def deps_command(args):
+    action = getattr(args, 'deps_action', None)
+    if action == 'add':
+        if args.names:
+            add_deps_to_paths('paths.py', args.names)
+        else:
+            # No names given → fall through to interactive add menu via setup_paths_file
+            setup_paths_file('paths.py')
+        return 0
+    if action == 'remove':
+        if args.names:
+            remove_deps_from_paths('paths.py', args.names)
+        else:
+            setup_paths_file('paths.py')
+        return 0
+    if action == 'list':
+        list_deps_in_paths('paths.py')
+        return 0
+    # Bare `cli deps` → today's interactive flow
+    setup_paths_file('paths.py')
+    return 0
 
 
 def sync_command(args):
@@ -1001,8 +1165,19 @@ def main():
     startapp_parser = subparsers.add_parser('generate',  aliases=["g"], allow_abbrev=True, help='Create a new custom app project structure')
     startapp_parser.add_argument('project_name', type=str, help='Name of the project to create')
 
-    # Create 'config-paths' sub-command
-    config_paths_parser = subparsers.add_parser('config-paths', aliases=["c"], allow_abbrev=True, help='Configure paths.py with tool dependencies in current directory')
+    # Create 'deps' sub-command (manages external tool deps in paths.py)
+    deps_parser = subparsers.add_parser('deps', aliases=["d"], allow_abbrev=True,
+        help='Manage external tool dependencies declared in paths.py')
+    deps_subparsers = deps_parser.add_subparsers(dest='deps_action')
+    deps_add = deps_subparsers.add_parser('add', help='Add one or more dependency stubs to paths.py')
+    deps_add.add_argument('names', nargs='*', help='Dependency names to add (interactive if omitted)')
+    deps_remove = deps_subparsers.add_parser('remove', aliases=['rm'], help='Remove one or more dependency blocks from paths.py')
+    deps_remove.add_argument('names', nargs='*', help='Dependency names to remove (interactive if omitted)')
+    deps_subparsers.add_parser('list', aliases=['ls'], help='List dependencies declared in paths.py')
+
+    # Create 'config-paths' sub-command (deprecated alias for `deps`)
+    config_paths_parser = subparsers.add_parser('config-paths', aliases=["c"], allow_abbrev=True,
+        help='[deprecated] Use `cli deps` instead')
 
     # Create 'sync' sub-command
     sync_parser = subparsers.add_parser('sync', aliases=["s"], allow_abbrev=True, help='Synchronize framework files in existing projects to the latest version.')
@@ -1010,8 +1185,16 @@ def main():
 
     args = parser.parse_args()
 
+    # Normalize 'rm' → 'remove' and 'ls' → 'list' for the dispatcher
+    if getattr(args, 'deps_action', None) == 'rm':
+        args.deps_action = 'remove'
+    elif getattr(args, 'deps_action', None) == 'ls':
+        args.deps_action = 'list'
+
     if args.command == 'generate' or args.command == 'g':
         return startapp_command(args) or 0
+    elif args.command == 'deps' or args.command == 'd':
+        return deps_command(args) or 0
     elif args.command == 'config-paths' or args.command == 'c':
         return config_paths_command(args) or 0
     elif args.command == 'sync' or args.command == 's':
