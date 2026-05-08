@@ -46,6 +46,7 @@ def write_pyproject_toml(project_dir, tool_name):
 
     shutil.copy(template_path, target_path)
     replace_text_in_place(target_path, '{TOOL_NAME}', tool_name)
+    replace_text_in_place(target_path, '{NGARGPARSER_VERSION}', __version__)
 
     if shutil.which('uv'):
         try:
@@ -55,6 +56,38 @@ def write_pyproject_toml(project_dir, tool_name):
             print(f"\033[93m⚠\033[0m  'uv lock' failed (exit {e.returncode}); run it manually in '{project_dir}'.")
     else:
         print("\033[93m⚠\033[0m  'uv' not found on PATH; skipping 'uv lock'. Run 'uv lock' inside the project once uv is installed.")
+
+
+SCAFFOLD_STAMP_RE = re.compile(
+    r'(\[tool\.ngargparser\][^\[]*?scaffold_version\s*=\s*")([^"]*)(")',
+    re.DOTALL,
+)
+
+def write_scaffold_version(pyproject_path, version):
+    """Write or update [tool.ngargparser] scaffold_version in pyproject.toml.
+    Returns the previous version string, or None if no stamp existed before."""
+    if not os.path.exists(pyproject_path):
+        return None
+
+    with open(pyproject_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    match = SCAFFOLD_STAMP_RE.search(content)
+    if match:
+        previous = match.group(2)
+        if previous == version:
+            return previous
+        new_content = content[:match.start(2)] + version + content[match.end(2):]
+    else:
+        previous = None
+        if not content.endswith('\n'):
+            content += '\n'
+        new_content = content + f'\n[tool.ngargparser]\nscaffold_version = "{version}"\n'
+
+    with open(pyproject_path, 'w', encoding='utf-8') as f:
+        f.write(new_content)
+    return previous
+
 
 def create_example_structure():
     try:
@@ -960,6 +993,18 @@ def sync_command(args):
                 f"   To migrate: copy '{TEMPLATE_DIR}/pyproject.toml.tmpl' to './pyproject.toml', "
                 "edit name/dependencies, then run 'uv lock'."
             )
+
+        # Stamp the project with the framework version it was last synced against.
+        # Future `cli` commands can read [tool.ngargparser] scaffold_version to dispatch
+        # version-specific migrations.
+        if os.path.exists('pyproject.toml'):
+            prev = write_scaffold_version('pyproject.toml', __version__)
+            if prev is None:
+                print(f"\nStamping framework version...")
+                print(f"  └ Added scaffold_version = \033[92m{__version__}\033[0m to [tool.ngargparser] (was missing)")
+            elif prev != __version__:
+                print(f"\nStamping framework version...")
+                print(f"  └ scaffold_version: \033[93m{prev}\033[0m → \033[92m{__version__}\033[0m")
 
         # Summary
         print(f"\nSynchronization Summary:")
