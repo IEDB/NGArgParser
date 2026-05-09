@@ -65,7 +65,7 @@ fi
 
 # Resolve paths.
 # This script lives in scripts/core/ (framework-owned, sync-managed).
-# build.conf, build_hooks.sh, and do-not-distribute.txt live one level up in scripts/
+# build.conf, hooks.sh, and do-not-distribute.txt live one level up in scripts/
 # (user-owned). SRC_DIR keeps its established meaning: the user-owned scripts/ dir,
 # which is what the build hook sees via the export below.
 BUILD_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -412,14 +412,17 @@ fi
 cd $BUILD_DIR/libs
 
 show_progress "Running build hooks"
-# Execute the project's build hook if present. Legacy projects may still have
-# scripts/dependencies.sh; we run that too so they keep building until they migrate.
+# Execute the project's build hook if present. Legacy projects may still use
+# the older filenames; we accept those too so builds keep working until migration.
 HOOK_SCRIPT=""
-if [ -f "$SRC_DIR/build_hooks.sh" ]; then
+if [ -f "$SRC_DIR/hooks.sh" ]; then
+    HOOK_SCRIPT="$SRC_DIR/hooks.sh"
+elif [ -f "$SRC_DIR/build_hooks.sh" ]; then
     HOOK_SCRIPT="$SRC_DIR/build_hooks.sh"
+    log_verbose "⚠  Using legacy 'build_hooks.sh'; rename to 'hooks.sh' (or run 'cli sync' to do it for you)."
 elif [ -f "$SRC_DIR/dependencies.sh" ]; then
     HOOK_SCRIPT="$SRC_DIR/dependencies.sh"
-    log_verbose "⚠  Using legacy 'dependencies.sh'; rename to 'build_hooks.sh' (or run 'cli sync' to do it for you)."
+    log_verbose "⚠  Using legacy 'dependencies.sh'; rename to 'hooks.sh' (or run 'cli sync' to do it for you)."
 fi
 
 if [ -n "$HOOK_SCRIPT" ]; then

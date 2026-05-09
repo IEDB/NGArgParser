@@ -191,11 +191,11 @@ def create_project_structure(project_name):
         shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/scripts/core/build.sh')
         os.chmod(f'{project_name}/scripts/core/build.sh', 0o755)
         shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/Makefile')
-        # User-owned: scripts/build.conf, build_hooks.sh, do-not-distribute.txt (sync leaves alone)
+        # User-owned: scripts/build.conf, hooks.sh, do-not-distribute.txt (sync leaves alone)
         shutil.copy(f'{TEMPLATE_DIR}/build.conf', f'{project_name}/scripts/build.conf')
         shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/scripts/do-not-distribute.txt')
-        shutil.copy(f'{TEMPLATE_DIR}/build_hooks.sh', f'{project_name}/scripts/build_hooks.sh')
-        os.chmod(f'{project_name}/scripts/build_hooks.sh', 0o755)
+        shutil.copy(f'{TEMPLATE_DIR}/hooks.sh', f'{project_name}/scripts/hooks.sh')
+        os.chmod(f'{project_name}/scripts/hooks.sh', 0o755)
 
         # Try to copy license file, but don't fail if it's not available
         license_source = f'{NGPARSER_DIR}/license-LJI.txt'
@@ -1066,7 +1066,7 @@ def sync_command(args):
             print("  └ Created configure.py in src/core/")
             core_files_updated += 1
         
-        # Update scripts files (except build_hooks.sh, build.conf, do-not-distribute.txt — user-owned)
+        # Update scripts files (except hooks.sh, build.conf, do-not-distribute.txt — user-owned)
         print("\nUpdating scripts/ files...")
         script_files_updated = 0
 
@@ -1079,13 +1079,14 @@ def sync_command(args):
                   "(framework-owned scripts now live under scripts/core/)")
             script_files_updated += 1
 
-        # Migration: legacy projects had scripts/dependencies.sh; rename to build_hooks.sh.
-        # Content is preserved exactly — only the filename changes.
-        if os.path.exists('scripts/dependencies.sh') and not os.path.exists('scripts/build_hooks.sh'):
-            shutil.move('scripts/dependencies.sh', 'scripts/build_hooks.sh')
-            print("  └ \033[93mMigrated\033[0m scripts/dependencies.sh → scripts/build_hooks.sh "
-                  "(name now reflects its broader role as a build hook)")
-            script_files_updated += 1
+        # Migration: legacy hook filenames → hooks.sh. Content is preserved exactly.
+        # Two prior names existed: dependencies.sh (original) and build_hooks.sh (brief interim).
+        for legacy in ('scripts/dependencies.sh', 'scripts/build_hooks.sh'):
+            if os.path.exists(legacy) and not os.path.exists('scripts/hooks.sh'):
+                shutil.move(legacy, 'scripts/hooks.sh')
+                print(f"  └ \033[93mMigrated\033[0m {legacy} → scripts/hooks.sh")
+                script_files_updated += 1
+                break
 
         # Ensure scripts/core/ exists
         if not os.path.exists('scripts/core'):
