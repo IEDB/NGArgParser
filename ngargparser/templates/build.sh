@@ -73,7 +73,7 @@ APP_NAME=$(basename "$PROJECT_ROOT")
 # touching build.sh (which is framework-owned and gets overwritten by `cli sync`).
 APP_NAME_NORMALIZED=""
 TOOL_NAME=""
-BUILD_SYMLINK_SRC_DIRS=""
+EXCLUDE_FROM_BUILD_SYMLINK=""
 TARBALL_PREFIX=""
 if [ -f "$SRC_DIR/build.conf" ]; then
     # shellcheck source=build.conf
@@ -83,12 +83,26 @@ fi
 # Apply defaults when not set by build.conf
 [ -z "$APP_NAME_NORMALIZED" ] && APP_NAME_NORMALIZED="$APP_NAME"
 [ -z "$TOOL_NAME" ] && TOOL_NAME="ng_${APP_NAME_NORMALIZED}"
+[ -z "$EXCLUDE_FROM_BUILD_SYMLINK" ] && EXCLUDE_FROM_BUILD_SYMLINK="libs run_*.py"
 # pull the tool version from the environment, otherwise set it to 'local'
 TOOL_VERSION="${TOOL_VERSION:-local}"
 TOOL_DIR=$TOOL_NAME-$TOOL_VERSION
 BUILD_DIR=$PROJECT_ROOT/build/$TOOL_DIR
 
 [ -z "$TARBALL_PREFIX" ] && TARBALL_PREFIX="IEDB_"
+
+# Returns 0 if $1 matches any glob pattern in $EXCLUDE_FROM_BUILD_SYMLINK (space-separated).
+# Used by handle_src_dir and handle_item *) to decide copy-vs-symlink for each file/dir.
+should_copy_not_symlink() {
+    local item="$1"
+    for pattern in $EXCLUDE_FROM_BUILD_SYMLINK; do
+        # shellcheck disable=SC2053  # intentional glob match (RHS is a pattern, not a string)
+        if [[ "$item" == $pattern ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
 
 # Ensure we clean up the build directory on failure
 trap 'status=$?; if [ $status -ne 0 ]; then \
@@ -272,16 +286,6 @@ symlink_directory_contents() {
     done
 }
 
-# Function to check if a value is in a space-separated list
-is_in_list() {
-    local item="$1"
-    local list="$2"
-    for x in $list; do
-        [ "$x" = "$item" ] && return 0
-    done
-    return 1
-}
-
 # Function to handle src directory
 handle_src_dir() {
     local src_dir="$1"
@@ -295,19 +299,19 @@ handle_src_dir() {
         local abs_src_file=$(cd "$(dirname "$src_file")" && pwd)/$(basename "$src_file")
         
         if [ -d "$src_file" ]; then
-            # Symlink directory contents if in BUILD_SYMLINK_SRC_DIRS (opt-in); otherwise copy.
-            if is_in_list "$src_file_name" "$BUILD_SYMLINK_SRC_DIRS"; then
-                log_verbose "Symlinking directory contents: $src_file_name"
-                symlink_directory_contents "$src_file" "$build_src_dir/$src_file_name"
-            else
+            if should_copy_not_symlink "$src_file_name"; then
                 log_verbose "Copying directory: $src_file_name"
                 cp -r "$src_file" "$build_src_dir/$src_file_name"
+            else
+                log_verbose "Symlinking directory contents: $src_file_name"
+                symlink_directory_contents "$src_file" "$build_src_dir/$src_file_name"
             fi
-        else
-            # Default: copy individual src/ files (entry script + everything else).
-            # The build dir is meant to be a self-contained snapshot.
+        elif should_copy_not_symlink "$src_file_name"; then
             log_verbose "Copying file: $src_file_name"
             cp "$src_file" "$build_src_dir/$src_file_name"
+        else
+            log_verbose "Symlinking file: $src_file_name"
+            ln -sf "$abs_src_file" "$build_src_dir/$src_file_name"
         fi
     done
 }
@@ -354,22 +358,26 @@ handle_item() {
         "scripts")
             mkdir -p "$build_dir/scripts"
             for scripts_file in "$item"/*; do
-                [ -e "$scripts_file" ] && cp "$scripts_file" "$build_dir/scripts/$(basename "$scripts_file")"
+                [ -e "$scripts_file" ] && ln -sf "$scripts_file" "$build_dir/scripts/$(basename "$scripts_file")"
             done
             ;;
         "requirements.txt")
-            # Only copy if not already processed as a filtered file (with git deps stripped out).
+            # Only symlink if not already processed as a filtered file (with git deps stripped out).
             if [ ! -f "$build_dir/requirements.txt" ]; then
-                cp "$item" "$build_dir/$item_name"
+                ln -sf "$item" "$build_dir/$item_name"
             fi
             ;;
         *)
-            # Default: copy. The build dir is a self-contained snapshot, never a view onto the
-            # source tree. Symlinking ends up dereferenced by `tar -chzf` anyway.
-            if [ -d "$item" ]; then
-                cp -r "$item" "$build_dir/$item_name"
+            # Default: symlink. To copy a top-level item instead, list it (or a glob)
+            # in EXCLUDE_FROM_BUILD_SYMLINK in scripts/build.conf.
+            if should_copy_not_symlink "$item_name"; then
+                if [ -d "$item" ]; then
+                    cp -r "$item" "$build_dir/$item_name"
+                else
+                    cp "$item" "$build_dir/$item_name"
+                fi
             else
-                cp "$item" "$build_dir/$item_name"
+                ln -sf "$item" "$build_dir/$item_name"
             fi
             ;;
     esac
