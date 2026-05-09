@@ -71,7 +71,6 @@ APP_NAME=$(basename "$PROJECT_ROOT")
 # Initialize all build.conf-overridable variables to empty, source build.conf if present,
 # then apply defaults. This lets per-project build.conf override anything below without
 # touching build.sh (which is framework-owned and gets overwritten by `cli sync`).
-APP_NAME_NORMALIZED=""
 TOOL_NAME=""
 EXCLUDE_FROM_BUILD_SYMLINK=""
 TARBALL_PREFIX=""
@@ -81,8 +80,7 @@ if [ -f "$SRC_DIR/build.conf" ]; then
 fi
 
 # Apply defaults when not set by build.conf
-[ -z "$APP_NAME_NORMALIZED" ] && APP_NAME_NORMALIZED="$APP_NAME"
-[ -z "$TOOL_NAME" ] && TOOL_NAME="ng_${APP_NAME_NORMALIZED}"
+[ -z "$TOOL_NAME" ] && TOOL_NAME="ng_${APP_NAME}"
 [ -z "$EXCLUDE_FROM_BUILD_SYMLINK" ] && EXCLUDE_FROM_BUILD_SYMLINK="libs run_*.py"
 # pull the tool version from the environment, otherwise set it to 'local'
 TOOL_VERSION="${TOOL_VERSION:-local}"
