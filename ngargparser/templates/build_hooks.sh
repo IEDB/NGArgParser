@@ -1,29 +1,31 @@
 #!/bin/bash
 
-# Custom Dependencies Script for ngargparser apps
-# 
-# This script is executed by build.sh during the build process.
-# You can customize this script to download, install, or configure
-# any dependencies your application needs.
+# Build hook for ngargparser apps.
 #
-# The script runs from the libs/ directory in the build folder.
-# All dependencies should be placed in the current directory (libs/).
+# This script is invoked by scripts/core/build.sh after the source tree has been
+# copied/symlinked into the build dir but before the tarball is created. It is
+# the single user-owned extension point in the build pipeline; `cli sync` never
+# touches it.
 #
-# Examples:
-#   - Clone Git repositories
-#   - Download and extract archives
-#   - Install Python packages
-#   - Copy local dependency files
-#   - Run setup/installation scripts
+# Working directory: build/<TOOL>/libs/ — anything you create lands in libs/.
+# Available exports: SRC_DIR, PROJECT_ROOT, APP_NAME, TOOL_NAME, TOOL_VERSION,
+#                    TOOL_DIR, BUILD_DIR.
+#
+# Common uses:
+#   - Vendor external tools (git clone, wget + tar, curl)
+#   - Copy local binaries/data into the build dir
+#   - Run code generators or patch source files
+#   - Install Python packages with `uv pip install --target .`
+#   - Strip files, run validators, generate version stamps
 
 set -e  # Exit on any error
 
-echo "Installing custom dependencies..."
+echo "Running build hooks..."
 
 # =====================================================================
-# ADD YOUR DEPENDENCY COMMANDS BELOW
+# ADD YOUR BUILD-HOOK COMMANDS BELOW
 # ---------------------------------------------------------------------
-# Replace the examples below with your actual dependency commands
+# Replace the examples below with your actual commands.
 # =====================================================================
 
 # Example 1: Clone a Git repository
@@ -46,11 +48,11 @@ echo "Installing custom dependencies..."
 # uv pip install --target . git+https://github.com/user/package.git
 
 # Example 5: Run a setup script
-# echo "Running dependency setup..."
+# echo "Running setup..."
 # bash /path/to/setup-script.sh
 
 # =====================================================================
-# END OF DEPENDENCIES
+# END OF BUILD HOOKS
 # =====================================================================
 
-echo "✓ Custom dependencies installation completed"
+echo "✓ Build hooks completed"

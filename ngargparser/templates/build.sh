@@ -65,9 +65,9 @@ fi
 
 # Resolve paths.
 # This script lives in scripts/core/ (framework-owned, sync-managed).
-# build.conf, dependencies.sh, and do-not-distribute.txt live one level up in scripts/
+# build.conf, build_hooks.sh, and do-not-distribute.txt live one level up in scripts/
 # (user-owned). SRC_DIR keeps its established meaning: the user-owned scripts/ dir,
-# which is what dependencies.sh sees via the export below.
+# which is what the build hook sees via the export below.
 BUILD_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="$(cd "$BUILD_SH_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$SRC_DIR/.." && pwd)"
@@ -411,22 +411,31 @@ fi
 # All dependencies should be in the libs directory
 cd $BUILD_DIR/libs
 
-show_progress "Installing dependencies"
-# Execute custom dependencies script if it exists
-if [ -f "$SRC_DIR/dependencies.sh" ]; then
-    log_verbose "Executing custom dependencies script: $SRC_DIR/dependencies.sh"
-    
-    # Set environment variables for dependencies script
+show_progress "Running build hooks"
+# Execute the project's build hook if present. Legacy projects may still have
+# scripts/dependencies.sh; we run that too so they keep building until they migrate.
+HOOK_SCRIPT=""
+if [ -f "$SRC_DIR/build_hooks.sh" ]; then
+    HOOK_SCRIPT="$SRC_DIR/build_hooks.sh"
+elif [ -f "$SRC_DIR/dependencies.sh" ]; then
+    HOOK_SCRIPT="$SRC_DIR/dependencies.sh"
+    log_verbose "⚠  Using legacy 'dependencies.sh'; rename to 'build_hooks.sh' (or run 'cli sync' to do it for you)."
+fi
+
+if [ -n "$HOOK_SCRIPT" ]; then
+    log_verbose "Executing build hook: $HOOK_SCRIPT"
+
+    # Set environment variables visible to the hook
     export SRC_DIR PROJECT_ROOT APP_NAME TOOL_NAME TOOL_VERSION TOOL_DIR BUILD_DIR
-    
+
     # Run script (suppress output in progress mode)
     if [ "$PROGRESS_MODE" = true ]; then
-        bash "$SRC_DIR/dependencies.sh" > /dev/null 2>&1
+        bash "$HOOK_SCRIPT" > /dev/null 2>&1
     else
-        bash "$SRC_DIR/dependencies.sh"
+        bash "$HOOK_SCRIPT"
     fi
-    
-    log_verbose "✓ Custom dependencies script completed"
+
+    log_verbose "✓ Build hook completed"
 fi
 
 cd $BUILD_DIR

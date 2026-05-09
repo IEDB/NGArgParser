@@ -191,11 +191,11 @@ def create_project_structure(project_name):
         shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/scripts/core/build.sh')
         os.chmod(f'{project_name}/scripts/core/build.sh', 0o755)
         shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/Makefile')
-        # User-owned: scripts/build.conf, dependencies.sh, do-not-distribute.txt (sync leaves alone)
+        # User-owned: scripts/build.conf, build_hooks.sh, do-not-distribute.txt (sync leaves alone)
         shutil.copy(f'{TEMPLATE_DIR}/build.conf', f'{project_name}/scripts/build.conf')
         shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/scripts/do-not-distribute.txt')
-        shutil.copy(f'{TEMPLATE_DIR}/dependencies.sh', f'{project_name}/scripts/dependencies.sh')
-        os.chmod(f'{project_name}/scripts/dependencies.sh', 0o755)
+        shutil.copy(f'{TEMPLATE_DIR}/build_hooks.sh', f'{project_name}/scripts/build_hooks.sh')
+        os.chmod(f'{project_name}/scripts/build_hooks.sh', 0o755)
 
         # Try to copy license file, but don't fail if it's not available
         license_source = f'{NGPARSER_DIR}/license-LJI.txt'
@@ -1066,7 +1066,7 @@ def sync_command(args):
             print("  └ Created configure.py in src/core/")
             core_files_updated += 1
         
-        # Update scripts files (except dependencies.sh, build.conf, do-not-distribute.txt — user-owned)
+        # Update scripts files (except build_hooks.sh, build.conf, do-not-distribute.txt — user-owned)
         print("\nUpdating scripts/ files...")
         script_files_updated = 0
 
@@ -1077,6 +1077,14 @@ def sync_command(args):
             shutil.move('scripts/build.sh', 'scripts/core/build.sh')
             print("  └ \033[93mMigrated\033[0m scripts/build.sh → scripts/core/build.sh "
                   "(framework-owned scripts now live under scripts/core/)")
+            script_files_updated += 1
+
+        # Migration: legacy projects had scripts/dependencies.sh; rename to build_hooks.sh.
+        # Content is preserved exactly — only the filename changes.
+        if os.path.exists('scripts/dependencies.sh') and not os.path.exists('scripts/build_hooks.sh'):
+            shutil.move('scripts/dependencies.sh', 'scripts/build_hooks.sh')
+            print("  └ \033[93mMigrated\033[0m scripts/dependencies.sh → scripts/build_hooks.sh "
+                  "(name now reflects its broader role as a build hook)")
             script_files_updated += 1
 
         # Ensure scripts/core/ exists

@@ -136,9 +136,9 @@ project-root/
 │   └── {AppName}ArgumentParser.py # Application-specific parser (yours)
 └── scripts/                    # Build configuration and hooks
     ├── core/                   # Framework build infrastructure — DO NOT EDIT (sync overwrites)
-    │   └── build.sh            # Build pipeline (copies, packages, runs dependencies.sh)
+    │   └── build.sh            # Build pipeline (copies, packages, runs build_hooks.sh)
     ├── build.conf              # Build knobs (yours)
-    ├── dependencies.sh         # Imperative hook for vendored deps (yours)
+    ├── build_hooks.sh          # Imperative build hook — vendor deps, run codegen, etc. (yours)
     └── do-not-distribute.txt   # File exclusion list (yours)
 ```
 
@@ -160,7 +160,7 @@ project-root/
 | `Makefile` | `make build` / `make clean` entry point — framework-owned, sync overwrites |
 | `scripts/core/build.sh` | Build pipeline — framework-owned, sync overwrites |
 | `scripts/build.conf` | Build knobs (e.g. `EXCLUDE_FROM_BUILD_SYMLINK`) — yours |
-| `scripts/dependencies.sh` | Imperative hook for vendored / git-cloned deps — yours |
+| `scripts/build_hooks.sh` | Imperative build hook — vendor deps, run codegen, patch source, sign artifacts, etc. Runs after source copy, before tarball. Yours. |
 | `scripts/do-not-distribute.txt` | File exclusion list — yours |
 
 ## NGArgumentParser Core Features
@@ -407,7 +407,7 @@ make build-verbose  # same, with full build output (no progress bar)
 make clean          # remove the build/ directory
 ```
 
-Under the hood, `make build` invokes `scripts/core/build.sh`, which copies/symlinks the source tree, runs `scripts/dependencies.sh` (your hook for vendoring external tools), and emits a tarball.
+Under the hood, `make build` invokes `scripts/core/build.sh`, which copies/symlinks the source tree, runs `scripts/build_hooks.sh` (your hook for vendoring deps, codegen, patching, signing, etc.), and emits a tarball.
 
 ### Build Features
 
@@ -425,7 +425,7 @@ cd path/to/your-app
 cli sync   # or `cli s`
 ```
 
-`cli sync` only touches **framework-owned** files — it never overwrites your `validators.py`, your `<App>ArgumentParser.py`, your `paths.py`, or anything in `dependencies.sh`. Specifically it refreshes:
+`cli sync` only touches **framework-owned** files — it never overwrites your `validators.py`, your `<App>ArgumentParser.py`, your `paths.py`, or anything in `build_hooks.sh`. Specifically it refreshes:
 
 - `src/core/NGArgumentParser.py`, `core_validators.py`, `set_pythonpath.py`, `configure.py`
 - `scripts/core/build.sh`
