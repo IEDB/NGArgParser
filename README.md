@@ -1,532 +1,348 @@
+# ngargparser
 
+> Framework for building IEDB-style command-line scientific tools — standardized argument parsing, dependency wiring, and reproducible tarball builds.
 
-# NGArgumentParser Framework Documentation
+[![ngargparser](https://img.shields.io/badge/ngargparser-0.1.20-blue.svg)](https://github.com/IEDB/NGArgParser)
 
-[![Version](https://img.shields.io/badge/version-0.1.20-blue.svg)](setup.py)
+After `pip install`-ing the framework, you get a `cli` command and a Python class (`NGArgumentParser`) that together produce well-shaped scientific CLI apps:
 
-## Overview
+- A standardized `preprocess → predict → postprocess` workflow shared across every app
+- A reproducible build that emits a self-contained tarball for HPC distribution
+- Two-tier dependency management: `uv` for Python packages, `cli deps` + `paths.py` for external binaries / HPC modules / library paths
+- A clean ownership boundary: framework files live in `core/` subdirectories and get sync-managed; everything else is yours
 
-The NGArgumentParser Framework provides a structured approach to building command-line applications with standardized argument parsing, dependency management, and workflow orchestration. After installation, the framework exposes a `cli` command that facilitates project generation, configuration, and build management.
-
-The framework features a unique `SubparserWrapper` class that simplifies customization of help text and descriptions, comprehensive argument grouping and validation systems, automatic dependency management with cleanup, and a robust build system for packaging and distribution.
-
-## Installation
-
-Install the framework with `uv` (preferred — all standalone IEDB tool apps now use uv):
-```bash
-uv pip install -e .
-```
-
-`pip` still works for environments that haven't picked up uv yet:
-```bash
-pip install .
-```
-
-## Key Features
-
-### 1. Enhanced Argument Parser
-- **SubparserWrapper**: Simplified syntax for modifying help text and descriptions dynamically
-- **Argument Grouping**: Organize arguments into logical groups for better help display  
-- **Formatter Classes**: Support for multiline descriptions with preserved formatting
-- **Argument Updates**: Easy modification of existing arguments with new properties
-- **Automatic Validation**: Built-in validation system with extensible custom validators
-
-### 2. Robust Dependency Management
-- **Automatic Detection**: Dynamically detects dependencies from `paths.py`
-- **Smart Cleanup**: Removes old dependencies and shell scripts automatically
-- **Cross-Platform**: Works on Linux, macOS, and Windows (WSL)
-- **Environment Isolation**: Creates dedicated environment setup scripts
-
-### 3. Comprehensive Build System
-- **Cross-Platform Building**: Handles Linux/macOS differences automatically
-- **Dependency Packaging**: Structured approach to including external dependencies
-- **Clean Distribution**: Excludes development files from distribution packages
-- **Makefile Integration**: Complete build automation with `build` and `clean` targets
-
-### 4. Template-Based Project Generation
-- **Structured Layout**: Separates core framework files from user-modifiable code
-- **Example Applications**: Pre-built example projects for rapid development
-- **Variable Substitution**: Automatic replacement of placeholders in generated files
-- **Executable Scripts**: Properly configured permissions for all scripts
-
-## Command-Line Interface
-
-The framework provides the following commands:
+## Install
 
 ```bash
-cli --help
+uv pip install -e .       # preferred
+pip install .             # also works
 ```
 
-```
-usage: cli [-h] [-v] {generate,g,deps,d,config-paths,c,sync,s} ...
-
-NG Argument Parser Framework
-
-positional arguments:
-  {generate,g,deps,d,config-paths,c,sync,s}
-    generate (g)        Create a new custom app project structure
-    deps (d)            Manage external tool dependencies declared in paths.py
-    config-paths (c)    [deprecated] Use `cli deps` instead
-    sync (s)            Synchronize framework files in existing projects to the latest version
-
-options:
-  -h, --help            show this help message and exit
-  -v, --version         show program's version number and exit
-```
-
-`cli deps` itself has subcommands:
+## Quickstart (5 minutes)
 
 ```bash
-cli deps add <name> [<name> ...]     # add stub blocks to paths.py
-cli deps remove <name> [<name> ...]  # remove blocks (alias: rm)
-cli deps list                         # show declared deps and which have paths filled in (alias: ls)
-cli deps                              # bare → interactive add/remove menu
+cli generate my-app                                  # scaffold
+cd my-app
+uv sync                                              # install Python deps
+uv run python src/run_my_app.py predict --help       # see what your app does
+make build                                           # build/IEDB_NG_MY-APP-local.tar.gz
 ```
 
-`cli config-paths` (and `cli c`) are kept as deprecated aliases that print a warning and forward to the interactive `cli deps` flow.
+What just happened:
 
-Build and clean are not `cli` subcommands — they're `make` targets in the generated project's root `Makefile`. See [Build System](#build-system).
+- **`cli generate`** scaffolded a fresh project tree at `my-app/`. Non-interactive: no prompts, scriptable.
+- **`uv sync`** read `pyproject.toml`, locked deps into `uv.lock`, installed them into `.venv/`.
+- **`uv run python …`** ran the entry script through the project venv. Out of the box your app understands `preprocess`, `predict`, and `postprocess` subcommands.
+- **`make build`** ran the build pipeline (copy + symlink, run hooks, tarball). Output ships to HPC.
 
-## Project Generation
-
-### Creating a New Application
-
-To create a new application, use the `generate` command with your desired application name:
+When you need an external tool dep:
 
 ```bash
-cli generate phbr  # or 'cli g phbr'
+cli deps add mhci-predictor pepx     # writes stub blocks to paths.py
+$EDITOR paths.py                      # fill in actual binary paths
+./configure                           # generate per-tool setup_<name>_env.sh + .env
 ```
 
-You can also create an example app for reference:
-```bash
-cli g example
-```
-This will create an example app called `aa-counter` with a complete working implementation.
-
-`cli generate` is non-interactive and produces a clean slate — no prompts, no upfront questions. After it finishes, declare external tool dependencies (if any) and install Python deps as separate steps:
-
-```bash
-cd phbr
-uv sync                              # install Python deps from pyproject.toml
-cli deps add mhci-predictor pepx     # declare external tool deps (optional)
-```
-
-### Generated Project Structure
-
-The framework creates a standardized project structure:
+## Project layout
 
 ```
-project-root/
-├── Makefile                    # Build entry point (framework-owned, sync overwrites)
-├── configure                    # Main configuration executable
-├── pyproject.toml               # Python deps + project metadata (uv-managed)
-├── uv.lock                      # Locked dependency versions (committed)
-├── README                       # Usage instructions
-├── license-LJI.txt             # Application license
-├── src/                        # Source code directory
-│   ├── core/                   # Framework core files — DO NOT EDIT (sync overwrites)
-│   │   ├── NGArgumentParser.py # Core argument parser
-│   │   ├── core_validators.py  # Core validation functions
-│   │   ├── configure.py        # Configuration script
-│   │   └── set_pythonpath.py   # Path setup helper
-│   ├── preprocess.py           # Input processing logic (yours)
-│   ├── postprocess.py          # Result aggregation logic (yours)
-│   ├── validators.py           # Custom validation functions (yours)
-│   ├── run_{app_name}.py       # Main application entry point (yours)
-│   └── {AppName}ArgumentParser.py # Application-specific parser (yours)
-└── scripts/                    # Build configuration and hooks
-    ├── core/                   # Framework build infrastructure — DO NOT EDIT (sync overwrites)
-    │   └── build.sh            # Build pipeline (copies, packages, runs hooks.sh)
-    ├── build.conf              # Build knobs (yours)
-    ├── hooks.sh          # Imperative build hook — vendor deps, run codegen, etc. (yours)
-    └── do-not-distribute.txt   # File exclusion list (yours)
+my-app/
+├── Makefile                    # framework-owned (sync overwrites)
+├── configure                   # framework-owned executable
+├── pyproject.toml              # Python deps + project metadata + scaffold_version stamp
+├── uv.lock                     # locked deps (commit this)
+├── README                      # your app's user-facing README
+├── license-LJI.txt
+├── paths.py                    # declares external tool deps (yours)
+├── src/
+│   ├── core/                   # framework-owned (sync overwrites) — DO NOT EDIT
+│   │   ├── NGArgumentParser.py
+│   │   ├── core_validators.py
+│   │   ├── configure.py
+│   │   └── set_pythonpath.py
+│   ├── run_my_app.py           # entry script (yours)
+│   ├── MyAppArgumentParser.py  # subclass of NGArgumentParser (yours)
+│   ├── preprocess.py           # your input prep logic
+│   ├── postprocess.py          # your aggregation logic
+│   └── validators.py           # your custom validators
+└── scripts/
+    ├── core/                   # framework-owned (sync overwrites)
+    │   └── build.sh            # build pipeline
+    ├── build.conf              # build knobs (yours)
+    ├── hooks.sh                # imperative build hook (yours)
+    └── do-not-distribute.txt   # exclusion list (yours)
 ```
 
-**Ownership rule:** anything inside a `core/` subdirectory is framework-owned — `cli sync` will overwrite it on framework upgrades. Everything outside `core/` (in both `src/` and `scripts/`) is yours; sync never touches it.
+**Ownership rule:** anything inside a `core/` subdirectory is framework-owned — `cli sync` overwrites those files when you upgrade. Everything else is yours; sync never touches it.
 
-#### File Descriptions
+## The three-stage workflow
 
-| File/Directory | Purpose |
-|----------------|---------|
-| `configure` | Main executable that runs the configuration process |
-| `pyproject.toml` | Python dependencies and project metadata (managed via `uv`); also contains `[tool.ngargparser] scaffold_version` stamp tracking the framework version this project was last synced against |
-| `uv.lock` | Locked dependency versions for reproducible installs |
-| `src/core/` | Framework core Python files — `cli sync` overwrites |
-| `src/{AppName}ArgumentParser.py` | Application-specific argument parser |
-| `src/run_{app_name}.py` | Main application entry point |
-| `src/preprocess.py` | Input processing and job preparation |
-| `src/postprocess.py` | Result aggregation and post-processing logic |
-| `src/validators.py` | Custom validation functions |
-| `Makefile` | `make build` / `make clean` entry point — framework-owned, sync overwrites |
-| `scripts/core/build.sh` | Build pipeline — framework-owned, sync overwrites |
-| `scripts/build.conf` | Build knobs (e.g. `EXCLUDE_FROM_BUILD_SYMLINK`) — yours |
-| `scripts/hooks.sh` | Imperative build hook — vendor deps, run codegen, patch source, sign artifacts, etc. Runs after source copy, before tarball. Yours. |
-| `scripts/do-not-distribute.txt` | File exclusion list — yours |
-
-## NGArgumentParser Core Features
-
-### Built-in Subparsers
-
-The NGArgumentParser class automatically creates three subparsers:
-1. `preprocess` - For input processing and job preparation
-2. `predict` - For core prediction/analysis (customizable by developer)  
-3. `postprocess` - For result aggregation
-
-### SubparserWrapper Enhancement
-
-The framework includes a `SubparserWrapper` class that enables easy modification of help text and descriptions:
-
-```python
-# Simple syntax to change help text
-self.parser_preprocess.help = 'Custom preprocessing description'
-self.parser_postprocess.help = 'Custom postprocessing description'
-
-# Modify descriptions that appear in subcommand help
-self.parser_preprocess.description = 'Detailed preprocessing instructions'
-```
-
-### Argument Grouping System
-
-Arguments can be organized into logical groups for better help display:
-
-```python
-self.parser_predict.add_argument("--output-prefix", "-o",
-                        dest="output_prefix",
-                        help="prediction result output prefix.",
-                        group="output options")  # Groups related arguments
-```
-
-### Preprocess Subparser
-
-The `preprocess` subparser includes comprehensive built-in options:
+Every generated app supports three subcommands out of the box:
 
 ```bash
-usage: run_app.py preprocess --input-json JSON_FILE --output-dir OUTPUT_DIR
-                             [-h] [--params-dir PREPROCESS_PARAMETERS_DIR]
-                             [--inputs-dir PREPROCESS_INPUTS_DIR] [--assume-valid]
-
-required parameters:
-  --input-json JSON_FILE, -j JSON_FILE
-                        JSON file containing input parameters.
-  --output-dir OUTPUT_DIR, -o OUTPUT_DIR
-                        prediction result output directory.
-
-optional parameters:
-  -h, --help            show this help message and exit
-  --params-dir PREPROCESS_PARAMETERS_DIR
-                        a directory to store preprocessed JSON input files
-                        (default: $OUTPUT_DIR/predict-inputs/params)
-  --inputs-dir PREPROCESS_INPUTS_DIR
-                        a directory to store other, non-JSON inputs (e.g., fasta files)
-                        (default: $OUTPUT_DIR/predict-inputs/data)
-  --assume-valid        flag to indicate validation can be skipped
+python src/run_my_app.py preprocess  -j input.json -o output-dir/
+python src/run_my_app.py predict     -j input.json -o output-file
+python src/run_my_app.py postprocess -j job_descriptions.json -p final-results/
 ```
 
-### Postprocess Subparser
+| Stage | Role | Where you customize |
+|---|---|---|
+| `preprocess` | Validate inputs, split work into job units, emit `job_descriptions.json` | `src/preprocess.py` |
+| `predict` | Run the core analysis on a single job unit | `src/MyAppArgumentParser.py` (args) + `src/run_my_app.py` (logic) |
+| `postprocess` | Merge per-job results into a single output | `src/postprocess.py` |
 
-The `postprocess` subparser supports multiple input methods:
+`preprocess` and `postprocess` come with built-in arguments (input/output paths, validation flags) so you don't redefine them. `predict` is the customizable subparser — that's where you add tool-specific options.
 
-```bash
-usage: run_app.py postprocess [-h] [--job-desc-file JOB_DESC_FILE | --input-results-dir POSTPROCESS_INPUT_DIR]
-                              [--postprocessed-results-dir POSTPROCESS_RESULT_DIR]
-                              [--output-prefix OUTPUT_PREFIX] [--output-format OUTPUT_FORMAT]
+## Customizing your app
 
-input source (choose exactly one):
-  --job-desc-file JOB_DESC_FILE, -j JOB_DESC_FILE
-                        Path to job description file.
-  --input-results-dir POSTPROCESS_INPUT_DIR, -i POSTPROCESS_INPUT_DIR
-                        directory containing the result files to postprocess
-
-other required parameters:
-  --postprocessed-results-dir POSTPROCESS_RESULT_DIR, -p POSTPROCESS_RESULT_DIR
-                        a directory to contain the post-processed results
-
-optional parameters:
-  -h, --help            show this help message and exit
-  --output-prefix OUTPUT_PREFIX, -o OUTPUT_PREFIX
-                        prediction result output prefix.
-  --output-format OUTPUT_FORMAT, -f OUTPUT_FORMAT
-                        prediction result output format (Default=json)
-```
-
-### Predict Subparser
-
-The `predict` subparser is customizable by developers. It supports various formatter classes for proper handling of multiline descriptions:
-
-```python
-# Use RawDescriptionHelpFormatter to preserve line breaks
-self.parser_predict = self.add_predict_subparser(
-    help='Run prediction algorithms',
-    description=textwrap.dedent('''
-        Prediction stage executes the core analysis:
-        - Loads preprocessed data
-        - Runs machine learning models
-        - Generates individual predictions
-    '''),
-    formatter_class=argparse.RawDescriptionHelpFormatter
-)
-```
-
-## Creating a Child Class
-
-### Basic Implementation
+The argument parser for your app lives in `src/MyAppArgumentParser.py` and subclasses `NGArgumentParser`:
 
 ```python
 import textwrap
 import argparse
 from core.NGArgumentParser import NGArgumentParser
 
-class ExampleArgumentParser(NGArgumentParser):
+class MyAppArgumentParser(NGArgumentParser):
     def __init__(self):
         super().__init__()
-        
-        # Customize program details
-        self.description = textwrap.dedent('''
-            This is an example application using the NGArgumentParser framework.
-        ''')
-        
-        # Add predict subparser with custom configuration
+        self.description = textwrap.dedent("""
+            One-line description of your app.
+        """)
+
         self.parser_predict = self.add_predict_subparser(
-            help='Perform individual prediction.',
-            description='This is where users can perform individual predictions.',
-            formatter_class=argparse.RawDescriptionHelpFormatter
+            help='Run a single prediction.',
+            description='Multi-line help that survives formatting.',
+            formatter_class=argparse.RawDescriptionHelpFormatter,
         )
-        
-        # Add tool-specific parameters with grouping
-        self.parser_predict.add_argument("--output-prefix", "-o",
-                                dest="output_prefix",
-                                help="prediction result output prefix.",
-                                metavar="OUTPUT_PREFIX",
-                                group="output options")
-        
-        self.parser_predict.add_argument("--output-format", "-f",
-                                dest="output_format",
-                                default="json",
-                                help="prediction result output format (Default=json)",
-                                metavar="OUTPUT_FORMAT",
-                                group="output options")
+
+        self.parser_predict.add_argument(
+            "--output-prefix", "-o",
+            dest="output_prefix",
+            help="Prediction output prefix",
+            metavar="OUTPUT_PREFIX",
+            group="output options",   # same group label clusters args in --help
+        )
 ```
 
-### Advanced Features
+Common patterns:
 
-#### Argument Updates
-Modify existing arguments dynamically:
+- **Argument grouping** — pass `group="<label>"` to any `add_argument` call.
+- **Custom validators** — define a function in `src/validators.py` that raises `argparse.ArgumentTypeError` on bad input, then pass it as `type=...` on `add_argument`.
+- **Updating inherited arguments** — to change a default or help text on an argument from the parent class, call `parser.update_arguments(...)` instead of redefining.
 
-```python
-# Update an existing argument with new properties
-self.parser_predict.update_arguments("--output-format", "-f",
-                            default="tsv",
-                            help="Updated output format description",
-                            group="modified options")
-```
+The full parser API is in [Reference](#reference) at the bottom.
 
-#### Custom Validation
-Add custom validation functions:
+## Dependencies
 
-```python
-# In validators.py
-def validate_custom_input(value):
-    # Custom validation logic
-    if not value.endswith('.txt'):
-        raise argparse.ArgumentTypeError("File must be a .txt file")
-    return value
+ngargparser separates two kinds of dependencies and uses different tools for each:
 
-# In ArgumentParser
-self.parser_predict.add_argument("--custom-input",
-                        type=validate_custom_input,
-                        help="Custom input file (must be .txt)")
-```
+| Kind | Manage with | Manifest |
+|---|---|---|
+| Python packages (numpy, pandas, …) | `uv` | `pyproject.toml` + `uv.lock` |
+| External binaries / HPC modules / `LD_LIBRARY_PATH` | `cli deps` + manual `paths.py` edits | `paths.py` |
 
-## Dependency Management
-
-ngargparser separates two kinds of dependencies, and the tooling reflects that:
-
-| Kind | Managed by | Where it lives |
-|------|------------|----------------|
-| Python packages (numpy, pandas, etc.) | **`uv`** via `pyproject.toml` + `uv.lock` | project root |
-| External binaries / HPC tools / `module load` / `LD_LIBRARY_PATH` | **`paths.py`** + `./configure` (generates per-tool `setup_<tool>_env.sh`) | project root + `src/core/configure.py` |
-
-`uv` and `paths.py` do not overlap. Use `uv` for anything you'd `pip install`. Use `paths.py` for everything else (compiled scientific tools, environment modules, library paths).
-
-### Working with uv
-
-Inside a generated project:
+### Python packages (`uv`)
 
 ```bash
-uv sync                                 # create .venv and install locked deps
-uv add pandas                           # add a Python dep (updates pyproject.toml + uv.lock)
-uv remove pandas                        # remove a Python dep
-uv run python src/run_<app>.py --help   # run inside the project venv
+uv sync                                          # install locked deps into .venv/
+uv add pandas                                    # add a dep, update pyproject.toml + uv.lock
+uv remove pandas                                 # remove
+uv run python src/run_my_app.py --help           # run inside the project venv
 ```
 
-`uv.lock` should be committed so deploys are reproducible.
+Commit `uv.lock` so deploys are reproducible.
 
-### Working with `cli deps`
-
-Inside a generated project:
+### External tool deps (`cli deps`)
 
 ```bash
-cli deps add mhci-predictor pepx        # add stub blocks to paths.py
-cli deps remove pepx                    # remove a block (alias: cli deps rm pepx)
-cli deps list                           # show what's declared + which paths are filled in (alias: ls)
+cli deps add mhci-predictor pepx       # write stub blocks to paths.py
+cli deps remove pepx                    # remove (alias: rm)
+cli deps list                           # show declared deps + which paths are filled in (alias: ls)
 cli deps                                # bare → interactive add/remove menu
 ```
 
-`cli deps add` only writes a stub block (`<name>_path = None`, `<name>_venv = None`, etc.). You then edit `paths.py` to fill in the actual paths. After editing, run `./configure` to regenerate the per-tool shell scripts and `.env`.
+`cli deps add` writes a stub: `<name>_path = None`, `<name>_venv = None`, `<name>_module = None`, `<name>_lib_path = None`. You then edit `paths.py` to fill in actual paths and run `./configure` to regenerate `setup_<name>_env.sh` shell scripts and the project's `.env`.
 
-`cli deps remove` accepts either the original name (`mhci-predictor`), the display form (`Mhci Predictor`), or the var-name form (`mhci_predictor`).
+`cli deps remove` accepts the original name (`mhci-predictor`), the display form (`Mhci Predictor`), or the var-name form (`mhci_predictor`).
 
-### Configuration
+`cli config-paths` is kept as a deprecated alias that prints a warning and forwards to interactive `cli deps`.
 
-After declaring dependencies with `cli deps add <name>` (or interactively via `cli deps`), configure the project:
-
-```bash
-./configure
-```
-
-This creates:
-- Environment setup scripts for each dependency
-- Updated `.env` file with all environment variables
-- Automatic cleanup of removed dependencies
-
-### Enhanced Configuration Behavior
-
-- **Always regenerates** the `.env` file based on current `paths.py` content
-- **Automatic cleanup**: Removes environment variables and scripts for deleted dependencies
-- **APP_ROOT preservation**: Maintains essential environment variables
-
-## Build System
-
-### Building Applications
-
-Build and clean are `make` targets in the generated project's root `Makefile`. Run them from the project root:
+## Building
 
 ```bash
-make build          # build a distributable tarball under build/
+make build          # produce build/IEDB_NG_<TOOL>-<VERSION>.tar.gz
 make build-verbose  # same, with full build output (no progress bar)
-make clean          # remove the build/ directory
+make clean          # remove build/
 ```
 
-Under the hood, `make build` invokes `scripts/core/build.sh`, which copies/symlinks the source tree, runs `scripts/hooks.sh` (your hook for vendoring deps, codegen, patching, signing, etc.), and emits a tarball.
+Pipeline (under the hood, `scripts/core/build.sh`):
 
-### Build Features
+1. Set up `build/<TOOL>-<VERSION>/`
+2. Copy or symlink the source tree into the build dir (symlink by default; copy items listed in `EXCLUDE_FROM_BUILD_SYMLINK` — defaults to `libs run_*.py`)
+3. Run `scripts/hooks.sh` (your imperative hook)
+4. Tar it up
 
-- **Cross-platform compatibility**: Handles OS-specific differences
-- **Dependency inclusion**: Packages external dependencies correctly
-- **Clean distribution**: Excludes development files automatically
-- **Version management**: Automatic version handling
+### `scripts/hooks.sh` — the build hook
 
-## Upgrading an Existing Project
+This is your imperative escape hatch. It runs after the source tree is in place but before the tarball is created. Working dir: `build/<TOOL>/libs/`. Available env vars: `BUILD_DIR`, `PROJECT_ROOT`, `APP_NAME`, `TOOL_NAME`, `TOOL_VERSION`, `TOOL_DIR`, `SRC_DIR`.
 
-When the framework gains a bugfix or new feature, run `cli sync` from inside an existing project to pull the latest framework files in without disturbing your application code:
+Use it for: vendoring git deps, downloading archives, copying local binaries, code generation, patching files, signing, validation — anything `bash` can do.
+
+### `scripts/build.conf` — declarative knobs
+
+```bash
+# Items to COPY instead of symlink (glob-matched). Default: "libs run_*.py".
+EXCLUDE_FROM_BUILD_SYMLINK="libs run_*.py"
+
+# Tarball filename prefix.
+TARBALL_PREFIX="IEDB_"
+```
+
+`build.conf` is user-owned — sync never touches it.
+
+## Upgrading the framework
+
+When the framework releases a bugfix or new feature, run `cli sync` from inside any existing project:
 
 ```bash
 cd path/to/your-app
-cli sync   # or `cli s`
+cli sync
 ```
 
-`cli sync` only touches **framework-owned** files — it never overwrites your `validators.py`, your `<App>ArgumentParser.py`, your `paths.py`, or anything in `hooks.sh`. Specifically it refreshes:
+`cli sync` only touches **framework-owned** files. It refreshes:
 
-- `src/core/NGArgumentParser.py`, `core_validators.py`, `set_pythonpath.py`, `configure.py`
+- `src/core/*.py`
 - `scripts/core/build.sh`
 - the root `Makefile`
-- the README badge (flips it to green to mark "synced")
+- the `[tool.ngargparser] scaffold_version` stamp in `pyproject.toml`
+- the README badge (flips to green to mark "synced")
 
-It also stamps the project with the framework version it was last synced against (see below), so future major-version migrations have a hook to dispatch from.
+It never overwrites `validators.py`, `<App>ArgumentParser.py`, `paths.py`, `hooks.sh`, `build.conf`, or anything else in user-owned space. It also migrates legacy filenames from older framework versions (e.g., `scripts/build.sh` → `scripts/core/build.sh`, `scripts/dependencies.sh` → `scripts/hooks.sh`) on first run.
 
-### Framework version stamp
+### What sync can't do
 
-Every generated project's `pyproject.toml` ends with:
+For breaking changes — file layouts shifting, schema changes, removed APIs — sync keeps your core files current but won't transform user-edited content. The right move there: read the release notes, scaffold a fresh project with the new framework, and port your application code over.
 
-```toml
-[tool.ngargparser]
-scaffold_version = "0.1.20"
+---
+
+## Reference
+
+### CLI cheatsheet
+
+```
+cli --version
+cli --help
+
+cli generate <name>           # scaffold a new project (alias: g)
+cli generate example          # scaffold the aa-counter example app
+
+cli deps                      # interactive add/remove menu (alias: d)
+cli deps add <name> ...       # add stub blocks to paths.py
+cli deps remove <name> ...    # remove blocks (alias: rm)
+cli deps list                 # show declared deps + status (alias: ls)
+
+cli sync                      # pull latest framework files (alias: s)
+
+cli config-paths              # [deprecated] alias for `cli deps` (alias: c)
 ```
 
-This records which `ngargparser` version scaffolded (or last synced) the project. `cli sync` keeps it current — adds it where missing, bumps it on framework upgrades, no-op when already current. You don't need to edit this by hand.
+### NGArgumentParser API
 
-### What `cli sync` cannot do
+`NGArgumentParser` auto-creates three subparsers: `preprocess`, `predict`, `postprocess`. The first two come with built-in arguments; `predict` is yours to customize.
 
-For breaking changes (file layouts shifting, schema changes, removed APIs), `cli sync` will keep your core files current but won't transform user-edited content. The right move there is to read the release notes for the major bump, scaffold a fresh project with the new version, and port your application code over.
+#### Built-in `preprocess` arguments
 
-## Workflow Operations
-
-The framework supports a three-stage workflow:
-
-### 1. Preprocessing
-```bash
-python src/run_{app_name}.py preprocess -j input.json -o output-directory
+```
+--input-json / -j  JSON_FILE   (required)
+--output-dir / -o  DIR         (required)
+--params-dir       DIR         (default: $OUTPUT_DIR/predict-inputs/params)
+--inputs-dir       DIR         (default: $OUTPUT_DIR/predict-inputs/data)
+--assume-valid                 (skip validation)
 ```
 
-Creates structured job units and generates `job_descriptions.json` for workflow orchestration.
+#### Built-in `postprocess` arguments
 
-### 2. Prediction  
-```bash
-python src/run_{app_name}.py predict -j input.json -o output-file
+```
+--job-desc-file / -j     JSON   ─┐ pick exactly one
+--input-results-dir / -i DIR    ─┘
+--postprocessed-results-dir / -p DIR    (required)
+--output-prefix / -o  STR
+--output-format / -f  FORMAT    (default: json)
 ```
 
-Executes the core prediction logic on individual job units.
+#### `SubparserWrapper`
 
-### 3. Postprocessing
-```bash
-python src/run_{app_name}.py postprocess --job-desc-file job_descriptions.json -p final-results/
-```
-
-Aggregates individual results into consolidated output files.
-
-## Validation System
-
-### Built-in Validators
-
-The framework includes comprehensive validation functions:
+Every subparser exposes `.help` and `.description` as plain attributes:
 
 ```python
-from core.core_validators import (
-    validate_file,                    # File existence and readability
-    validate_directory,               # Directory validation and creation
-    validate_directory_given_filename, # Directory validation from file path
-    validate_preprocess_dir          # Special preprocessing directory setup
+self.parser_preprocess.help = 'Custom preprocess help'
+self.parser_preprocess.description = 'Detailed preprocess instructions'
+```
+
+#### Argument grouping
+
+```python
+self.parser_predict.add_argument(
+    "--output-prefix", "-o",
+    help="Output prefix",
+    group="output options",   # args sharing this label cluster in --help
 )
 ```
 
-### Custom Validators
-
-Add application-specific validation in `src/validators.py`:
+#### Updating inherited arguments
 
 ```python
-def validate_peptide_length(value):
-    """Validate peptide length is within acceptable range"""
-    try:
-        length = int(value)
-        if not 1 <= length <= 50:
-            raise argparse.ArgumentTypeError("Peptide length must be 1-50")
-        return length
-    except ValueError:
-        raise argparse.ArgumentTypeError("Peptide length must be a number")
+self.parser_predict.update_arguments(
+    "--output-format", "-f",
+    default="tsv",
+    help="Updated output format description",
+    group="modified options",
+)
 ```
 
-## Development Best Practices
+#### Built-in validators
 
-### File Organization
-- **Core files**: Never modify files in `src/core/` - these are framework-managed
-- **Application logic**: Implement in `src/run_{app_name}.py`
-- **Custom validation**: Add to `src/validators.py`
-- **Argument parsing**: Customize in `src/{AppName}ArgumentParser.py`
+```python
+from core.core_validators import (
+    validate_file,                     # file exists + readable
+    validate_directory,                # directory exists or can be created
+    validate_directory_given_filename, # parent dir of a path
+    validate_preprocess_dir,           # special preprocessing dir setup
+)
+```
 
-### Error Handling
-- Use built-in validation functions for common checks
-- Implement custom validators for domain-specific requirements
-- Leverage argument grouping for organized help display
+#### Custom validators
 
-### Testing
-- Use the example application as a reference implementation
-- Test all three workflow stages independently
-- Validate argument parsing with various input combinations
+```python
+# src/validators.py
+def validate_peptide_length(value):
+    try:
+        length = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("peptide length must be a number")
+    if not 1 <= length <= 50:
+        raise argparse.ArgumentTypeError("peptide length must be 1–50")
+    return length
 
-## Notes
+# src/MyAppArgumentParser.py
+self.parser_predict.add_argument(
+    "--peptide-length",
+    type=validate_peptide_length,
+)
+```
 
-- The framework enforces a standardized workflow for consistency across applications
-- All generated projects include comprehensive build and deployment scripts
-- The SubparserWrapper system allows dynamic help text modification
-- Argument grouping enhances user experience with organized help display
-- The validation system ensures robust input handling across all applications
+### File ownership
+
+| Path | Ownership |
+|---|---|
+| `src/core/*` | Framework — `cli sync` overwrites |
+| `scripts/core/*` | Framework — `cli sync` overwrites |
+| `Makefile` | Framework — `cli sync` overwrites |
+| `pyproject.toml` `[tool.ngargparser] scaffold_version` | Framework — sync stamps |
+| `pyproject.toml` (everything else) | You |
+| `uv.lock` | You (regenerated by `uv` commands) |
+| `paths.py` | You (`cli deps` writes stubs; you fill in values) |
+| `scripts/hooks.sh` | You |
+| `scripts/build.conf` | You |
+| `scripts/do-not-distribute.txt` | You |
+| `src/run_*.py`, `src/<App>ArgumentParser.py`, `src/preprocess.py`, `src/postprocess.py`, `src/validators.py` | You |
