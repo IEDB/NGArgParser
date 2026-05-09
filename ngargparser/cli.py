@@ -135,6 +135,11 @@ def create_example_structure():
         shutil.copy(f'{TEMPLATE_DIR}/build.conf', f'{project_name}/scripts/build.conf')
         shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/scripts/do-not-distribute.txt')
 
+        # User-owned: deploy/install.sh — invoked by nxg-tools-deployments at deploy time.
+        os.makedirs(f'{project_name}/deploy', exist_ok=True)
+        shutil.copy(f'{TEMPLATE_DIR}/deploy/install.sh', f'{project_name}/deploy/install.sh')
+        replace_text_in_place(f'{project_name}/deploy/install.sh', '{TOOL_NAME}', project_name)
+
         # Create configure executable file
         configure_file = f'{project_name}/configure'
 
@@ -196,6 +201,11 @@ def create_project_structure(project_name):
         shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/scripts/do-not-distribute.txt')
         shutil.copy(f'{TEMPLATE_DIR}/hooks.sh', f'{project_name}/scripts/hooks.sh')
         os.chmod(f'{project_name}/scripts/hooks.sh', 0o755)
+
+        # User-owned: deploy/install.sh — invoked by nxg-tools-deployments at deploy time.
+        os.makedirs(f'{project_name}/deploy', exist_ok=True)
+        shutil.copy(f'{TEMPLATE_DIR}/deploy/install.sh', f'{project_name}/deploy/install.sh')
+        replace_text_in_place(f'{project_name}/deploy/install.sh', '{TOOL_NAME}', project_name)
 
         # Try to copy license file, but don't fail if it's not available
         license_source = f'{NGPARSER_DIR}/license-LJI.txt'
@@ -1127,7 +1137,18 @@ def sync_command(args):
         #     shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', 'scripts/do-not-distribute.txt')
         #     print("  └ Updated do-not-distribute.txt")
         #     script_files_updated += 1
-        
+
+        # Ensure deploy/install.sh exists. User-owned (like scripts/hooks.sh) — sync
+        # creates it from the template only if missing; never overwrites existing content.
+        # Required for nxg-tools-deployments: orchestrator runs `bash deploy/install.sh`
+        # after extracting the tarball on the target host.
+        if not os.path.exists('deploy/install.sh'):
+            os.makedirs('deploy', exist_ok=True)
+            shutil.copy(f'{TEMPLATE_DIR}/deploy/install.sh', 'deploy/install.sh')
+            replace_text_in_place('deploy/install.sh', '{TOOL_NAME}', project_name)
+            print(f"  └ Created \033[92mdeploy/install.sh\033[0m from template (user-owned; sync won't overwrite from here on)")
+            script_files_updated += 1
+
         # Advisory: legacy projects without pyproject.toml
         if not os.path.exists('pyproject.toml') and os.path.exists('requirements.txt'):
             print(

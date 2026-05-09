@@ -39,5 +39,5 @@ build-backend = "setuptools.build_meta"
 packages = ["ngargparser", "ngargparser.templates"]
 
 [tool.setuptools.package-data]
-"ngargparser.templates" = ["*", "example-app/*"]
+"ngargparser.templates" = ["*", "example-app/*", "deploy/*"]
 "ngargparser" = ["license-LJI.txt"]

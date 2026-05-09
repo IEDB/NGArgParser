@@ -65,12 +65,14 @@ my-app/
 │   ├── preprocess.py           # your input prep logic
 │   ├── postprocess.py          # your aggregation logic
 │   └── validators.py           # your custom validators
-└── scripts/
-    ├── core/                   # framework-owned (sync overwrites)
-    │   └── build.sh            # build pipeline
-    ├── build.conf              # build knobs (yours)
-    ├── hooks.sh                # imperative build hook (yours)
-    └── do-not-distribute.txt   # exclusion list (yours)
+├── scripts/
+│   ├── core/                   # framework-owned (sync overwrites)
+│   │   └── build.sh            # build pipeline
+│   ├── build.conf              # build knobs (yours)
+│   ├── hooks.sh                # imperative build hook (yours)
+│   └── do-not-distribute.txt   # exclusion list (yours)
+└── deploy/
+    └── install.sh              # imperative deploy hook (yours, runs on target host)
 ```
 
 **Ownership rule:** anything inside a `core/` subdirectory is framework-owned — `cli sync` overwrites those files when you upgrade. Everything else is yours; sync never touches it.
@@ -199,6 +201,45 @@ TARBALL_PREFIX="IEDB_"
 ```
 
 `build.conf` is user-owned — sync never touches it.
+
+## Deploying
+
+`make build` produces a tarball; **`nxg-tools-deployments`** (an internal IEDB orchestrator at `gitlab.lji.org/iedb/tools/tools-redesign/nxg-tools-deployments`) takes it from there. The full lifecycle:
+
+```
+developer                    GitLab CI                 target server
+─────────                    ─────────                 ─────────────
+git push  ──────────────►   make build  ──────►       (tarball lands here)
+                            tarball as
+                            CI artifact
+                                │
+                                │ nxg-tools-deployments fetches
+                                ▼
+                            (extract tarball)  ──►    bash deploy/install.sh
+                            (flip `current` symlink on success)
+```
+
+### What ships in the tarball
+
+`make build` produces `build/IEDB_NG_<TOOL>-<VERSION>.tar.gz`. The orchestrator's only contract: the tarball top-level must contain `deploy/install.sh` and a `README` file. Both are scaffolded by `cli generate` and pass through the build pipeline unchanged.
+
+### `deploy/install.sh` — the deploy hook
+
+Runs on the target host **after** the tarball is extracted. Working dir is the extracted tarball. The default scaffold installs uv if needed, runs `uv sync` to materialize the `.venv`, then runs `./configure` if present.
+
+The orchestrator passes five env vars (`IEDB_STANDALONE_NAME`, `IEDB_VERSION`, `IEDB_VERSION_DIR`, `IEDB_STANDALONE_DIR`, `IEDB_PREVIOUS_VERSION_DIR`) — most install scripts ignore them and resolve everything from `${BASH_SOURCE[0]}`. The phbr install.sh is the exception: it uses `IEDB_STANDALONE_DIR` to validate and wire in peer tools (`tcell_mhci`, `tcell_mhcii`).
+
+**Do not hardcode `UV_PYTHON_INSTALL_DIR` / `UV_CACHE_DIR` / `UV_PYTHON_PREFERENCE` in install.sh.** Those come from the target's `install_shell_init` snippet (sourced by the orchestrator before invoking install.sh) and let the cluster share a single `/apps/uv/` cache across users. Hardcoding them locks cluster paths into every release tarball and breaks dev-laptop installs.
+
+### Build hook vs. deploy hook
+
+The two `*.sh` user-owned files are easy to confuse. They run at different times in different places:
+
+| | `scripts/hooks.sh` | `deploy/install.sh` |
+|---|---|---|
+| When | Build time (developer / CI) | Deploy time (target server) |
+| Invoked by | `scripts/core/build.sh` | nxg-tools-deployments orchestrator |
+| Purpose | Pull stuff INTO the tarball (vendor git deps, codegen, patch source) | Set up the extracted tarball ON the server (uv sync, configure, edit paths.py) |
 
 ## Upgrading the framework
 
@@ -345,4 +386,5 @@ self.parser_predict.add_argument(
 | `scripts/hooks.sh` | You |
 | `scripts/build.conf` | You |
 | `scripts/do-not-distribute.txt` | You |
+| `deploy/install.sh` | You — sync creates from template if missing, never overwrites |
 | `src/run_*.py`, `src/<App>ArgumentParser.py`, `src/preprocess.py`, `src/postprocess.py`, `src/validators.py` | You |
