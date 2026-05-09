@@ -117,26 +117,32 @@ The framework creates a standardized project structure:
 
 ```
 project-root/
+├── Makefile                    # Build entry point (framework-owned, sync overwrites)
 ├── configure                    # Main configuration executable
 ├── pyproject.toml               # Python deps + project metadata (uv-managed)
 ├── uv.lock                      # Locked dependency versions (committed)
 ├── README                       # Usage instructions
 ├── license-LJI.txt             # Application license
 ├── src/                        # Source code directory
-│   ├── core/                   # Framework core files (protected)
+│   ├── core/                   # Framework core files — DO NOT EDIT (sync overwrites)
 │   │   ├── NGArgumentParser.py # Core argument parser
-│   │   └── core_validators.py  # Core validation functions
-│   ├── configure.py            # Configuration script
-│   ├── preprocess.py           # Input processing logic
-│   ├── postprocess.py          # Result aggregation logic  
-│   ├── validators.py           # Custom validation functions
-│   ├── run_{app_name}.py       # Main application entry point
-│   └── {AppName}ArgumentParser.py # Application-specific parser
-└── scripts/                    # Build and deployment scripts
-    ├── Makefile                # Build orchestration
-    ├── build.sh                # Build script
-    └── do-not-distribute.txt   # File exclusion list
+│   │   ├── core_validators.py  # Core validation functions
+│   │   ├── configure.py        # Configuration script
+│   │   └── set_pythonpath.py   # Path setup helper
+│   ├── preprocess.py           # Input processing logic (yours)
+│   ├── postprocess.py          # Result aggregation logic (yours)
+│   ├── validators.py           # Custom validation functions (yours)
+│   ├── run_{app_name}.py       # Main application entry point (yours)
+│   └── {AppName}ArgumentParser.py # Application-specific parser (yours)
+└── scripts/                    # Build configuration and hooks
+    ├── core/                   # Framework build infrastructure — DO NOT EDIT (sync overwrites)
+    │   └── build.sh            # Build pipeline (copies, packages, runs dependencies.sh)
+    ├── build.conf              # Build knobs (yours)
+    ├── dependencies.sh         # Imperative hook for vendored deps (yours)
+    └── do-not-distribute.txt   # File exclusion list (yours)
 ```
+
+**Ownership rule:** anything inside a `core/` subdirectory is framework-owned — `cli sync` will overwrite it on framework upgrades. Everything outside `core/` (in both `src/` and `scripts/`) is yours; sync never touches it.
 
 #### File Descriptions
 
@@ -145,16 +151,17 @@ project-root/
 | `configure` | Main executable that runs the configuration process |
 | `pyproject.toml` | Python dependencies and project metadata (managed via `uv`); also contains `[tool.ngargparser] scaffold_version` stamp tracking the framework version this project was last synced against |
 | `uv.lock` | Locked dependency versions for reproducible installs |
-| `src/core/` | Framework core files (managed by framework, do not modify) |
-| `src/configure.py` | Configuration script for dependency setup |
+| `src/core/` | Framework core Python files — `cli sync` overwrites |
 | `src/{AppName}ArgumentParser.py` | Application-specific argument parser |
 | `src/run_{app_name}.py` | Main application entry point |
 | `src/preprocess.py` | Input processing and job preparation |
 | `src/postprocess.py` | Result aggregation and post-processing logic |
 | `src/validators.py` | Custom validation functions |
-| `scripts/Makefile` | Build orchestration with `build` and `clean` targets |
-| `scripts/build.sh` | Build script for packaging and distribution |
-| `scripts/do-not-distribute.txt` | File exclusion list for distribution packages |
+| `Makefile` | `make build` / `make clean` entry point — framework-owned, sync overwrites |
+| `scripts/core/build.sh` | Build pipeline — framework-owned, sync overwrites |
+| `scripts/build.conf` | Build knobs (e.g. `EXCLUDE_FROM_BUILD_SYMLINK`) — yours |
+| `scripts/dependencies.sh` | Imperative hook for vendored / git-cloned deps — yours |
+| `scripts/do-not-distribute.txt` | File exclusion list — yours |
 
 ## NGArgumentParser Core Features
 
@@ -400,7 +407,7 @@ make build-verbose  # same, with full build output (no progress bar)
 make clean          # remove the build/ directory
 ```
 
-Under the hood, `make build` invokes `scripts/build.sh`, which copies the source tree, runs `scripts/dependencies.sh` (your hook for vendoring external tools), and emits a tarball.
+Under the hood, `make build` invokes `scripts/core/build.sh`, which copies/symlinks the source tree, runs `scripts/dependencies.sh` (your hook for vendoring external tools), and emits a tarball.
 
 ### Build Features
 
@@ -421,7 +428,7 @@ cli sync   # or `cli s`
 `cli sync` only touches **framework-owned** files — it never overwrites your `validators.py`, your `<App>ArgumentParser.py`, your `paths.py`, or anything in `dependencies.sh`. Specifically it refreshes:
 
 - `src/core/NGArgumentParser.py`, `core_validators.py`, `set_pythonpath.py`, `configure.py`
-- `scripts/build.sh`
+- `scripts/core/build.sh`
 - the root `Makefile`
 - the README badge (flips it to green to mark "synced")
 

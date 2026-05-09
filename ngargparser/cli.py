@@ -98,7 +98,7 @@ def create_example_structure():
         os.makedirs(os.path.join(project_name, 'src'))
         os.makedirs(os.path.join(project_name, 'src', 'core'))
         os.makedirs(os.path.join(project_name, 'scripts'))
-        
+        os.makedirs(os.path.join(project_name, 'scripts', 'core'))
 
         # Create necessary files
         parser_file = 'AACounterArgumentParser.py'
@@ -110,29 +110,30 @@ def create_example_structure():
         shutil.copy(f'{EXAMPLE_DIR}/{parser_file}', f'{project_name}/src/{parser_file}')
         shutil.copy(f'{EXAMPLE_DIR}/preprocess.py', f'{project_name}/src/preprocess.py')
         shutil.copy(f'{EXAMPLE_DIR}/postprocess.py', f'{project_name}/src/postprocess.py')
-        shutil.copy(f'{TEMPLATE_DIR}/configure.py', f'{project_name}/src/core/configure.py')     
+        shutil.copy(f'{TEMPLATE_DIR}/configure.py', f'{project_name}/src/core/configure.py')
         # Make configure.py executable
         os.chmod(f'{project_name}/src/core/configure.py', 0o755)
-        
+
         # Copy core files to protected core/ directory
         shutil.copy(f'{EXAMPLE_DIR}/NGArgumentParser.py', f'{project_name}/src/core/NGArgumentParser.py')
         shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core/core_validators.py')
         shutil.copy(f'{TEMPLATE_DIR}/set_pythonpath.py', f'{project_name}/src/core/set_pythonpath.py')
-        
+
         # Create __init__.py for core package
         with open(f'{project_name}/src/core/__init__.py', 'w') as f:
             f.write('')
-        
+
         # Copy user-modifiable files to src/
         shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
 
-        # Copy scripts files to scripts/ directory
-        shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/scripts/build.sh')
+        # Framework-owned: scripts/core/build.sh (cli sync overwrites this)
+        shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/scripts/core/build.sh')
+        os.chmod(f'{project_name}/scripts/core/build.sh', 0o755)
+        # Framework-owned: root Makefile (cli sync overwrites this)
         shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/Makefile')
+        # User-owned: scripts/build.conf, scripts/do-not-distribute.txt
         shutil.copy(f'{TEMPLATE_DIR}/build.conf', f'{project_name}/scripts/build.conf')
         shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/scripts/do-not-distribute.txt')
-        # Make build.sh executable
-        os.chmod(f'{project_name}/scripts/build.sh', 0o755)
 
         # Create configure executable file
         configure_file = f'{project_name}/configure'
@@ -159,8 +160,8 @@ def create_project_structure(project_name):
         os.makedirs(os.path.join(project_name, 'src'))
         os.makedirs(os.path.join(project_name, 'src', 'core'))
         os.makedirs(os.path.join(project_name, 'scripts'))
+        os.makedirs(os.path.join(project_name, 'scripts', 'core'))
 
-        
         # Create necessary files
         exec_file = f'run_{format_project_name(project_name)}.py'
         parser_file = f'{format_project_name(project_name, capitalize=True)}ArgumentParser.py'
@@ -186,15 +187,14 @@ def create_project_structure(project_name):
         # Copy user-modifiable files to src/
         shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
         
-        # Copy scripts files to scripts/ directory
-        shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/scripts/build.sh')
+        # Framework-owned: scripts/core/build.sh + root Makefile (cli sync overwrites these)
+        shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/scripts/core/build.sh')
+        os.chmod(f'{project_name}/scripts/core/build.sh', 0o755)
         shutil.copy(f'{TEMPLATE_DIR}/Makefile', f'{project_name}/Makefile')
+        # User-owned: scripts/build.conf, dependencies.sh, do-not-distribute.txt (sync leaves alone)
         shutil.copy(f'{TEMPLATE_DIR}/build.conf', f'{project_name}/scripts/build.conf')
         shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', f'{project_name}/scripts/do-not-distribute.txt')
         shutil.copy(f'{TEMPLATE_DIR}/dependencies.sh', f'{project_name}/scripts/dependencies.sh')
-        # Make build.sh executable
-        os.chmod(f'{project_name}/scripts/build.sh', 0o755)
-        # Make dependencies.sh executable
         os.chmod(f'{project_name}/scripts/dependencies.sh', 0o755)
 
         # Try to copy license file, but don't fail if it's not available
@@ -1066,24 +1066,37 @@ def sync_command(args):
             print("  └ Created configure.py in src/core/")
             core_files_updated += 1
         
-        # Update scripts files (except dependencies.sh)
+        # Update scripts files (except dependencies.sh, build.conf, do-not-distribute.txt — user-owned)
         print("\nUpdating scripts/ files...")
         script_files_updated = 0
-        
-        # Update build.sh
-        if os.path.exists('scripts/build.sh'):
-            if not filecmp.cmp(f'{TEMPLATE_DIR}/build.sh', 'scripts/build.sh', shallow=False):
-                shutil.copy(f'{TEMPLATE_DIR}/build.sh', 'scripts/build.sh')
-                os.chmod('scripts/build.sh', 0o755)  # Make executable
-                print("  └ Updated build.sh")
+
+        # Migration: pre-scripts/core layout had build.sh at scripts/build.sh.
+        # Move it (and the directory) to scripts/core/build.sh on first sync.
+        if os.path.exists('scripts/build.sh') and not os.path.exists('scripts/core/build.sh'):
+            os.makedirs('scripts/core', exist_ok=True)
+            shutil.move('scripts/build.sh', 'scripts/core/build.sh')
+            print("  └ \033[93mMigrated\033[0m scripts/build.sh → scripts/core/build.sh "
+                  "(framework-owned scripts now live under scripts/core/)")
+            script_files_updated += 1
+
+        # Ensure scripts/core/ exists
+        if not os.path.exists('scripts/core'):
+            os.makedirs('scripts/core', exist_ok=True)
+            print("  └ Created scripts/core/ directory")
+
+        # Update scripts/core/build.sh
+        if os.path.exists('scripts/core/build.sh'):
+            if not filecmp.cmp(f'{TEMPLATE_DIR}/build.sh', 'scripts/core/build.sh', shallow=False):
+                shutil.copy(f'{TEMPLATE_DIR}/build.sh', 'scripts/core/build.sh')
+                os.chmod('scripts/core/build.sh', 0o755)
+                print("  └ Updated scripts/core/build.sh")
                 script_files_updated += 1
             else:
-                print("  └ build.sh is already up to date")
+                print("  └ scripts/core/build.sh is already up to date")
         else:
-            # Create the file in the correct location
-            shutil.copy(f'{TEMPLATE_DIR}/build.sh', 'scripts/build.sh')
-            os.chmod('scripts/build.sh', 0o755)  # Make executable
-            print("  └ Created build.sh in scripts/")
+            shutil.copy(f'{TEMPLATE_DIR}/build.sh', 'scripts/core/build.sh')
+            os.chmod('scripts/core/build.sh', 0o755)
+            print("  └ Created scripts/core/build.sh")
             script_files_updated += 1
         
         # Update root-level Makefile (no longer under scripts/)

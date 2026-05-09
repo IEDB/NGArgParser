@@ -63,8 +63,13 @@ else
     set -o pipefail
 fi
 
-# Get the app name from the project root directory name
-SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve paths.
+# This script lives in scripts/core/ (framework-owned, sync-managed).
+# build.conf, dependencies.sh, and do-not-distribute.txt live one level up in scripts/
+# (user-owned). SRC_DIR keeps its established meaning: the user-owned scripts/ dir,
+# which is what dependencies.sh sees via the export below.
+BUILD_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SRC_DIR="$(cd "$BUILD_SH_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$SRC_DIR/.." && pwd)"
 APP_NAME=$(basename "$PROJECT_ROOT")
 
