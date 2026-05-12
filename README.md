@@ -2,7 +2,7 @@
 
 > Framework for building IEDB-style command-line scientific tools — standardized argument parsing, dependency wiring, and reproducible tarball builds.
 
-[![ngargparser](https://img.shields.io/badge/ngargparser-0.1.20-blue.svg)](https://github.com/IEDB/NGArgParser)
+[![ngargparser](https://img.shields.io/badge/ngargparser-0.2.0-blue.svg)](https://github.com/IEDB/NGArgParser)
 
 After `pip install`-ing the framework, you get a `cli` command and a Python class (`NGArgumentParser`) that together produce well-shaped scientific CLI apps:
 
@@ -11,11 +11,36 @@ After `pip install`-ing the framework, you get a `cli` command and a Python clas
 - Two-tier dependency management: `uv` for Python packages, `cli deps` + `paths.py` for external binaries / HPC modules / library paths
 - A clean ownership boundary: framework files live in `core/` subdirectories and get sync-managed; everything else is yours
 
-## Install
+## Prerequisites
+
+ngargparser uses [`uv`](https://github.com/astral-sh/uv) to manage Python versions and virtual environments. Install it first:
 
 ```bash
-uv pip install -e .       # preferred
-pip install .             # also works
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+You don't need to create a Python venv yourself — `uv` creates a `.venv/` for each scaffolded app and downloads the right Python version on demand. Skip the usual `python -m venv` step.
+
+## Install
+
+### Straight from Gitlab (framework users)
+
+```bash
+# Best option: install as an isolated uv tool, `cli` on PATH globally
+uv tool install git+https://github.com/IEDB/NGArgParser.git
+
+# Pin to a tag for reproducibility
+uv tool install 'git+https://github.com/IEDB/NGArgParser.git@v0.2.0'
+
+# Upgrade later
+uv tool upgrade ngargparser
+```
+
+### From a local clone (framework contributors)
+
+```bash
+uv pip install -e .
+pip install .
 ```
 
 ## Quickstart (5 minutes)
