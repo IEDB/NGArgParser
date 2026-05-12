@@ -22,8 +22,7 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/IEDB/NGArgParser"
-Download = "https://github.com/IEDB/NGArgParser/archive/refs/tags/v0.1.tar.gz"
+Homepage = "https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser"
 
 [project.scripts]
 cli = "ngargparser.cli:main"

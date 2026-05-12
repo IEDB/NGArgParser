@@ -258,7 +258,7 @@ def update_and_place_readme(file_path, app_name, is_example=False):
 
     # Insert ngargparser version badge just below the title if possible
     try:
-        badge_md = f"[![ngargparser](https://img.shields.io/badge/ngargparser-{__version__}-blue.svg)](https://github.com/IEDB/NGArgParser)"
+        badge_md = f"[![ngargparser](https://img.shields.io/badge/ngargparser-{__version__}-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)"
         lines = base_updated_content.splitlines(True)  # keep line endings
         if len(lines) >= 2:
             # Common template starts with title and an underline of dashes
@@ -311,7 +311,7 @@ def upsert_readme_badge(readme_path: str, version: str, color: str = "green") ->
             return False
         with open(readme_path, 'r', encoding='utf-8') as f:
             content = f.read()
-        new_badge = f"[![ngargparser](https://img.shields.io/badge/ngargparser-{version}-{color}.svg)](https://github.com/IEDB/NGArgParser)"
+        new_badge = f"[![ngargparser](https://img.shields.io/badge/ngargparser-{version}-{color}.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)"
         import re
         pattern = r"\[!\[ngargparser\]\(https://img\.shields\.io/badge/ngargparser-[^-/\s)]+-[^)\s]+\.svg\)\]\([^)]+\)"
         if re.search(pattern, content):

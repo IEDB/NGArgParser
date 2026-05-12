@@ -2,7 +2,7 @@
 
 > Framework for building IEDB-style command-line scientific tools — standardized argument parsing, dependency wiring, and reproducible tarball builds.
 
-[![ngargparser](https://img.shields.io/badge/ngargparser-0.2.0-blue.svg)](https://github.com/IEDB/NGArgParser)
+[![ngargparser](https://img.shields.io/badge/ngargparser-0.2.0-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
 
 After `pip install`-ing the framework, you get a `cli` command and a Python class (`NGArgumentParser`) that together produce well-shaped scientific CLI apps:
 
@@ -23,14 +23,18 @@ You don't need to create a Python venv yourself — `uv` creates a `.venv/` for 
 
 ## Install
 
-### Straight from Gitlab (framework users)
+### Straight from GitLab (framework users)
 
 ```bash
-# Best option: install as an isolated uv tool, `cli` on PATH globally
-uv tool install git+https://github.com/IEDB/NGArgParser.git
+# Best option: install as an isolated uv tool, `cli` on PATH globally.
+# Using SSH (recommended for IEDB devs with SSH keys configured):
+uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git'
 
-# Pin to a tag for reproducibility
-uv tool install 'git+https://github.com/IEDB/NGArgParser.git@v0.2.0'
+# Using HTTPS (requires token-based auth for private repos):
+uv tool install 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git'
+
+# Pin to a tag for reproducibility (SSH form shown; HTTPS works the same way):
+uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.0'
 
 # Upgrade later
 uv tool upgrade ngargparser

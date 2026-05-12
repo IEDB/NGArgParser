@@ -30,7 +30,7 @@ echo "Running build hooks..."
 
 # Example 1: Clone a Git repository
 # echo "Cloning nxg-tools..."
-# git clone https://github.com/IEDB/nxg-tools.git
+# git clone https://gitlab.lji.org/iedb/tools/tools-redesign/nxg-tools.git
 # rm -rf nxg-tools/.git  # Remove git history to reduce size
 
 # Example 2: Download and extract an archive
