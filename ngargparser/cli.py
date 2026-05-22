@@ -990,13 +990,40 @@ def deps_command(args):
     return 0
 
 
+def _latest_release_tag(remote_url):
+    """Return the highest semver-like tag from a git remote, or None on failure.
+
+    Uses `git ls-remote --tags --refs` (no clone), parses tags matching
+    `vX.Y.Z` (with optional pre-release/build suffix), and returns the
+    highest one by numeric (major, minor, patch). Pre-release suffixes are
+    parsed but compared as None < anything-else, matching the conventional
+    "pre-releases sort below releases" intent for picking a default upgrade.
+    """
+    import re, subprocess
+    try:
+        out = subprocess.check_output(
+            ["git", "ls-remote", "--tags", "--refs", remote_url],
+            stderr=subprocess.DEVNULL, text=True, timeout=10,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    semver_tags = []
+    for line in out.splitlines():
+        ref = line.split("\t", 1)[-1] if "\t" in line else ""
+        name = ref.rsplit("/", 1)[-1]
+        m = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", name)
+        if m:
+            semver_tags.append((tuple(int(g) for g in m.groups()), name))
+    return max(semver_tags)[1] if semver_tags else None
+
+
 def sync_command(args):
     """Synchronize framework files in existing projects to the latest version."""
     try:
         import os
         import shutil
         import filecmp
-        
+
         # Check if we're in a project directory
         if not os.path.exists('src') or not os.path.exists('scripts'):
             print(f"\033[91m✗\033[0m Error: This doesn't appear to be a valid ngargparser project directory")
@@ -1010,11 +1037,21 @@ def sync_command(args):
             import sys
             import subprocess
 
-            ref = getattr(args, "ref", "master")
-            url = os.environ.get(
-                "NGARGPARSER_UPGRADE_URL",
-                f"git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@{ref}",
-            )
+            ref = getattr(args, "ref", "latest")
+            base_url = "git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git"
+            override = os.environ.get("NGARGPARSER_UPGRADE_URL")
+            if override:
+                url = override
+            else:
+                if ref == "latest":
+                    resolved = _latest_release_tag(base_url[len("git+"):])
+                    if resolved:
+                        print(f"ℹ Latest release tag: {resolved}")
+                        ref = resolved
+                    else:
+                        print("⚠ No semver tags found on remote; falling back to master.")
+                        ref = "master"
+                url = f"{base_url}@{ref}"
             print(f"ℹ Upgrading ngargparser ({url}) …")
             try:
                 subprocess.check_call([
@@ -1269,8 +1306,8 @@ def main():
     )
     sync_parser.add_argument(
         "--ref",
-        default="master",
-        help="Git ref (tag/branch/sha) to upgrade ngargparser to (default: master).",
+        default="latest",
+        help="Git ref to upgrade ngargparser to. 'latest' (default) resolves to the highest semver tag on the remote, falling back to 'master' if no tags exist. Pass a branch/tag/sha (e.g., 'master', 'v0.2.2') to override.",
     )
 
 

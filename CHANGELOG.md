@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.2] — 2026-05-21
 
 ### Added
-- `cli sync` (`cli s`) now self-upgrades the installed `ngargparser` package and re-execs before syncing project templates, so a single `cli s` invocation handles both halves of a version bump. Default ref is `master`; override with `--ref <tag|branch|sha>` or `NGARGPARSER_UPGRADE_URL`. Use `--no-upgrade` (or `NGARGPARSER_NO_SELF_UPGRADE=1`) to skip the network call for offline / CI runs.
+- `cli sync` (`cli s`) now self-upgrades the installed `ngargparser` package and re-execs before syncing project templates, so a single `cli s` invocation handles both halves of a version bump. Default `--ref` is `latest`, which resolves to the highest semver tag on the remote via `git ls-remote --tags` (falling back to `master` if no tags exist). Pass an explicit `--ref <tag|branch|sha>` (e.g., `--ref master` for bleeding edge) or set `NGARGPARSER_UPGRADE_URL` to override. Use `--no-upgrade` (or `NGARGPARSER_NO_SELF_UPGRADE=1`) to skip the network call for offline / CI runs.
 
 ## [0.2.1] — 2026-05-21
 
