@@ -1002,7 +1002,36 @@ def sync_command(args):
             print(f"\033[91m✗\033[0m Error: This doesn't appear to be a valid ngargparser project directory")
             print("Make sure you're in a project directory with src/ and scripts/ subdirectories.")
             return 1
-        
+
+        # Self-upgrade the installed ngargparser, then re-exec so the new code
+        # (including __version__ used by the scaffold_version stamp below) takes
+        # effect for the rest of this sync. The env-var sentinel breaks recursion.
+        if getattr(args, "upgrade", True) and not os.environ.get("NGARGPARSER_NO_SELF_UPGRADE"):
+            import sys
+            import subprocess
+
+            ref = getattr(args, "ref", "master")
+            url = os.environ.get(
+                "NGARGPARSER_UPGRADE_URL",
+                f"git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@{ref}",
+            )
+            print(f"ℹ Upgrading ngargparser ({url}) …")
+            try:
+                subprocess.check_call([
+                    sys.executable, "-m", "pip", "install",
+                    "--upgrade", "--force-reinstall", "--quiet", url,
+                ])
+            except subprocess.CalledProcessError as e:
+                print(f"\033[91m✗\033[0m Self-upgrade failed (pip exit {e.returncode}); aborting sync.")
+                return 1
+
+            # On re-exec, pass only the bare `s` subcommand. The sentinel env
+            # var skips the upgrade block, and any --ref/--no-upgrade flags
+            # would break compatibility with older ngargparser versions whose
+            # sync subparser doesn't recognize them.
+            env = {**os.environ, "NGARGPARSER_NO_SELF_UPGRADE": "1"}
+            os.execvpe(sys.argv[0], [sys.argv[0], "s"], env)
+
         print("Synchronizing framework files to latest version...")
         
         # Get the project name from current directory
@@ -1231,6 +1260,18 @@ def main():
 
     # Create 'sync' sub-command
     sync_parser = subparsers.add_parser('sync', aliases=["s"], allow_abbrev=True, help='Synchronize framework files in existing projects to the latest version.')
+    sync_parser.add_argument(
+        "--no-upgrade",
+        dest="upgrade",
+        action="store_false",
+        default=True,
+        help="Skip the self-upgrade step; only sync templates from the currently-installed ngargparser.",
+    )
+    sync_parser.add_argument(
+        "--ref",
+        default="master",
+        help="Git ref (tag/branch/sha) to upgrade ngargparser to (default: master).",
+    )
 
 
     args = parser.parse_args()
