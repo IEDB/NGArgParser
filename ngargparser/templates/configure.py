@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 import os
+import sys
 import importlib.util
 import re
 import glob
@@ -12,7 +13,9 @@ load_dotenv()
 
 def load_config(path):
     if not os.path.exists(path):
-        print(f"\033[91m✗\033[0m Config file '\033[1m{path}\033[0m' not found.")
+        # Missing paths.py is a valid steady state for tools with no external
+        # IEDB-tool dependencies (e.g. standalone scorers like pepsysco).
+        print(f"\033[2mℹ  No '{path}' found — treating as a tool with no external dependencies.\033[0m")
         return {}
     
     # Treat 'path' as a module and load everything into 'config'
@@ -78,8 +81,11 @@ def create_shell_script(config, tool_prefix, output_path):
 
     # Check if required path is None or empty
     if tool_path is None or (isinstance(tool_path, str) and tool_path.strip() == ""):
-        print(f"\033[91m✗\033[0m Shell script for '\033[1m{tool_prefix}\033[0m' not created: \033[91mrequired path is None or empty\033[0m")
-        return
+        print(
+            f"\033[91m✗\033[0m \033[1m{tool_prefix}_path\033[0m is None in paths.py. "
+            f"Set the path, or run '\033[1mcli deps remove {tool_prefix}\033[0m' to drop this dependency."
+        )
+        return False
 
     lines = ["#!/bin/bash\n"]
 
@@ -106,6 +112,7 @@ def create_shell_script(config, tool_prefix, output_path):
 
     os.chmod(output_path, 0o755)
     print(f"* Shell script for '{tool_prefix}' created at '{output_path}'")
+    return True
 
 def cleanup_old_shell_scripts(current_tools):
     """
@@ -116,17 +123,21 @@ def cleanup_old_shell_scripts(current_tools):
     """
     # Find all existing setup_*_env.sh files
     existing_scripts = glob.glob("setup_*_env.sh")
-    
+    removed = 0
+
     for script_path in existing_scripts:
         # Extract tool prefix from filename (setup_TOOL_env.sh -> TOOL)
         filename = os.path.basename(script_path)
         if filename.startswith("setup_") and filename.endswith("_env.sh"):
             tool_prefix = filename[6:-7]  # Remove "setup_" and "_env.sh"
-            
+
             # If this tool is no longer in paths.py, remove the script
             if tool_prefix not in current_tools:
                 os.remove(script_path)
+                removed += 1
                 print(f"* Removed shell script for '{tool_prefix}' (no longer in paths.py)")
+
+    return removed
 
 def main():
     config = load_config(CONFIG_PATH)
@@ -151,32 +162,44 @@ def main():
     env_exists = os.path.exists(DOT_ENV_PATH)
     action = "updated" if env_exists else "created"
     
-    if not config or (set(config.keys()) <= {'APP_ROOT', 'APP_NAME'}):  # Only minimal keys present
-        print("* paths.py is empty, creating minimal .env file")
-        # Create minimal .env file with APP_ROOT and APP_NAME
+    config_present = os.path.exists(CONFIG_PATH)
+
+    if not config or (set(config.keys()) <= {'APP_ROOT', 'APP_NAME'}):
+        # Either no paths.py at all, or paths.py declares no dependency variables.
         with open(DOT_ENV_PATH, "w") as f:
             f.write(f"APP_ROOT={app_root}\n")
             f.write(f"APP_NAME={config['APP_NAME']}\n")
-        print(f"* .env file {action}")
+        print(f"* Minimal .env file {action} (no external dependencies declared).")
     else:
         write_env_info(config, DOT_ENV_PATH)
         print(f"* .env file {action}")
 
     # Dynamically detect all dependency tools from paths.py
     detected_tools = detect_dependency_tools(config)
-    
+
     # Clean up shell scripts for removed dependencies
-    cleanup_old_shell_scripts(set(detected_tools.keys()))
-    
+    removed = cleanup_old_shell_scripts(set(detected_tools.keys()))
+
     if not detected_tools:
-        print("* No dependency tools detected in paths.py")
+        # Only surface this line when there's something to report — either paths.py
+        # exists (so the user might expect deps) or we cleaned up stale scripts.
+        # When paths.py is absent and nothing was cleaned, load_config's info line
+        # already covers the state.
+        if config_present or removed:
+            print("* No dependency tools declared in paths.py")
         return
-    
+
     print(f"* Detected {len(detected_tools)} dependency tools: {', '.join(detected_tools.keys())}")
-    
+
     # Create shell scripts for each detected tool
+    unfilled = []
     for tool_prefix in detected_tools.keys():
-        create_shell_script(config, tool_prefix, output_path=f'setup_{tool_prefix}_env.sh')
+        ok = create_shell_script(config, tool_prefix, output_path=f'setup_{tool_prefix}_env.sh')
+        if not ok:
+            unfilled.append(tool_prefix)
+
+    if unfilled:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
