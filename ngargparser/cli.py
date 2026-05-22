@@ -1038,6 +1038,9 @@ def sync_command(args):
             import subprocess
 
             ref = getattr(args, "ref", "latest")
+            if getattr(args, "dev", False):
+                ref = "master"
+                print("ℹ Dev mode: pulling from master.")
             base_url = "git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git"
             override = os.environ.get("NGARGPARSER_UPGRADE_URL")
             if override:
@@ -1308,6 +1311,11 @@ def main():
         "--ref",
         default="latest",
         help="Git ref to upgrade ngargparser to. 'latest' (default) resolves to the highest semver tag on the remote, falling back to 'master' if no tags exist. Pass a branch/tag/sha (e.g., 'master', 'v0.2.2') to override.",
+    )
+    sync_parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="Dev mode: pull the bleeding-edge tip of 'master' instead of the latest semver tag. Shortcut for --ref master; overrides --ref if both are given.",
     )
 
 
