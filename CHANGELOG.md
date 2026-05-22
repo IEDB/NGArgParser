@@ -5,15 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.3] — 2026-05-21
-
-### Added
-- `cli sync --dev` (`cli s --dev`): dev-mode shortcut that pulls from `master` instead of the default latest semver tag. Equivalent to `--ref master`; overrides `--ref` if both are given.
-
 ## [0.2.2] — 2026-05-21
 
 ### Added
-- `cli sync` (`cli s`) now self-upgrades the installed `ngargparser` package and re-execs before syncing project templates, so a single `cli s` invocation handles both halves of a version bump. Default `--ref` is `latest`, which resolves to the highest semver tag on the remote via `git ls-remote --tags` (falling back to `master` if no tags exist). Pass an explicit `--ref <tag|branch|sha>` (e.g., `--ref master` for bleeding edge) or set `NGARGPARSER_UPGRADE_URL` to override. Use `--no-upgrade` (or `NGARGPARSER_NO_SELF_UPGRADE=1`) to skip the network call for offline / CI runs.
+- `cli sync` (`cli s`) now self-upgrades the installed `ngargparser` package and re-execs before syncing project templates; a single `cli s` invocation handles both halves of a version bump (no more manual `pip install --upgrade` step).
+- `cli sync --ref <git-ref>` selects the upgrade source. Default is `latest`, resolved via `git ls-remote --tags` to the highest semver tag on the remote (falling back to `master` if no tags exist). Pass a branch / tag / sha (e.g., `--ref v0.2.0`) to override.
+- `cli sync --dev`: shortcut for `--ref master`; pulls the bleeding-edge tip of `master` instead of the latest tagged release. Overrides `--ref` if both are given.
+- `cli sync --no-upgrade` (and `NGARGPARSER_NO_SELF_UPGRADE=1`): skip the self-upgrade step for offline / CI runs. `NGARGPARSER_UPGRADE_URL` overrides the full upgrade URL.
 
 ## [0.2.1] — 2026-05-21
 
