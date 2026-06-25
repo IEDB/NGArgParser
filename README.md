@@ -2,7 +2,7 @@
 
 > Framework for building IEDB-style command-line scientific tools — standardized argument parsing, dependency wiring, and reproducible tarball builds.
 
-[![ngargparser](https://img.shields.io/badge/ngargparser-0.2.3-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
+[![ngargparser](https://img.shields.io/badge/ngargparser-0.2.4-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
 
 After `pip install`-ing the framework, you get a `cli` command and a Python class (`NGArgumentParser`) that together produce well-shaped scientific CLI apps:
 
@@ -34,9 +34,10 @@ uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-d
 uv tool install 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git'
 
 # Pin to a tag for reproducibility (SSH form shown; HTTPS works the same way):
-uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.3'
+uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.4'
 
-# Upgrade later
+# Upgrade later (either works)
+cli upgrade                 # self-update to the latest release tag on GitLab
 uv tool upgrade ngargparser
 ```
 
@@ -272,7 +273,19 @@ The two `*.sh` user-owned files are easy to confuse. They run at different times
 
 ## Upgrading the framework
 
-When the framework releases a bugfix or new feature, run `cli sync` from inside any existing project:
+There are two related commands:
+
+- **`cli upgrade`** — self-updates the installed `ngargparser` tool (the `cli` itself) to the latest
+  release tag on GitLab. Works from **any** directory and touches no project files. Add `--check` to
+  see installed-vs-latest without installing.
+
+  ```bash
+  cli upgrade --check        # is a newer release available?
+  cli upgrade                # update the cli to the latest tag (alias: up)
+  ```
+
+- **`cli sync`** — refreshes the **framework-owned files inside a project** to match the installed
+  version (and self-upgrades first, unless `--no-upgrade`). Run it from inside an existing project:
 
 ```bash
 cd path/to/your-app
@@ -311,7 +324,10 @@ cli deps add <name> ...       # add stub blocks to paths.py
 cli deps remove <name> ...    # remove blocks (alias: rm)
 cli deps list                 # show declared deps + status (alias: ls)
 
-cli sync                      # pull latest framework files (alias: s)
+cli sync                      # pull latest framework files into a project (alias: s)
+
+cli upgrade                   # self-update the cli to the latest release tag (alias: up)
+cli upgrade --check           # report installed vs latest without installing
 
 cli config-paths              # [deprecated] alias for `cli deps` (alias: c)
 ```

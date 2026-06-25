@@ -1,6 +1,6 @@
 [project]
 name = "ngargparser"
-version = "0.2.3"
+version = "0.2.4"
 description = "Standardized parser framework for CLI tools. Enforces structure for argument parsing, project scaffolding, dependency wiring, and build packaging across IEDB next-gen apps."
 readme = "README.md"
 license = { text = "MIT" }

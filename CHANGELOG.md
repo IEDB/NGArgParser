@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] — 2026-06-25
+
+### Added
+- `cli upgrade` (alias `up`): a standalone, discoverable command that self-updates the installed
+  `ngargparser` tool to the latest release tag on GitLab. Unlike `cli sync` it works from any
+  directory and never touches project files. `--check` reports installed-vs-latest without
+  installing; `--ref <git-ref>` / `--dev` override the source. uv-tool aware (uses `uv tool install`,
+  falls back to `python -m pip`).
+
+### Changed
+- `cli sync` and `cli upgrade` now share one upgrade path (`_resolve_upgrade_url` + `_run_self_upgrade`);
+  `cli sync`'s self-upgrade behavior is unchanged.
+
 ## [0.2.3] — 2026-06-25
 
 ### Fixed

@@ -1028,6 +1028,91 @@ def _is_uv_tool_install():
     return os.path.join("uv", "tools") in os.path.normpath(getattr(sys, "prefix", ""))
 
 
+BASE_REPO_URL = "git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git"
+
+
+def _resolve_upgrade_url(ref="latest", dev=False):
+    """Resolve (url, resolved_ref) to upgrade ngargparser to.
+
+    Honors NGARGPARSER_UPGRADE_URL (full override). `dev` forces 'master'.
+    `ref='latest'` resolves the highest semver tag on the remote, falling back
+    to 'master' when no tags exist.
+    """
+    import os
+    override = os.environ.get("NGARGPARSER_UPGRADE_URL")
+    if override:
+        return override, ref
+    if dev:
+        ref = "master"
+    if ref == "latest":
+        ref = _latest_release_tag(BASE_REPO_URL[len("git+"):]) or "master"
+    return f"{BASE_REPO_URL}@{ref}", ref
+
+
+def _run_self_upgrade(url):
+    """Install `url` into the current ngargparser env (uv-tool aware).
+
+    uv-tool envs (the documented install path) have no pip, so `python -m pip`
+    fails with "No module named pip"; use `uv tool install` there and fall back
+    to pip for pip/pipx installs. Returns 0 on success, else a non-zero exit
+    code (after printing a diagnostic + manual command).
+    """
+    import sys
+    import shutil
+    import subprocess
+    if _is_uv_tool_install() and shutil.which("uv"):
+        cmd, tool = ["uv", "tool", "install", "--force", "--reinstall", url], "uv"
+    else:
+        cmd, tool = [sys.executable, "-m", "pip", "install",
+                     "--upgrade", "--force-reinstall", "--quiet", url], "pip"
+    try:
+        subprocess.check_call(cmd)
+        return 0
+    except subprocess.CalledProcessError as e:
+        print(f"\033[91m✗\033[0m Upgrade failed ({tool} exit {e.returncode}).")
+        print(f"  Try manually:  uv tool install --force --reinstall '{url}'")
+        return e.returncode or 1
+
+
+def upgrade_command(args):
+    """Check GitLab for the latest tag and upgrade ngargparser in place.
+
+    Works from any directory and never touches project files. `--check` only
+    reports installed-vs-latest. Unlike `sync` it does not re-exec — the next
+    `cli` invocation runs the upgraded code.
+    """
+    import os
+    ref, dev = getattr(args, "ref", "latest"), getattr(args, "dev", False)
+    url, resolved = _resolve_upgrade_url(ref, dev)
+    current = __version__
+    target = resolved.lstrip("v") if resolved else resolved
+    check = getattr(args, "check", False)
+
+    pinned = dev or ref != "latest" or os.environ.get("NGARGPARSER_UPGRADE_URL")
+    if not pinned:
+        if resolved == "master":
+            print("⚠ No semver tags on remote; 'latest' resolves to master.")
+        else:
+            up_to_date = current == target
+            print(f"ℹ Installed: {current}    Latest: {resolved}"
+                  + ("  (up to date)" if up_to_date else "  (update available)"))
+            if check:
+                return 0
+            if up_to_date:
+                print("\033[92m✓\033[0m Already on the latest tag; nothing to do.")
+                return 0
+    if check:  # --check with an explicit --ref / --dev / override
+        print(f"ℹ Installed: {current}    Target: {resolved}")
+        return 0
+
+    print(f"ℹ Upgrading ngargparser ({url}) …")
+    rc = _run_self_upgrade(url)
+    if rc:
+        return rc
+    print(f"\033[92m✓\033[0m Upgraded ngargparser → {resolved}. Run 'cli --version' to confirm.")
+    return 0
+
+
 def sync_command(args):
     """Synchronize framework files in existing projects to the latest version."""
     try:
@@ -1046,44 +1131,17 @@ def sync_command(args):
         # effect for the rest of this sync. The env-var sentinel breaks recursion.
         if getattr(args, "upgrade", True) and not os.environ.get("NGARGPARSER_NO_SELF_UPGRADE"):
             import sys
-            import subprocess
 
-            ref = getattr(args, "ref", "latest")
             if getattr(args, "dev", False):
-                ref = "master"
                 print("ℹ Dev mode: pulling from master.")
-            base_url = "git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git"
-            override = os.environ.get("NGARGPARSER_UPGRADE_URL")
-            if override:
-                url = override
-            else:
-                if ref == "latest":
-                    resolved = _latest_release_tag(base_url[len("git+"):])
-                    if resolved:
-                        print(f"ℹ Latest release tag: {resolved}")
-                        ref = resolved
-                    else:
-                        print("⚠ No semver tags found on remote; falling back to master.")
-                        ref = "master"
-                url = f"{base_url}@{ref}"
+            url, resolved = _resolve_upgrade_url(getattr(args, "ref", "latest"), getattr(args, "dev", False))
+            if resolved and resolved != "master":
+                print(f"ℹ Latest release tag: {resolved}")
             print(f"ℹ Upgrading ngargparser ({url}) …")
-            # uv-tool envs (the documented install path) have no pip, so
-            # `python -m pip` fails with "No module named pip". Use `uv tool
-            # install` there; fall back to pip for pip/pipx installs.
-            if _is_uv_tool_install() and shutil.which("uv"):
-                cmd = ["uv", "tool", "install", "--force", "--reinstall", url]
-                tool = "uv"
-            else:
-                cmd = [sys.executable, "-m", "pip", "install",
-                       "--upgrade", "--force-reinstall", "--quiet", url]
-                tool = "pip"
-            try:
-                subprocess.check_call(cmd)
-            except subprocess.CalledProcessError as e:
-                print(f"\033[91m✗\033[0m Self-upgrade failed ({tool} exit {e.returncode}); aborting sync.")
-                print(f"  Upgrade manually:  uv tool install --force --reinstall '{url}'")
-                print(f"  Then re-run:       cli s --no-upgrade")
-                return 1
+            rc = _run_self_upgrade(url)
+            if rc:
+                print("  Then re-run:       cli s --no-upgrade")
+                return rc
 
             # On re-exec, pass only the bare `s` subcommand. The sentinel env
             # var skips the upgrade block, and any --ref/--no-upgrade flags
@@ -1338,6 +1396,25 @@ def main():
         help="Dev mode: pull the bleeding-edge tip of 'master' instead of the latest semver tag. Shortcut for --ref master; overrides --ref if both are given.",
     )
 
+    # Create 'upgrade' sub-command (upgrades ngargparser itself; works anywhere)
+    upgrade_parser = subparsers.add_parser('upgrade', aliases=["up"], allow_abbrev=True,
+        help='Upgrade ngargparser itself to the latest release tag on GitLab.')
+    upgrade_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Report the installed version vs the latest remote tag without installing anything.",
+    )
+    upgrade_parser.add_argument(
+        "--ref",
+        default="latest",
+        help="Git ref to upgrade to. 'latest' (default) resolves to the highest semver tag on the remote, falling back to 'master' if no tags exist. Pass a branch/tag/sha (e.g., 'master', 'v0.2.2') to override.",
+    )
+    upgrade_parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="Upgrade to the bleeding-edge tip of 'master' instead of the latest semver tag. Shortcut for --ref master.",
+    )
+
 
     args = parser.parse_args()
 
@@ -1355,6 +1432,8 @@ def main():
         return config_paths_command(args) or 0
     elif args.command == 'sync' or args.command == 's':
         return sync_command(args) or 0
+    elif args.command == 'upgrade' or args.command == 'up':
+        return upgrade_command(args) or 0
     else:
         parser.print_help()  # Print help message if no command is specified
         return 0
