@@ -1017,6 +1017,17 @@ def _latest_release_tag(remote_url):
     return max(semver_tags)[1] if semver_tags else None
 
 
+def _is_uv_tool_install():
+    """True when this ngargparser runs from a uv-managed tool env.
+
+    uv installs each tool under `<data-dir>/uv/tools/<name>/`, and those
+    venvs ship without pip — so `python -m pip` can't self-upgrade them.
+    Detect the layout from sys.prefix so sync can use `uv tool install`.
+    """
+    import sys
+    return os.path.join("uv", "tools") in os.path.normpath(getattr(sys, "prefix", ""))
+
+
 def sync_command(args):
     """Synchronize framework files in existing projects to the latest version."""
     try:
@@ -1056,13 +1067,22 @@ def sync_command(args):
                         ref = "master"
                 url = f"{base_url}@{ref}"
             print(f"ℹ Upgrading ngargparser ({url}) …")
+            # uv-tool envs (the documented install path) have no pip, so
+            # `python -m pip` fails with "No module named pip". Use `uv tool
+            # install` there; fall back to pip for pip/pipx installs.
+            if _is_uv_tool_install() and shutil.which("uv"):
+                cmd = ["uv", "tool", "install", "--force", "--reinstall", url]
+                tool = "uv"
+            else:
+                cmd = [sys.executable, "-m", "pip", "install",
+                       "--upgrade", "--force-reinstall", "--quiet", url]
+                tool = "pip"
             try:
-                subprocess.check_call([
-                    sys.executable, "-m", "pip", "install",
-                    "--upgrade", "--force-reinstall", "--quiet", url,
-                ])
+                subprocess.check_call(cmd)
             except subprocess.CalledProcessError as e:
-                print(f"\033[91m✗\033[0m Self-upgrade failed (pip exit {e.returncode}); aborting sync.")
+                print(f"\033[91m✗\033[0m Self-upgrade failed ({tool} exit {e.returncode}); aborting sync.")
+                print(f"  Upgrade manually:  uv tool install --force --reinstall '{url}'")
+                print(f"  Then re-run:       cli s --no-upgrade")
                 return 1
 
             # On re-exec, pass only the bare `s` subcommand. The sentinel env
