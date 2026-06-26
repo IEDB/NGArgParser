@@ -2,7 +2,7 @@
 
 > Framework for building IEDB-style command-line scientific tools — standardized argument parsing, dependency wiring, and reproducible tarball builds.
 
-[![ngargparser](https://img.shields.io/badge/ngargparser-0.2.8-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
+[![ngargparser](https://img.shields.io/badge/ngargparser-0.2.9-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
 
 After `pip install`-ing the framework, you get a `cli` command and a Python class (`NGArgumentParser`) that together produce well-shaped scientific CLI apps:
 
@@ -34,7 +34,7 @@ uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-d
 uv tool install 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git'
 
 # Pin to a tag for reproducibility (SSH form shown; HTTPS works the same way):
-uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.8'
+uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.9'
 
 # Upgrade later (either works)
 cli upgrade                 # self-update to the latest release tag on GitLab
@@ -283,7 +283,7 @@ There are two related commands:
 
   ```bash
   cli upgrade --check        # is a newer release available?
-  cli upgrade                # update the cli to the latest tag (alias: up)
+  cli upgrade                # update the cli to the latest tag (alias: u)
   ```
 
   > **Upgrading from a pre-0.2.4 version (one-time bootstrap).** `cli upgrade` didn't exist before
@@ -292,11 +292,11 @@ There are two related commands:
   >
   > ```bash
   > # uv tool install:
-  > uv tool install --force --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.8'
+  > uv tool install --force --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.9'
   > # pip venv:
-  > pip install --upgrade --force-reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.8'
+  > pip install --upgrade --force-reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.9'
   > # pip-less uv venv:
-  > uv pip install --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.8'
+  > uv pip install --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.9'
   > ```
 
   **Update notifier.** You don't have to remember to check — when you run `cli`, it occasionally prints a
@@ -355,7 +355,7 @@ cli deps list                 # show declared deps + status (alias: ls)
 
 cli sync                      # pull latest framework files into a project (alias: s)
 
-cli upgrade                   # self-update the cli to the latest release tag (alias: up)
+cli upgrade                   # self-update the cli to the latest release tag (alias: u)
 cli upgrade --check           # report installed vs latest without installing
 
 cli config-paths              # [deprecated] alias for `cli deps` (alias: c)

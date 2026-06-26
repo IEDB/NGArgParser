@@ -1236,7 +1236,7 @@ def _maybe_notify_update(command):
     """
     import os, sys, time
     try:
-        if (command in ("upgrade", "up")
+        if (command in ("upgrade", "u")
                 or os.environ.get("NGARGPARSER_NO_UPDATE_CHECK")
                 or os.environ.get("CI")
                 or not sys.stderr.isatty()):
@@ -1568,7 +1568,7 @@ def main():
     )
 
     # Create 'upgrade' sub-command (upgrades ngargparser itself; works anywhere)
-    upgrade_parser = subparsers.add_parser('upgrade', aliases=["up"], allow_abbrev=True,
+    upgrade_parser = subparsers.add_parser('upgrade', aliases=["u"], allow_abbrev=True,
         help='Upgrade ngargparser itself to the latest release tag on GitLab.')
     upgrade_parser.add_argument(
         "--check",
@@ -1611,7 +1611,7 @@ def main():
         rc = config_paths_command(args) or 0
     elif args.command == 'sync' or args.command == 's':
         rc = sync_command(args) or 0
-    elif args.command == 'upgrade' or args.command == 'up':
+    elif args.command == 'upgrade' or args.command == 'u':
         rc = upgrade_command(args) or 0
     else:
         parser.print_help()  # Print help message if no command is specified
