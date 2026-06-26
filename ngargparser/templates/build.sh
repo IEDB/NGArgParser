@@ -89,6 +89,10 @@ fi
 [ -z "$EXCLUDE_FROM_BUILD_SYMLINK" ] && EXCLUDE_FROM_BUILD_SYMLINK="libs run_*.py"
 # pull the tool version from the environment, otherwise set it to 'local'
 TOOL_VERSION="${TOOL_VERSION:-local}"
+# Replace '/' with '-': CI often passes the git ref name as TOOL_VERSION, and a
+# branch like 'feature/foo' would otherwise break the version-stamping sed
+# (s/TOOL_VERSION/.../ — the slash ends the command) and nest TOOL_DIR/BUILD_DIR.
+TOOL_VERSION="${TOOL_VERSION//\//-}"
 TOOL_DIR=$TOOL_NAME-$TOOL_VERSION
 BUILD_DIR=$PROJECT_ROOT/build/$TOOL_DIR
 
