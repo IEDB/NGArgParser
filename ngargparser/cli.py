@@ -990,7 +990,7 @@ def deps_command(args):
     return 0
 
 
-def _latest_release_tag(remote_url):
+def _latest_release_tag(remote_url, timeout=10):
     """Return the highest semver-like tag from a git remote, or None on failure.
 
     Uses `git ls-remote --tags --refs` (no clone), parses tags matching
@@ -998,12 +998,13 @@ def _latest_release_tag(remote_url):
     highest one by numeric (major, minor, patch). Pre-release suffixes are
     parsed but compared as None < anything-else, matching the conventional
     "pre-releases sort below releases" intent for picking a default upgrade.
+    `timeout` bounds the network call (kept short for the update notifier).
     """
     import re, subprocess
     try:
         out = subprocess.check_output(
             ["git", "ls-remote", "--tags", "--refs", remote_url],
-            stderr=subprocess.DEVNULL, text=True, timeout=10,
+            stderr=subprocess.DEVNULL, text=True, timeout=timeout,
         )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
         return None
@@ -1031,12 +1032,44 @@ def _is_uv_tool_install():
 BASE_REPO_URL = "git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git"
 
 
+def _local_source(ref):
+    """If `ref` points at a local directory ('.' or a path), return its absolute
+    path; else None. Lets contributors install their working tree via `--ref .`.
+
+    Detection is "does it resolve to an existing directory" so real git refs like
+    'master' or 'feature/x' are never mistaken for paths.
+    """
+    import os
+    if not ref:
+        return None
+    p = os.path.abspath(os.path.expanduser(ref))
+    return p if os.path.isdir(p) else None
+
+
+def _is_ngargparser_checkout(path):
+    """Return (ok, message). True iff `path` looks like the ngargparser package source."""
+    import os
+    pyproject = os.path.join(path, "pyproject.toml")
+    if not os.path.isfile(pyproject):
+        return False, f"'{path}' has no pyproject.toml — not an ngargparser checkout."
+    try:
+        with open(pyproject, encoding="utf-8") as f:
+            content = f.read()
+    except OSError as e:
+        return False, f"can't read '{pyproject}': {e}"
+    if 'name = "ngargparser"' not in content:
+        return False, f"'{path}' doesn't look like the ngargparser repo (pyproject name is not 'ngargparser')."
+    return True, ""
+
+
 def _resolve_upgrade_url(ref="latest", dev=False):
-    """Resolve (url, resolved_ref) to upgrade ngargparser to.
+    """Resolve (source, label) to upgrade ngargparser to.
 
     Honors NGARGPARSER_UPGRADE_URL (full override). `dev` forces 'master'.
     `ref='latest'` resolves the highest semver tag on the remote, falling back
-    to 'master' when no tags exist.
+    to 'master' when no tags exist. A `ref` that points at a local directory
+    ('.' or a path) returns that absolute path with a 'local:' label, so the
+    install comes from the working tree instead of the git remote.
     """
     import os
     override = os.environ.get("NGARGPARSER_UPGRADE_URL")
@@ -1044,6 +1077,9 @@ def _resolve_upgrade_url(ref="latest", dev=False):
         return override, ref
     if dev:
         ref = "master"
+    local = _local_source(ref)
+    if local:
+        return local, f"local:{local}"
     if ref == "latest":
         ref = _latest_release_tag(BASE_REPO_URL[len("git+"):]) or "master"
     return f"{BASE_REPO_URL}@{ref}", ref
@@ -1105,6 +1141,24 @@ def upgrade_command(args):
     target = resolved.lstrip("v") if resolved else resolved
     check = getattr(args, "check", False)
 
+    # Local checkout mode (`--ref .` or `--ref <path>`): install the working tree.
+    # Skips the tag-resolution / up-to-date logic — you always want what's on disk.
+    if resolved.startswith("local:"):
+        path = url
+        ok, msg = _is_ngargparser_checkout(path)
+        if not ok:
+            print(f"\033[91m✗\033[0m {msg}")
+            return 1
+        if check:
+            print(f"ℹ Would install ngargparser from local checkout: {path}")
+            return 0
+        print(f"ℹ Installing ngargparser from local checkout: {path} …")
+        rc = _run_self_upgrade(path)
+        if rc:
+            return rc
+        print(f"\033[92m✓\033[0m Installed ngargparser from {path}. Run 'cli --version' to confirm.")
+        return 0
+
     pinned = dev or ref != "latest" or os.environ.get("NGARGPARSER_UPGRADE_URL")
     if not pinned:
         if resolved == "master":
@@ -1130,6 +1184,86 @@ def upgrade_command(args):
     return 0
 
 
+# --- Passive "update available" notifier -------------------------------------
+# Standard update-notifier pattern (like npm / gh / uv): when a developer runs
+# `cli`, occasionally remind them a newer release exists. Throttled to one
+# network check per day (cached on disk), printed to stderr, and suppressed in
+# non-interactive / CI / opted-out contexts. Never blocks or breaks a command.
+
+UPDATE_CHECK_TTL = 24 * 60 * 60  # seconds between remote checks
+
+
+def _parse_semver(v):
+    """Parse 'vX.Y.Z' / 'X.Y.Z' (optional pre-release/build) into (X, Y, Z), else None."""
+    import re
+    m = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", (v or "").strip())
+    return tuple(int(g) for g in m.groups()) if m else None
+
+
+def _update_cache_file():
+    import os
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    return os.path.join(base, "ngargparser", "update-check.json")
+
+
+def _read_update_cache():
+    import json
+    try:
+        with open(_update_cache_file(), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_update_cache(checked_at, latest):
+    import os, json
+    path = _update_cache_file()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"checked_at": checked_at, "latest": latest}, f)
+    except OSError:
+        pass
+
+
+def _maybe_notify_update(command):
+    """Print a one-line 'update available' notice on stderr, if appropriate.
+
+    Silent (and side-effect-free) unless: stderr is a TTY, not in CI, not opted
+    out via NGARGPARSER_NO_UPDATE_CHECK, and not already running `cli upgrade`.
+    Re-checks the remote at most once per UPDATE_CHECK_TTL; otherwise reads the
+    cached result. Any failure is swallowed so a command is never affected.
+    """
+    import os, sys, time
+    try:
+        if (command in ("upgrade", "up")
+                or os.environ.get("NGARGPARSER_NO_UPDATE_CHECK")
+                or os.environ.get("CI")
+                or not sys.stderr.isatty()):
+            return
+
+        cache = _read_update_cache()
+        latest = cache.get("latest")
+        fresh = (time.time() - cache.get("checked_at", 0)) < UPDATE_CHECK_TTL
+        if not fresh:
+            # One bounded network check per TTL. Stamp the time even on failure
+            # so we don't re-query (or hang) on every invocation when offline.
+            latest = _latest_release_tag(BASE_REPO_URL[len("git+"):], timeout=4) or latest
+            _write_update_cache(time.time(), latest)
+
+        cur, new = _parse_semver(__version__), _parse_semver(latest)
+        if not cur or not new or new <= cur:
+            return
+
+        print(
+            f"\n\033[33m⬆  A new ngargparser is available: {__version__} → {latest}\033[0m\n"
+            f"   run `cli upgrade` to update   ·   silence: NGARGPARSER_NO_UPDATE_CHECK=1",
+            file=sys.stderr,
+        )
+    except Exception:
+        pass  # an update check must never break or slow the real command
+
+
 def sync_command(args):
     """Synchronize framework files in existing projects to the latest version."""
     try:
@@ -1152,9 +1286,16 @@ def sync_command(args):
             if getattr(args, "dev", False):
                 print("ℹ Dev mode: pulling from master.")
             url, resolved = _resolve_upgrade_url(getattr(args, "ref", "latest"), getattr(args, "dev", False))
-            if resolved and resolved != "master":
-                print(f"ℹ Latest release tag: {resolved}")
-            print(f"ℹ Upgrading ngargparser ({url}) …")
+            if resolved.startswith("local:"):
+                ok, msg = _is_ngargparser_checkout(url)
+                if not ok:
+                    print(f"\033[91m✗\033[0m {msg}")
+                    return 1
+                print(f"ℹ Installing ngargparser from local checkout: {url} …")
+            else:
+                if resolved and resolved != "master":
+                    print(f"ℹ Latest release tag: {resolved}")
+                print(f"ℹ Upgrading ngargparser ({url}) …")
             rc = _run_self_upgrade(url)
             if rc:
                 print("  Then re-run:       cli s --no-upgrade")
@@ -1405,7 +1546,7 @@ def main():
     sync_parser.add_argument(
         "--ref",
         default="latest",
-        help="Git ref to upgrade ngargparser to. 'latest' (default) resolves to the highest semver tag on the remote, falling back to 'master' if no tags exist. Pass a branch/tag/sha (e.g., 'master', 'v0.2.2') to override.",
+        help="Git ref to upgrade ngargparser to. 'latest' (default) resolves to the highest semver tag on the remote, falling back to 'master' if no tags exist. Pass a branch/tag/sha (e.g., 'master', 'v0.2.2') to override, or a local directory path (e.g., a checkout of the ngargparser repo) to install from your working tree.",
     )
     sync_parser.add_argument(
         "--dev",
@@ -1424,7 +1565,7 @@ def main():
     upgrade_parser.add_argument(
         "--ref",
         default="latest",
-        help="Git ref to upgrade to. 'latest' (default) resolves to the highest semver tag on the remote, falling back to 'master' if no tags exist. Pass a branch/tag/sha (e.g., 'master', 'v0.2.2') to override.",
+        help="What to upgrade to. 'latest' (default) resolves to the highest semver tag on the remote, falling back to 'master' if no tags exist. Pass a branch/tag/sha (e.g., 'master', 'v0.2.2'), or a local directory ('.' or a path to an ngargparser checkout) to install from your working tree.",
     )
     upgrade_parser.add_argument(
         "--dev",
@@ -1442,18 +1583,21 @@ def main():
         args.deps_action = 'list'
 
     if args.command == 'generate' or args.command == 'g':
-        return startapp_command(args) or 0
+        rc = startapp_command(args) or 0
     elif args.command == 'deps' or args.command == 'd':
-        return deps_command(args) or 0
+        rc = deps_command(args) or 0
     elif args.command == 'config-paths' or args.command == 'c':
-        return config_paths_command(args) or 0
+        rc = config_paths_command(args) or 0
     elif args.command == 'sync' or args.command == 's':
-        return sync_command(args) or 0
+        rc = sync_command(args) or 0
     elif args.command == 'upgrade' or args.command == 'up':
-        return upgrade_command(args) or 0
+        rc = upgrade_command(args) or 0
     else:
         parser.print_help()  # Print help message if no command is specified
-        return 0
+        rc = 0
+
+    _maybe_notify_update(args.command)
+    return rc
 
 if __name__ == '__main__':
     import sys

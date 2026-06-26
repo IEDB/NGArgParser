@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] — 2026-06-25
+
+### Added
+- **Passive update notifier.** Running `cli` now occasionally prints a one-line "a newer ngargparser is
+  available" notice on stderr. Throttled to one remote check per day (cached at
+  `~/.cache/ngargparser/update-check.json`), shown only in an interactive terminal, and suppressed in CI,
+  when piped/redirected, during `cli upgrade`, or when `NGARGPARSER_NO_UPDATE_CHECK=1` is set. Failures
+  are swallowed so a command is never slowed or broken.
+- **`cli upgrade --ref .`** (and `--ref <path>`): install ngargparser from a local working-tree checkout
+  instead of a release tag — for contributors developing the framework. Validates the path is an
+  ngargparser checkout; `--check` dry-runs it. `cli sync --ref <path>` works too.
+
 ## [0.2.5] — 2026-06-25
 
 ### Fixed

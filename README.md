@@ -2,7 +2,7 @@
 
 > Framework for building IEDB-style command-line scientific tools — standardized argument parsing, dependency wiring, and reproducible tarball builds.
 
-[![ngargparser](https://img.shields.io/badge/ngargparser-0.2.5-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
+[![ngargparser](https://img.shields.io/badge/ngargparser-0.2.6-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
 
 After `pip install`-ing the framework, you get a `cli` command and a Python class (`NGArgumentParser`) that together produce well-shaped scientific CLI apps:
 
@@ -34,7 +34,7 @@ uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-d
 uv tool install 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git'
 
 # Pin to a tag for reproducibility (SSH form shown; HTTPS works the same way):
-uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.5'
+uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.6'
 
 # Upgrade later (either works)
 cli upgrade                 # self-update to the latest release tag on GitLab
@@ -292,12 +292,26 @@ There are two related commands:
   >
   > ```bash
   > # uv tool install:
-  > uv tool install --force --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.5'
+  > uv tool install --force --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.6'
   > # pip venv:
-  > pip install --upgrade --force-reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.5'
+  > pip install --upgrade --force-reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.6'
   > # pip-less uv venv:
-  > uv pip install --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.5'
+  > uv pip install --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.6'
   > ```
+
+  **Update notifier.** You don't have to remember to check — when you run `cli`, it occasionally prints a
+  one-line "a newer version is available" notice (throttled to one remote check per day, shown only in an
+  interactive terminal, never in CI/pipelines). Silence it with `NGARGPARSER_NO_UPDATE_CHECK=1`.
+
+  **Install from a local checkout (contributors).** `cli upgrade --ref .` installs ngargparser from your
+  current working tree instead of a release tag — handy while developing the framework itself. Pass `.`
+  (run from the repo) or a path to a checkout; `--check` dry-runs it:
+
+  ```bash
+  cli upgrade --ref .                 # install the working tree (run from the ngargparser repo)
+  cli upgrade --ref /path/to/repo     # same, from anywhere
+  cli upgrade --ref . --check         # show what it would install, install nothing
+  ```
 
 - **`cli sync`** — refreshes the **framework-owned files inside a project** to match the installed
   version (and self-upgrades first, unless `--no-upgrade`). Run it from inside an existing project:
