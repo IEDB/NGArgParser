@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.10] — 2026-06-26
+
+### Added
+- After a successful `cli upgrade` run from inside a scaffolded project, the CLI now nudges you to run
+  `cli sync` if the project's `scaffold_version` is older than the version just installed — e.g.
+  *"This project's framework files are on 0.2.5; you just installed 0.2.10. Run `cli sync` here to update
+  them."* Informational only (the project keeps working on its vendored files); shown only when actually
+  behind and run from inside a stamped project.
+
+### Removed
+- `cli config-paths` (and its `c` alias) — deprecated since 0.2.0, it only printed a warning and forwarded
+  to `cli deps`. Use `cli deps` (`add` / `remove` / `list`). Breaking change (removal of a long-deprecated command).
+
 ## [0.2.9] — 2026-06-26
 
 ### Changed

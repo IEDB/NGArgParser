@@ -957,16 +957,6 @@ def startapp_command(args):
     print(f"  cli deps add <tool> [<tool> ...]         # declare external tool deps (optional)")
 
 
-def config_paths_command(args):
-    import sys
-    print(
-        "\033[93m⚠\033[0m  'cli config-paths' is deprecated; use 'cli deps' instead "
-        "('cli deps add <name>', 'cli deps remove <name>', 'cli deps list').",
-        file=sys.stderr,
-    )
-    setup_paths_file('paths.py')
-
-
 def deps_command(args):
     action = getattr(args, 'deps_action', None)
     if action == 'add':
@@ -1127,6 +1117,33 @@ def _run_self_upgrade(url):
         return e.returncode or 1
 
 
+def _project_scaffold_version():
+    """Return the [tool.ngargparser] scaffold_version stamp in CWD's pyproject.toml, or None
+    (i.e. None when not run from inside a stamped scaffolded project)."""
+    import os
+    if not os.path.isfile("pyproject.toml"):
+        return None
+    try:
+        with open("pyproject.toml", encoding="utf-8") as f:
+            m = SCAFFOLD_STAMP_RE.search(f.read())
+    except OSError:
+        return None
+    return m.group(2) if m else None
+
+
+def _nudge_sync_if_behind(installed):
+    """After a successful `cli upgrade` run from inside a scaffolded project, nudge the
+    developer to `cli sync` if the project's framework files are older than the tool just
+    installed. Informational only — the project keeps working on its vendored files."""
+    stamp = _project_scaffold_version()
+    if not stamp:
+        return
+    proj, tool = _parse_semver(stamp), _parse_semver(installed)
+    if proj and tool and proj < tool:
+        print(f"\nℹ This project's framework files are on {stamp}; you just installed {installed}.")
+        print("  Run `cli sync` here to update them.")
+
+
 def upgrade_command(args):
     """Check GitLab for the latest tag and upgrade ngargparser in place.
 
@@ -1181,6 +1198,7 @@ def upgrade_command(args):
     if rc:
         return rc
     print(f"\033[92m✓\033[0m Upgraded ngargparser → {resolved}. Run 'cli --version' to confirm.")
+    _nudge_sync_if_behind(target)
     return 0
 
 
@@ -1543,10 +1561,6 @@ def main():
     deps_remove.add_argument('names', nargs='*', help='Dependency names to remove (interactive if omitted)')
     deps_subparsers.add_parser('list', aliases=['ls'], help='List dependencies declared in paths.py')
 
-    # Create 'config-paths' sub-command (deprecated alias for `deps`)
-    config_paths_parser = subparsers.add_parser('config-paths', aliases=["c"], allow_abbrev=True,
-        help='[deprecated] Use `cli deps` instead')
-
     # Create 'sync' sub-command
     sync_parser = subparsers.add_parser('sync', aliases=["s"], allow_abbrev=True, help='Synchronize framework files in existing projects to the latest version.')
     sync_parser.add_argument(
@@ -1607,8 +1621,6 @@ def main():
         rc = startapp_command(args) or 0
     elif args.command == 'deps' or args.command == 'd':
         rc = deps_command(args) or 0
-    elif args.command == 'config-paths' or args.command == 'c':
-        rc = config_paths_command(args) or 0
     elif args.command == 'sync' or args.command == 's':
         rc = sync_command(args) or 0
     elif args.command == 'upgrade' or args.command == 'u':

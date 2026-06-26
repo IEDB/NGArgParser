@@ -2,7 +2,7 @@
 
 > Framework for building IEDB-style command-line scientific tools — standardized argument parsing, dependency wiring, and reproducible tarball builds.
 
-[![ngargparser](https://img.shields.io/badge/ngargparser-0.2.9-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
+[![ngargparser](https://img.shields.io/badge/ngargparser-0.2.10-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
 
 After `pip install`-ing the framework, you get a `cli` command and a Python class (`NGArgumentParser`) that together produce well-shaped scientific CLI apps:
 
@@ -34,7 +34,7 @@ uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-d
 uv tool install 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git'
 
 # Pin to a tag for reproducibility (SSH form shown; HTTPS works the same way):
-uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.9'
+uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.10'
 
 # Upgrade later (either works)
 cli upgrade                 # self-update to the latest release tag on GitLab
@@ -197,7 +197,6 @@ cli deps                                # bare → interactive add/remove menu
 
 `cli deps remove` accepts the original name (`mhci-predictor`), the display form (`Mhci Predictor`), or the var-name form (`mhci_predictor`).
 
-`cli config-paths` is kept as a deprecated alias that prints a warning and forwards to interactive `cli deps`.
 
 ## Building
 
@@ -292,11 +291,11 @@ There are two related commands:
   >
   > ```bash
   > # uv tool install:
-  > uv tool install --force --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.9'
+  > uv tool install --force --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.10'
   > # pip venv:
-  > pip install --upgrade --force-reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.9'
+  > pip install --upgrade --force-reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.10'
   > # pip-less uv venv:
-  > uv pip install --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.9'
+  > uv pip install --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.10'
   > ```
 
   **Update notifier.** You don't have to remember to check — when you run `cli`, it occasionally prints a
@@ -357,8 +356,6 @@ cli sync                      # pull latest framework files into a project (alia
 
 cli upgrade                   # self-update the cli to the latest release tag (alias: u)
 cli upgrade --check           # report installed vs latest without installing
-
-cli config-paths              # [deprecated] alias for `cli deps` (alias: c)
 ```
 
 ### NGArgumentParser API
