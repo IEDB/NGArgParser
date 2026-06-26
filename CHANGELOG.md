@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] — 2026-06-25
+
+### Fixed
+- `cli upgrade` / `cli sync` self-upgrade now also works in **pip-less uv-managed venvs** (a project
+  `.venv` from `uv venv` / `uv sync`). Such envs aren't uv-*tool* installs and have no pip, so the old
+  fallback to `python -m pip` failed with "No module named pip". `_run_self_upgrade` now picks the
+  installer per environment: `uv tool install` (uv-tool), `python -m pip` (pip present), or
+  `uv pip install --python <interpreter>` (pip-less venv with uv) — with a clear message when neither
+  pip nor uv is available. `cli upgrade` is now the single command that works on every install type.
+
 ## [0.2.4] — 2026-06-25
 
 ### Added

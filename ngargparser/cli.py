@@ -1050,21 +1050,38 @@ def _resolve_upgrade_url(ref="latest", dev=False):
 
 
 def _run_self_upgrade(url):
-    """Install `url` into the current ngargparser env (uv-tool aware).
+    """Install `url` into the current ngargparser env — whatever the install type.
 
-    uv-tool envs (the documented install path) have no pip, so `python -m pip`
-    fails with "No module named pip"; use `uv tool install` there and fall back
-    to pip for pip/pipx installs. Returns 0 on success, else a non-zero exit
-    code (after printing a diagnostic + manual command).
+    Picks an installer that works for the current environment so a developer only
+    ever types `cli upgrade`:
+      - uv-tool install     -> `uv tool install`        (uv-tool envs have no pip)
+      - env that has pip     -> `python -m pip install`
+      - pip-less venv + uv   -> `uv pip install --python <this interpreter>`
+        (e.g. a uv-managed project .venv, which ships without pip)
+    Returns 0 on success, else a non-zero exit code (after printing a diagnostic).
     """
     import sys
     import shutil
     import subprocess
-    if _is_uv_tool_install() and shutil.which("uv"):
-        cmd, tool = ["uv", "tool", "install", "--force", "--reinstall", url], "uv"
-    else:
+    import importlib.util
+
+    uv = shutil.which("uv")
+    has_pip = importlib.util.find_spec("pip") is not None
+
+    if _is_uv_tool_install() and uv:
+        cmd, tool = ["uv", "tool", "install", "--force", "--reinstall", url], "uv tool"
+    elif has_pip:
         cmd, tool = [sys.executable, "-m", "pip", "install",
                      "--upgrade", "--force-reinstall", "--quiet", url], "pip"
+    elif uv:
+        cmd, tool = ["uv", "pip", "install", "--python", sys.executable,
+                     "--reinstall", url], "uv pip"
+    else:
+        print("\033[91m✗\033[0m Can't upgrade: this environment has no pip and uv isn't on PATH.")
+        print(f"  Install uv (https://astral.sh/uv) or run manually:")
+        print(f"    uv tool install --force --reinstall '{url}'")
+        return 1
+
     try:
         subprocess.check_call(cmd)
         return 0

@@ -2,7 +2,7 @@
 
 > Framework for building IEDB-style command-line scientific tools — standardized argument parsing, dependency wiring, and reproducible tarball builds.
 
-[![ngargparser](https://img.shields.io/badge/ngargparser-0.2.4-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
+[![ngargparser](https://img.shields.io/badge/ngargparser-0.2.5-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
 
 After `pip install`-ing the framework, you get a `cli` command and a Python class (`NGArgumentParser`) that together produce well-shaped scientific CLI apps:
 
@@ -34,7 +34,7 @@ uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-d
 uv tool install 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git'
 
 # Pin to a tag for reproducibility (SSH form shown; HTTPS works the same way):
-uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.4'
+uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.5'
 
 # Upgrade later (either works)
 cli upgrade                 # self-update to the latest release tag on GitLab
@@ -276,13 +276,28 @@ The two `*.sh` user-owned files are easy to confuse. They run at different times
 There are two related commands:
 
 - **`cli upgrade`** — self-updates the installed `ngargparser` tool (the `cli` itself) to the latest
-  release tag on GitLab. Works from **any** directory and touches no project files. Add `--check` to
-  see installed-vs-latest without installing.
+  release tag on GitLab. **This is the one command to update the CLI** (0.2.4+) — it auto-detects how
+  ngargparser was installed (uv tool, pip venv, or a pip-less uv venv) and runs the right installer, so
+  you never type a long `git+https://…` command. Works from **any** directory and touches no project
+  files. Add `--check` to see installed-vs-latest without installing.
 
   ```bash
   cli upgrade --check        # is a newer release available?
   cli upgrade                # update the cli to the latest tag (alias: up)
   ```
+
+  > **Upgrading from a pre-0.2.4 version (one-time bootstrap).** `cli upgrade` didn't exist before
+  > 0.2.4, so to get onto it the first time, reinstall the package directly with whatever installed it
+  > (you only do this once — after that it's just `cli upgrade`):
+  >
+  > ```bash
+  > # uv tool install:
+  > uv tool install --force --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.5'
+  > # pip venv:
+  > pip install --upgrade --force-reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.5'
+  > # pip-less uv venv:
+  > uv pip install --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.5'
+  > ```
 
 - **`cli sync`** — refreshes the **framework-owned files inside a project** to match the installed
   version (and self-upgrades first, unless `--no-upgrade`). Run it from inside an existing project:
