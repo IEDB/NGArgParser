@@ -4,7 +4,7 @@
 
 [![ngargparser](https://img.shields.io/badge/ngargparser-0.2.10-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
 
-After `pip install`-ing the framework, you get a `cli` command and a Python class (`NGArgumentParser`) that together produce well-shaped scientific CLI apps:
+After installing the framework, you get a `cli` command and a Python class (`NGArgumentParser`) that together produce well-shaped scientific CLI apps:
 
 - A standardized `preprocess → predict → postprocess` workflow shared across every app
 - A reproducible build that emits a self-contained tarball for HPC distribution
@@ -272,7 +272,16 @@ The two `*.sh` user-owned files are easy to confuse. They run at different times
 
 ## Upgrading the framework
 
-There are two related commands:
+Two commands, two different targets — **`cli upgrade` updates the tool; `cli sync` updates a project.**
+
+| You want to… | Run | Where |
+|---|---|---|
+| Update the `cli` tool itself (to get the latest, or before `cli generate`-ing a new project) | `cli upgrade` | anywhere |
+| Bring **one project's** framework files up to the installed tool's version | `cli sync` | inside that project |
+
+They overlap in exactly one spot: `cli sync` **self-upgrades the tool first** (unless `--no-upgrade`), so the common "get my project on the latest framework" flow is a single command. That convenience is the *only* reason the two look similar — `cli upgrade` is still the only way to update the tool **without** being in (and rewriting) a project, and it's also what `--check` / `--ref <version>` hang off of.
+
+If you run `cli upgrade` from inside a project whose framework files are now behind, it prints a one-line reminder to run `cli sync` there to bring that project current.
 
 - **`cli upgrade`** — self-updates the installed `ngargparser` tool (the `cli` itself) to the latest
   release tag on GitLab. **This is the one command to update the CLI** (0.2.4+) — it auto-detects how
