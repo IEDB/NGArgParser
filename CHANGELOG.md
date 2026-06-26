@@ -5,76 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.10] — 2026-06-26
+## [0.2.4] — 2026-06-26
 
 ### Added
-- After a successful `cli upgrade` run from inside a scaffolded project, the CLI now nudges you to run
-  `cli sync` if the project's `scaffold_version` is older than the version just installed — e.g.
-  *"This project's framework files are on 0.2.5; you just installed 0.2.10. Run `cli sync` here to update
-  them."* Informational only (the project keeps working on its vendored files); shown only when actually
-  behind and run from inside a stamped project.
+- `cli upgrade` (alias `u`): a standalone, discoverable command that self-updates the installed
+  `ngargparser` tool to the latest release tag on GitLab. Works from any directory and never touches
+  project files. `--check` reports installed-vs-latest without installing; `--ref <tag/branch/sha>` pins a
+  specific version (and `--ref .` / `--ref <path>` installs from a local working-tree checkout, for
+  contributors); `--dev` tracks `master`. uv-tool aware — picks `uv tool install`, `python -m pip`, or
+  `uv pip install` per environment, so it works on uv-tool installs, pip venvs, and pip-less uv-managed
+  venvs alike.
+- Passive update notifier: any `cli` invocation — including `cli --version` and `cli --help` — occasionally
+  prints a one-line "a newer ngargparser is available" notice on stderr. Throttled to one remote check per
+  day (cached at `~/.cache/ngargparser/update-check.json`), shown only in an interactive terminal, and
+  suppressed in CI, when piped, during `cli upgrade`, or when `NGARGPARSER_NO_UPDATE_CHECK=1`.
+- After a successful `cli upgrade` run from inside a scaffolded project that's behind, a one-line nudge to
+  run `cli sync` to update that project's framework files.
+
+### Changed
+- `cli sync` and `cli upgrade` share one upgrade path (`_resolve_upgrade_url` + `_run_self_upgrade`);
+  `cli sync`'s self-upgrade behavior is unchanged.
+
+### Fixed
+- Build no longer breaks when `TOOL_VERSION` contains a slash (e.g. a `feature/foo` branch passed by CI);
+  `scripts/core/build.sh` sanitizes `/` → `-` before building.
 
 ### Removed
-- `cli config-paths` (and its `c` alias) — deprecated since 0.2.0, it only printed a warning and forwarded
-  to `cli deps`. Use `cli deps` (`add` / `remove` / `list`). Breaking change (removal of a long-deprecated command).
-
-## [0.2.9] — 2026-06-26
-
-### Changed
-- The `cli upgrade` shorthand alias is now **`u`** (was `up`) — `cli u`. `cli upgrade` is unchanged.
-
-## [0.2.8] — 2026-06-26
-
-### Fixed
-- **Build no longer breaks when `TOOL_VERSION` contains a slash.** CI commonly passes the git ref name as
-  `TOOL_VERSION`, so a branch like `feature/foo` produced `sed "s/TOOL_VERSION/feature/foo/g"` — the slash
-  terminates the `s///` command ("unknown option to `s'") — and nested the build dir at
-  `<tool>-feature/foo`. `scripts/core/build.sh` now sanitizes `TOOL_VERSION` by replacing `/` with `-`
-  before building. Tag names such as `v0.9` contain no slash and are unchanged.
-
-## [0.2.7] — 2026-06-25
-
-### Changed
-- The update notifier now fires on **every** `cli` invocation — including `cli --version` and
-  `cli --help` — not just full subcommands. Previously argparse handled `--version`/`--help` and exited
-  before the notifier ran, so the most common casual invocations never surfaced it. It now runs via an
-  `atexit` hook (still interactive-TTY-only, skipped in CI / when piped / during `cli upgrade` / when
-  `NGARGPARSER_NO_UPDATE_CHECK=1`).
-
-## [0.2.6] — 2026-06-25
-
-### Added
-- **Passive update notifier.** Running `cli` now occasionally prints a one-line "a newer ngargparser is
-  available" notice on stderr. Throttled to one remote check per day (cached at
-  `~/.cache/ngargparser/update-check.json`), shown only in an interactive terminal, and suppressed in CI,
-  when piped/redirected, during `cli upgrade`, or when `NGARGPARSER_NO_UPDATE_CHECK=1` is set. Failures
-  are swallowed so a command is never slowed or broken.
-- **`cli upgrade --ref .`** (and `--ref <path>`): install ngargparser from a local working-tree checkout
-  instead of a release tag — for contributors developing the framework. Validates the path is an
-  ngargparser checkout; `--check` dry-runs it. `cli sync --ref <path>` works too.
-
-## [0.2.5] — 2026-06-25
-
-### Fixed
-- `cli upgrade` / `cli sync` self-upgrade now also works in **pip-less uv-managed venvs** (a project
-  `.venv` from `uv venv` / `uv sync`). Such envs aren't uv-*tool* installs and have no pip, so the old
-  fallback to `python -m pip` failed with "No module named pip". `_run_self_upgrade` now picks the
-  installer per environment: `uv tool install` (uv-tool), `python -m pip` (pip present), or
-  `uv pip install --python <interpreter>` (pip-less venv with uv) — with a clear message when neither
-  pip nor uv is available. `cli upgrade` is now the single command that works on every install type.
-
-## [0.2.4] — 2026-06-25
-
-### Added
-- `cli upgrade` (alias `up`): a standalone, discoverable command that self-updates the installed
-  `ngargparser` tool to the latest release tag on GitLab. Unlike `cli sync` it works from any
-  directory and never touches project files. `--check` reports installed-vs-latest without
-  installing; `--ref <git-ref>` / `--dev` override the source. uv-tool aware (uses `uv tool install`,
-  falls back to `python -m pip`).
-
-### Changed
-- `cli sync` and `cli upgrade` now share one upgrade path (`_resolve_upgrade_url` + `_run_self_upgrade`);
-  `cli sync`'s self-upgrade behavior is unchanged.
+- `cli config-paths` (and its `c` alias) — deprecated since 0.2.0; use `cli deps` (`add` / `remove` / `list`).
 
 ## [0.2.3] — 2026-06-25
 
