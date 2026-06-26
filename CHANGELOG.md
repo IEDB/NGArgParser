@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] — 2026-06-25
+
+### Changed
+- The update notifier now fires on **every** `cli` invocation — including `cli --version` and
+  `cli --help` — not just full subcommands. Previously argparse handled `--version`/`--help` and exited
+  before the notifier ran, so the most common casual invocations never surfaced it. It now runs via an
+  `atexit` hook (still interactive-TTY-only, skipped in CI / when piped / during `cli upgrade` / when
+  `NGARGPARSER_NO_UPDATE_CHECK=1`).
+
 ## [0.2.6] — 2026-06-25
 
 ### Added

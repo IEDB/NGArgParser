@@ -1264,6 +1264,19 @@ def _maybe_notify_update(command):
         pass  # an update check must never break or slow the real command
 
 
+_INVOKED_COMMAND = None  # canonical subcommand once argv is parsed; read by the atexit hook
+
+
+def _notify_at_exit():
+    """atexit hook so the notice also appears on `cli --version` / `cli --help`
+    (and any other early exit), where argparse exits before the end of main()."""
+    import sys
+    command = _INVOKED_COMMAND
+    if command is None and len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
+        command = sys.argv[1]  # parse_args() exited early; best-effort from raw argv
+    _maybe_notify_update(command)
+
+
 def sync_command(args):
     """Synchronize framework files in existing projects to the latest version."""
     try:
@@ -1574,7 +1587,15 @@ def main():
     )
 
 
+    # Register the update notifier via atexit so it fires no matter how we exit —
+    # including argparse's early exit on `--version` / `--help`, not just after a
+    # full command. Registered before parse_args() so those early exits are covered.
+    import atexit
+    atexit.register(_notify_at_exit)
+
     args = parser.parse_args()
+    global _INVOKED_COMMAND
+    _INVOKED_COMMAND = args.command
 
     # Normalize 'rm' → 'remove' and 'ls' → 'list' for the dispatcher
     if getattr(args, 'deps_action', None) == 'rm':
@@ -1596,8 +1617,7 @@ def main():
         parser.print_help()  # Print help message if no command is specified
         rc = 0
 
-    _maybe_notify_update(args.command)
-    return rc
+    return rc  # the update notice fires via the atexit hook registered above
 
 if __name__ == '__main__':
     import sys
