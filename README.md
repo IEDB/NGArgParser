@@ -283,7 +283,7 @@ Two commands, two different targets — **`cli upgrade` updates the tool; `cli s
 
 They overlap in exactly one spot: `cli sync` **self-upgrades the tool first** (unless `--no-upgrade`), so the common "get my project on the latest framework" flow is a single command. That convenience is the *only* reason the two look similar — `cli upgrade` is still the only way to update the tool **without** being in (and rewriting) a project, and it's also what `--check` / `--ref <version>` hang off of.
 
-If you run `cli upgrade` from inside a project whose framework files are now behind, it prints a one-line reminder to run `cli sync` there to bring that project current.
+After a successful `cli upgrade`, it reminds you to run `cli sync` — because `cli upgrade` updates the CLI, not your projects. Run from inside a project that's behind, it names both versions ("You upgraded the CLI to Y, but this project is still on X — run `cli sync` here to update this project to Y"), even when the tool itself was already current. Run from anywhere else, it prints a generic reminder to `cli sync` your projects.
 
 - **`cli upgrade`** — self-updates the installed `ngargparser` tool (the `cli` itself) to the latest
   release tag on GitLab. **This is the one command to update the CLI** (0.2.4+) — it auto-detects how

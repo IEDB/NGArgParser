@@ -1054,6 +1054,20 @@ def _is_ngargparser_checkout(path):
     return True, ""
 
 
+def _checkout_version(path):
+    """Best-effort read of the [project] version from a checkout's pyproject.toml, or None.
+
+    Used to tailor the post-upgrade sync reminder after a local-checkout install, where the
+    installed semver isn't otherwise known in-process (no re-exec; `__version__` is still stale)."""
+    import os, re
+    try:
+        with open(os.path.join(path, "pyproject.toml"), encoding="utf-8") as f:
+            m = re.search(r'(?m)^version\s*=\s*"([^"]+)"', f.read())
+    except OSError:
+        return None
+    return m.group(1) if m else None
+
+
 def _resolve_upgrade_url(ref="latest", dev=False):
     """Resolve (source, label) to upgrade ngargparser to.
 
@@ -1133,17 +1147,29 @@ def _project_scaffold_version():
     return m.group(2) if m else None
 
 
-def _nudge_sync_if_behind(installed):
-    """After a successful `cli upgrade` run from inside a scaffolded project, nudge the
-    developer to `cli sync` if the project's framework files are older than the tool just
-    installed. Informational only — the project keeps working on its vendored files."""
+def _remind_sync(installed, did_install):
+    """After a successful `cli upgrade`, remind the developer to run `cli sync` so a project's
+    vendored framework files actually pick up the newly installed tool. Informational only — the
+    project keeps working on its old vendored files until it's synced. Context-aware:
+
+      - inside a stamped scaffolded project that's *behind* the installed tool → a specific nudge
+        naming both versions;
+      - inside a stamped project that's already current (or has an unparseable stamp) → stay silent;
+      - anywhere else → a generic reminder, but only when we actually (re)installed (`did_install`),
+        so the 'already up to date' path doesn't nag when nothing changed.
+    """
     stamp = _project_scaffold_version()
-    if not stamp:
+    if stamp:
+        proj, tool = _parse_semver(stamp), _parse_semver(installed)
+        if proj and tool and proj < tool:
+            lead = f"You upgraded the CLI to {installed}" if did_install else f"The CLI is on {installed}"
+            print(f"\nℹ {lead}, but this project is still on {stamp}.")
+            print(f"  Run `cli sync` here to update this project to {installed}.")
         return
-    proj, tool = _parse_semver(stamp), _parse_semver(installed)
-    if proj and tool and proj < tool:
-        print(f"\nℹ This project's framework files are on {stamp}; you just installed {installed}.")
-        print("  Run `cli sync` here to update them.")
+    if did_install:
+        ver = installed or "the new version"
+        print("\nℹ `cli upgrade` updates the CLI, not your projects.")
+        print(f"  Run `cli sync` inside a project to update it to {ver}.")
 
 
 def upgrade_command(args):
@@ -1176,6 +1202,7 @@ def upgrade_command(args):
         if rc:
             return rc
         print(f"\033[92m✓\033[0m Installed ngargparser from {path}. Run 'cli --version' to confirm.")
+        _remind_sync(_checkout_version(path), did_install=True)
         return 0
 
     pinned = dev or ref != "latest" or os.environ.get("NGARGPARSER_UPGRADE_URL")
@@ -1190,6 +1217,7 @@ def upgrade_command(args):
                 return 0
             if up_to_date:
                 print("\033[92m✓\033[0m Already on the latest tag; nothing to do.")
+                _remind_sync(target, did_install=False)  # flag a stale project even when the tool is current
                 return 0
     if check:  # --check with an explicit --ref / --dev / override
         print(f"ℹ Installed: {current}    Target: {resolved}")
@@ -1200,7 +1228,7 @@ def upgrade_command(args):
     if rc:
         return rc
     print(f"\033[92m✓\033[0m Upgraded ngargparser → {resolved}. Run 'cli --version' to confirm.")
-    _nudge_sync_if_behind(target)
+    _remind_sync(target, did_install=True)
     return 0
 
 

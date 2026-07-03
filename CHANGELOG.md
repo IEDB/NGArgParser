@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] — 2026-07-03
+
+### Changed
+- `cli upgrade` now reliably reminds you to run `cli sync` after installing. Previously the reminder
+  only appeared when you upgraded from *inside* a project whose framework files were behind — so
+  upgrading the tool globally (the common case) gave no hint, and a project could silently keep
+  running old framework files. Now: from inside a stale project it names both versions
+  ("You upgraded the CLI to Y, but this project is still on X — run `cli sync` here") — including
+  when the tool was already current but the project is behind — and from anywhere else it prints a
+  generic reminder ("`cli upgrade` updates the CLI, not your projects"). Also covers local-checkout
+  installs (`cli upgrade --ref .`).
+
 ## [0.3.0] — 2026-07-03
 
 ### Added
