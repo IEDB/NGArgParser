@@ -184,7 +184,7 @@ class NGArgumentParser(argparse.ArgumentParser):
         through any of the channels listed below.
 
         IEDB Help Desk: https://help.iedb.org/
-        Email: help@iedb.org
+        IEDB Discussion Forum: https://discuss.iedb.org
         ''')
         
         self.subparser = self.add_subparsers(

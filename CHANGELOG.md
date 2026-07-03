@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when the tool was already current but the project is behind — and from anywhere else it prints a
   generic reminder ("`cli upgrade` updates the CLI, not your projects"). Also covers local-checkout
   installs (`cli upgrade --ref .`).
+- The `--help` contact block now points at the IEDB Discussion Forum
+  (https://discuss.iedb.org) instead of the `help@iedb.org` email, in both the framework base class
+  (`NGArgumentParser.py`, synced into projects as `src/core/NGArgumentParser.py`) and the
+  example-app scaffold template.
 
 ## [0.3.0] — 2026-07-03
 
