@@ -301,9 +301,10 @@ class NGArgumentParser(argparse.ArgumentParser):
 
         self.postprocess_optional_group.add_argument("--output-format", "-f",
                                 dest="output_format",
+                                choices=["tsv", "json"],
                                 default="json",
-                                help="prediction result output format (Default=json)",
-                                metavar="OUTPUT_FORMAT")
+                                help="postprocessed result output format "
+                                     "(choices: %(choices)s; default: %(default)s).")
 
         # Add patch for groups
         self.patch_parser_for_groups(self.parser_preprocess)
@@ -338,6 +339,22 @@ class NGArgumentParser(argparse.ArgumentParser):
 
         # Add patch for groups
         self.patch_parser_for_groups(self.parser_predict)
+
+        # Common output arguments shared across all tools (framework-owned).
+        # Results serialize uniformly via core.result_writer.write_results: tsv by
+        # default (to stdout when no -o, else <prefix>.tsv), or json via -f.
+        self.parser_predict.add_argument("--output-prefix", "-o",
+                                dest="output_prefix",
+                                help="prediction result output prefix.",
+                                metavar="OUTPUT_PREFIX",
+                                group="output options")
+        self.parser_predict.add_argument("--output-format", "-f",
+                                dest="output_format",
+                                choices=["tsv", "json"],
+                                default="tsv",
+                                help="prediction result output format "
+                                     "(choices: %(choices)s; default: %(default)s).",
+                                group="output options")
 
         # add common arguments across tools
         # self.parser_predict.add_argument("--input-json", "-j",

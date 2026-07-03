@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-07-03
+
+### Added
+- Shared result serializer `core.result_writer.write_results` (synced into `src/core/result_writer.py`):
+  renders the standard result envelope to **tsv** (default) or **json**, to stdout when no
+  `-o` is given or to `<prefix>.<ext>` when it is. Multiple tables are separated on stdout by
+  `--- <type> ---` banners and written one-file-per-table as `<prefix>.<type>.tsv`; a single
+  table gets no banner and one `<prefix>.tsv`. json always preserves the full envelope
+  (warnings/errors and per-table metadata). `cli generate` and `cli sync` now install/refresh it.
+
+### Changed
+- **Result output is now tsv-first and framework-owned.** `predict`'s `--output-prefix/-o` and
+  `--output-format/-f` moved into the base class `add_predict_subparser()`, so they are inherited
+  (and `cli sync`-able) rather than redefined per tool. `-f` is now a real choice `{tsv,json}`:
+  `predict` defaults to **tsv**, `postprocess` stays **json** (its aggregated envelope carries
+  metadata tsv can't represent). The `-f` metavar was dropped so usage renders `{tsv,json}`, and
+  its help shows the default inline via `%(default)s`.
+- Reference templates (`run_aa_counter.py`, `run_app.py`, `postprocess.py`) now serialize through
+  `core.result_writer.write_results` instead of ad-hoc `json.dump`/`print`.
+
+### Removed
+- The pseudo `table` output format / terminal table rendering. `-f` accepts only `{tsv,json}`.
+
+### Fixed
+- `predict`'s `-f` help previously advertised `Default=tsv` while the code defaulted to `json`.
+  The default is now genuinely tsv and help/behavior agree.
+
+### Upgrading
+- **Breaking for tools that define their own predict `-o`/`-f`.** After `cli sync`, remove the
+  `--output-prefix`/`--output-format` arguments from your `*ArgumentParser.py` predict subparser
+  (they are now inherited) — otherwise argparse raises a duplicate-option error. If your tool needs
+  a different default, help text, or choices, keep the inherited argument and adjust it **in place**
+  with `self.parser_predict.update_arguments("--output-format", "-f", default="json", ...)` rather
+  than re-declaring it (see README → "Updating inherited arguments"). Replace any hand-rolled result
+  serialization with `from core.result_writer import write_results`. Tools not built on ngargparser
+  (optparse-based) must port their output layer manually.
+
 ## [0.2.4] — 2026-06-26
 
 ### Added

@@ -13,7 +13,20 @@ def main():
     args = parser.parse_args()
 
     if args.subcommand == 'predict':
-        # ADD CODE LOGIC HERE.
+        # ADD PREDICTION LOGIC HERE.
+        # Build the standard result envelope and serialize it uniformly
+        # (defaults to tsv; pass -f json for JSON). Example:
+        #
+        #   from core.result_writer import write_results
+        #   result = {
+        #       "warnings": [], "errors": [],
+        #       "results": [{
+        #           "type": "my_table",
+        #           "table_columns": ["col1", "col2"],
+        #           "table_data": [[...], ...],
+        #       }],
+        #   }
+        #   write_results(result, args.output_prefix, args.output_format)
         pass
 
     if args.subcommand == 'preprocess':

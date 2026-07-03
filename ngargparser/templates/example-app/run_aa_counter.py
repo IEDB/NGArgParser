@@ -3,6 +3,7 @@ import re
 import preprocess
 import postprocess
 from AACounterArgumentParser import AACounterArgumentParser
+from core.result_writer import write_results
 
 
 def format_result_json(data):
@@ -173,15 +174,9 @@ def main():
         # result JSON file.
         result_json = format_result_json(json_input)
 
-        # Write it out to the file
-        if args.output_prefix:
-            result_file_path = args.output_prefix + '.' + args.output_format
-
-            with open(result_file_path, 'w') as f :
-                json.dump(result_json, f, indent=4)
-        else:
-            # raise parser.error("Please define the output file using the '-o' flag.")
-            print(json.dumps(result_json, indent=4))
+        # Serialize uniformly: tsv by default, json via -f. Prints to stdout
+        # when no -o is given, otherwise writes <output_prefix>.<ext>.
+        write_results(result_json, args.output_prefix, args.output_format)
 
     if args.subcommand == 'preprocess':        
         # Run preprocess logic

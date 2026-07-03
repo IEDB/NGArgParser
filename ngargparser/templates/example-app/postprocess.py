@@ -4,6 +4,8 @@
 # * Then, it will gather all of them into a list.
 # NOTE: Every tool will differ, but logic to combine all the results into single file is needed.
 import json
+from pathlib import Path
+from core.result_writer import write_results
 
 
 def read_json(jfile):
@@ -64,8 +66,8 @@ def collect_all_job_results_without_jd(args):
     
     return final_table_header, final_table_data
 
-def save_results_to(path, header, data):
-    final_data = {
+def build_envelope(header, data):
+    return {
         'warnings': [],
         'errors': [],
         'results': [
@@ -77,22 +79,19 @@ def save_results_to(path, header, data):
         ]
     }
 
-    with open(path, 'w') as f :
-        json.dump(final_data, f, indent=4)
-
 
 def run(**kwargs):
     # ADD CODE LOGIC TO COMBINE RESULTS.
     jd_file = kwargs.get('job_desc_file')
     output_prefix = kwargs.get('output_prefix')
-    output_format = kwargs.get('output_format')
+    output_format = kwargs.get('output_format') or 'json'
     
     if jd_file:
         jd_file = read_json(jd_file)
         job_descriptions = json.loads(jd_file)
         
         post_jd = job_descriptions[-1]
-        result_file_path = post_jd['expected_outputs'][0]
+        default_path = Path(post_jd['expected_outputs'][0])
 
         # 2.1 Aggregate all the results.
         final_header, final_data = collect_all_job_results(job_descriptions)
@@ -101,9 +100,11 @@ def run(**kwargs):
         # allow user to perform postprocess without job-description
         result_dir = kwargs.get('postprocess_result_dir')
         final_header, final_data = collect_all_job_results_without_jd(kwargs)
-        result_file_path = result_dir / 'final-result.json'          
+        default_path = Path(result_dir) / 'final-result.json'          
 
-    if output_prefix:
-        result_file_path = output_prefix.with_suffix(f'.{output_format}')
+    # write_results appends the extension, so hand it a prefix (no suffix).
+    # postprocess defaults to json to preserve the aggregated envelope.
+    prefix = str(output_prefix) if output_prefix else str(default_path.with_suffix(''))
     
-    save_results_to(result_file_path, final_header, final_data)
+    envelope = build_envelope(final_header, final_data)
+    write_results(envelope, output_prefix=prefix, output_format=output_format)

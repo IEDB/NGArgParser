@@ -118,6 +118,7 @@ def create_example_structure():
         shutil.copy(f'{EXAMPLE_DIR}/NGArgumentParser.py', f'{project_name}/src/core/NGArgumentParser.py')
         shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core/core_validators.py')
         shutil.copy(f'{TEMPLATE_DIR}/set_pythonpath.py', f'{project_name}/src/core/set_pythonpath.py')
+        shutil.copy(f'{NGPARSER_DIR}/result_writer.py', f'{project_name}/src/core/result_writer.py')
 
         # Create __init__.py for core package
         with open(f'{project_name}/src/core/__init__.py', 'w') as f:
@@ -184,6 +185,7 @@ def create_project_structure(project_name):
         shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/core/NGArgumentParser.py')
         shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core/core_validators.py')
         shutil.copy(f'{TEMPLATE_DIR}/set_pythonpath.py', f'{project_name}/src/core/set_pythonpath.py')
+        shutil.copy(f'{NGPARSER_DIR}/result_writer.py', f'{project_name}/src/core/result_writer.py')
         
         # Create __init__.py for core package
         with open(f'{project_name}/src/core/__init__.py', 'w') as f:
@@ -1380,6 +1382,20 @@ def sync_command(args):
             # Create the file in the correct location
             shutil.copy(f'{NGPARSER_DIR}/core_validators.py', 'src/core/core_validators.py')
             print("  └ Created core_validators.py in src/core/")
+            core_files_updated += 1
+
+        # Update result_writer.py (shared result serializer)
+        if os.path.exists('src/core/result_writer.py'):
+            if not filecmp.cmp(f'{NGPARSER_DIR}/result_writer.py', 'src/core/result_writer.py', shallow=False):
+                shutil.copy(f'{NGPARSER_DIR}/result_writer.py', 'src/core/result_writer.py')
+                print("  └ Updated result_writer.py")
+                core_files_updated += 1
+            else:
+                print("  └ result_writer.py is already up to date")
+        else:
+            # Create the file in the correct location
+            shutil.copy(f'{NGPARSER_DIR}/result_writer.py', 'src/core/result_writer.py')
+            print("  └ Created result_writer.py in src/core/")
             core_files_updated += 1
         
         # Update set_pythonpath.py

@@ -45,16 +45,6 @@ class AACounterArgumentParser(NGArgumentParser):
                                 help="Perform counting given a JSON file.",
                                 group="Input method (mutually exclusive)",
                                 )
-        self.parser_predict.add_argument("--output-prefix", "-o",
-                                dest="output_prefix",
-                                help="prediction result output prefix.",
-                                metavar="OUTPUT_PREFIX",
-                                group="Output options"
-                                )
-        self.parser_predict.add_argument("--output-format", "-f",
-                                dest="output_format",
-                                default="json",
-                                help="prediction result output format (Default=tsv)",
-                                metavar="OUTPUT_FORMAT",
-                                group="Output options"
-                                )
+        # NOTE: --output-prefix/-o and --output-format/-f come from the
+        # framework base class (add_predict_subparser). Predict output defaults
+        # to tsv and is serialized via core.result_writer.write_results.

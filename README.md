@@ -123,7 +123,7 @@ python src/run_my_app.py postprocess -j job_descriptions.json -p final-results/
 | `predict` | Run the core analysis on a single job unit | `src/MyAppArgumentParser.py` (args) + `src/run_my_app.py` (logic) |
 | `postprocess` | Merge per-job results into a single output | `src/postprocess.py` |
 
-`preprocess` and `postprocess` come with built-in arguments (input/output paths, validation flags) so you don't redefine them. `predict` is the customizable subparser — that's where you add tool-specific options.
+All three subparsers come with built-in arguments so you don't redefine them: `preprocess`/`postprocess` bring input/output paths and validation flags, and `predict` brings the output arguments (`--output-prefix/-o`, `--output-format/-f`). `predict` is where you add your tool-specific **input** options.
 
 ## Customizing your app
 
@@ -147,12 +147,14 @@ class MyAppArgumentParser(NGArgumentParser):
             formatter_class=argparse.RawDescriptionHelpFormatter,
         )
 
+        # --output-prefix/-o and --output-format/-f are already provided by the
+        # base class — add your tool-specific *input* args here instead.
         self.parser_predict.add_argument(
-            "--output-prefix", "-o",
-            dest="output_prefix",
-            help="Prediction output prefix",
-            metavar="OUTPUT_PREFIX",
-            group="output options",   # same group label clusters args in --help
+            "--threshold", "-t",
+            dest="threshold",
+            help="Score threshold",
+            metavar="THRESHOLD",
+            group="prediction options",   # same group label clusters args in --help
         )
 ```
 
@@ -369,7 +371,7 @@ cli upgrade --check           # report installed vs latest without installing
 
 ### NGArgumentParser API
 
-`NGArgumentParser` auto-creates three subparsers: `preprocess`, `predict`, `postprocess`. The first two come with built-in arguments; `predict` is yours to customize.
+`NGArgumentParser` auto-creates three subparsers: `preprocess`, `predict`, `postprocess`. All three come with built-in arguments. `predict`'s output arguments (`--output-prefix/-o`, `--output-format/-f`) are framework-owned; you add the tool-specific input arguments in your subclass.
 
 #### Built-in `preprocess` arguments
 
@@ -381,6 +383,15 @@ cli upgrade --check           # report installed vs latest without installing
 --assume-valid                 (skip validation)
 ```
 
+#### Built-in `predict` arguments
+
+```
+--output-prefix / -o  STR
+--output-format / -f  {tsv,json}   (default: tsv)
+```
+
+Predict output is serialized by `core.result_writer.write_results` (see **Result output** below): tsv to stdout when no `-o` is given, otherwise `<prefix>.<ext>`. These two arguments come from the base class — add your tool-specific input arguments in the subclass.
+
 #### Built-in `postprocess` arguments
 
 ```
@@ -388,7 +399,7 @@ cli upgrade --check           # report installed vs latest without installing
 --input-results-dir / -i DIR    ─┘
 --postprocessed-results-dir / -p DIR    (required)
 --output-prefix / -o  STR
---output-format / -f  FORMAT    (default: json)
+--output-format / -f  {tsv,json}    (default: json)
 ```
 
 #### `SubparserWrapper`
@@ -404,22 +415,67 @@ self.parser_preprocess.description = 'Detailed preprocess instructions'
 
 ```python
 self.parser_predict.add_argument(
-    "--output-prefix", "-o",
-    help="Output prefix",
-    group="output options",   # args sharing this label cluster in --help
+    "--threshold", "-t",
+    help="Score threshold",
+    group="prediction options",   # args sharing this label cluster in --help
 )
 ```
 
 #### Updating inherited arguments
 
+Some arguments are provided by the base class — notably `predict`'s `--output-prefix/-o`
+and `--output-format/-f`. To tweak one for **your** tool (change its default, help text,
+choices, or group), call `update_arguments(...)` — it edits the inherited argument **in
+place**:
+
 ```python
+# e.g. make this tool default to json instead of the framework-wide tsv:
 self.parser_predict.update_arguments(
     "--output-format", "-f",
-    default="tsv",
+    default="json",
     help="Updated output format description",
     group="modified options",
 )
 ```
+
+The change is local to your tool and doesn't affect others. An explicit flag on the
+command line (`-f tsv`) still overrides whatever default you set.
+
+> ⚠️ Use `update_arguments` for this — do **not** re-declare an inherited argument with a
+> fresh `add_argument("--output-format", ...)`. That raises `conflicting option strings`.
+> (To replace one entirely, `remove_argument(...)` first, then `add_argument(...)`.)
+
+#### Result output (`core.result_writer`)
+
+Every tool emits the same result envelope and serializes it through the shared,
+framework-owned helper `core.result_writer.write_results` (synced into `src/core/result_writer.py`):
+
+```python
+from core.result_writer import write_results
+
+result = {
+    "warnings": [], "errors": [],
+    "results": [
+        {"type": "peptide_table",
+         "table_columns": ["peptide", "score"],
+         "table_data": [["ADMGHLKY", 0.5]]},
+        # ... more tables ...
+    ],
+}
+write_results(result, args.output_prefix, args.output_format)
+```
+
+- **Format** (`-f`): `tsv` (default) or `json`. tsv is flat and pipeable; json
+  preserves the full envelope (warnings/errors and any extra per-table metadata).
+- **Destination**: no `-o` → stdout; `-o <prefix>` → file(s).
+- **Multiple tables**: on stdout each table is prefixed with a `--- <type> ---`
+  banner; to file each is written as `<prefix>.<type>.tsv`. A single table gets no
+  banner and a single `<prefix>.tsv`.
+- **json** always writes the whole envelope verbatim (`<prefix>.json` or stdout).
+
+`predict` defaults to `tsv`; `postprocess` defaults to `json` because the aggregated
+envelope carries metadata that tsv can't represent. warnings/errors are echoed to
+stderr for tsv so stdout stays a clean data stream.
 
 #### Built-in validators
 

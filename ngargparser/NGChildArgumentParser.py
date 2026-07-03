@@ -48,13 +48,9 @@ class ChildArgumentParser(NGArgumentParser):
                                 default=None,
                                 help="Perform counting given a JSON file.",
                                 )
-        self.parser_predict.add_argument("--output-prefix", "-o",
-                                dest="output_prefix",
-                                help="prediction result output prefix.",
-                                metavar="OUTPUT_PREFIX")
-        self.parser_predict.add_argument("--output-format", "-f",
-                                dest="output_format",
-                                default="json",
-                                help="prediction result output format (Default=tsv)",
-                                metavar="OUTPUT_FORMAT")
+        # NOTE: --output-prefix/-o and --output-format/-f are provided by the
+        # framework base class (see core.NGArgumentParser.add_predict_subparser).
+        # Predict output defaults to tsv and is serialized via
+        # core.result_writer.write_results. To customize, use:
+        #   self.parser_predict.update_arguments("--output-format", "-f", ...)
 
