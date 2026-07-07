@@ -22,6 +22,7 @@ Run it from (or pointed at) an ngargparser git checkout -- the tags live there.
 TARGET defaults to the current directory; --repo defaults to the ngargparser checkout
 this script lives in.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,8 +44,18 @@ BADGE_RE = re.compile(r"shields\.io/badge/ngargparser-([^-\s)]+)-")
 
 # Directories that never hold scaffolded fingerprints; skip for speed and to avoid noise.
 IGNORE_DIRS = {
-    ".git", "build", "dist", ".venv", "venv", "env",
-    "__pycache__", "node_modules", ".mypy_cache", ".pytest_cache", ".tox", ".idea",
+    ".git",
+    "build",
+    "dist",
+    ".venv",
+    "venv",
+    "env",
+    "__pycache__",
+    "node_modules",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".tox",
+    ".idea",
 }
 
 # Only the ngargparser package subtree gets copied into projects; index just that.
@@ -66,7 +77,9 @@ def git_blob_hash(data: bytes) -> str:
 def run_git(repo: Path, *args: str) -> str:
     out = subprocess.run(
         ["git", "-C", str(repo), *args],
-        check=True, capture_output=True, text=True,
+        check=True,
+        capture_output=True,
+        text=True,
     )
     return out.stdout
 
@@ -148,11 +161,13 @@ def fingerprint(target: Path, repo: Path):
     matches = []  # list of dicts: {file, template_path, tags(set)}
     for h, relpath in target_hashes.items():
         if h in index:
-            matches.append({
-                "file": relpath,
-                "template_path": next(iter(index[h].values())),
-                "tags": set(index[h].keys()),
-            })
+            matches.append(
+                {
+                    "file": relpath,
+                    "template_path": next(iter(index[h].values())),
+                    "tags": set(index[h].keys()),
+                }
+            )
 
     matched_sets = [m["tags"] for m in matches]
     intersection: set[str] = set.intersection(*matched_sets) if matched_sets else set()
@@ -205,8 +220,7 @@ def detect(target: Path, repo: Path, force_fingerprint: bool):
     result["files_scanned"] = fp["total_files"]
     result["framework_markers"] = fp["markers"]
     result["matched_files"] = [
-        {"file": m["file"], "matched_template": m["template_path"],
-         "tag_range": format_range(fp["tags"], m["tags"])}
+        {"file": m["file"], "matched_template": m["template_path"], "tag_range": format_range(fp["tags"], m["tags"])}
         for m in sorted(fp["matches"], key=lambda m: m["file"])
     ]
     inter = fp["intersection"]
@@ -252,8 +266,10 @@ def print_report(r: dict) -> None:
         print(f"  {_c('cross-checking via fingerprint (--force-fingerprint)', 'y')}")
         print()
 
-    print(f"Fingerprint ({r['files_scanned']} files scanned, "
-          f"{len(r['matched_files'])} byte-identical to the ngargparser tree):")
+    print(
+        f"Fingerprint ({r['files_scanned']} files scanned, "
+        f"{len(r['matched_files'])} byte-identical to the ngargparser tree):"
+    )
     for m in r["matched_files"]:
         print(f"    {m['file']:<24} = {m['matched_template']}   [{m['tag_range']}]")
     print()
@@ -264,13 +280,19 @@ def print_report(r: dict) -> None:
         print("  Matched files point at disjoint version ranges — see per-file ranges above.")
         last = r.get("last_sync_estimate")
         if last:
-            print(f"  {_c('Most recent framework files ≈', 'b')} {_c(last, 'g')}"
-                  f"  (likely the last `cli sync` level; older files remain from the original scaffold)")
+            print(
+                f"  {_c('Most recent framework files ≈', 'b')} {_c(last, 'g')}"
+                f"  (likely the last `cli sync` level; older files remain from the original scaffold)"
+            )
     elif est is None:
         if r.get("framework_markers"):
             print(_c("  ngargparser project, version indeterminate", "y"))
-            print("  Framework files are present (" + ", ".join(r["framework_markers"][:3]) +
-                  ("…" if len(r["framework_markers"]) > 3 else "") + ") but every")
+            print(
+                "  Framework files are present ("
+                + ", ".join(r["framework_markers"][:3])
+                + ("…" if len(r["framework_markers"]) > 3 else "")
+                + ") but every"
+            )
             print("  fingerprintable file has been modified, so the version can't be dated.")
         else:
             print(_c("  Estimated version: no match", "y"))
@@ -285,13 +307,18 @@ def print_report(r: dict) -> None:
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("target", nargs="?", default=".", help="Project directory (default: cwd)")
-    p.add_argument("--repo", default=str(Path(__file__).resolve().parents[1]),
-                   help="ngargparser git checkout (default: the repo this script lives in)")
-    p.add_argument("--force-fingerprint", action="store_true",
-                   help="Run the content fingerprint even when a scaffold_version stamp exists")
+    p.add_argument(
+        "--repo",
+        default=str(Path(__file__).resolve().parents[1]),
+        help="ngargparser git checkout (default: the repo this script lives in)",
+    )
+    p.add_argument(
+        "--force-fingerprint",
+        action="store_true",
+        help="Run the content fingerprint even when a scaffold_version stamp exists",
+    )
     p.add_argument("--json", action="store_true", help="Emit the structured result as JSON")
     args = p.parse_args(argv)
 
