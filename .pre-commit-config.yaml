@@ -1,0 +1,34 @@
+# Run: uvx pre-commit install   (once, to enable git hooks)
+#      uvx pre-commit run --all-files
+#
+# Scaffold payload under ngargparser/templates/ and the two vendored parser
+# modules use `core.*` imports that only resolve inside a generated project, so
+# they are excluded from lint/format/typecheck here.
+exclude: '^(ngargparser/templates/|build/|test/|ngargparser/(NGArgumentParser|NGChildArgumentParser|validators)\.py$)'
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.20
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        files: '^ngargparser/(cli|core_validators|result_writer)\.py$'
+        additional_dependencies: ["python-dotenv"]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      # Don't touch bundled license text — it's a legal document.
+      - id: trailing-whitespace
+        exclude: '(?i)licen[sc]e.*\.txt$'
+      - id: end-of-file-fixer
+        exclude: '(?i)licen[sc]e.*\.txt$'
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
