@@ -115,3 +115,32 @@ class TestReplaceTextInPlace:
         target.write_text("NAME says hello to NAME")
         cli.replace_text_in_place(str(target), "NAME", "demo")
         assert target.read_text() == "demo says hello to demo"
+
+
+class TestEnsureGitignore:
+    def test_creates_when_missing(self, tmp_path):
+        gi = tmp_path / ".gitignore"
+        assert cli.ensure_gitignore(str(gi)) == "created"
+        content = gi.read_text()
+        assert ".ngargparser/" in content
+        assert "*.bak" in content
+
+    def test_appends_block_preserving_user_entries(self, tmp_path):
+        gi = tmp_path / ".gitignore"
+        gi.write_text("node_modules/\n")
+        assert cli.ensure_gitignore(str(gi)) == "updated"
+        content = gi.read_text()
+        assert "node_modules/" in content  # user entry kept
+        assert cli.GITIGNORE_MANAGED_MARKER in content
+
+    def test_noop_when_marker_present(self, tmp_path):
+        gi = tmp_path / ".gitignore"
+        cli.ensure_gitignore(str(gi))
+        before = gi.read_text()
+        assert cli.ensure_gitignore(str(gi)) == "unchanged"
+        assert gi.read_text() == before
+
+    def test_dry_run_writes_nothing(self, tmp_path):
+        gi = tmp_path / ".gitignore"
+        assert cli.ensure_gitignore(str(gi), dry_run=True) == "created"
+        assert not gi.exists()

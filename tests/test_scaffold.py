@@ -51,6 +51,15 @@ def test_placeholders_are_substituted(in_tmp_dir):
     assert "img.shields.io/badge/ngargparser-" in readme
 
 
+def test_generated_project_has_gitignore(in_tmp_dir):
+    cli.startapp_command(Namespace(project_name="demo"))
+    gitignore = in_tmp_dir / "demo" / ".gitignore"
+    assert gitignore.exists()
+    content = gitignore.read_text()
+    assert ".ngargparser/" in content
+    assert "*.bak" in content
+
+
 def test_startapp_writes_paths_and_env(in_tmp_dir):
     rc = cli.startapp_command(Namespace(project_name="demo")) or 0
     assert rc == 0

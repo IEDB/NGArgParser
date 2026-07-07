@@ -65,6 +65,54 @@ def _backup_file(path):
     return backup_path
 
 
+GITIGNORE_MANAGED_MARKER = "# --- ngargparser (managed) ---"
+GITIGNORE_MANAGED_BLOCK = f"""{GITIGNORE_MANAGED_MARKER}
+# Runtime artifacts written by `cli sync` / `cli deps` — keep out of git.
+.ngargparser/
+*.bak
+"""
+GITIGNORE_BASE = """# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+
+# OS / editor cruft
+.DS_Store
+"""
+
+
+def ensure_gitignore(path=".gitignore", *, dry_run=False):
+    """Ensure `path` exists and contains the ngargparser-managed ignore block.
+
+    Append-only and idempotent: creates the file (base ignores + managed block)
+    when missing, appends only the managed block when the file exists without
+    it, and never rewrites a user's own entries. Returns 'created' | 'updated'
+    | 'unchanged'. With `dry_run`, reports the action without writing.
+    """
+    if not os.path.exists(path):
+        if not dry_run:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(GITIGNORE_BASE.rstrip() + "\n\n" + GITIGNORE_MANAGED_BLOCK)
+        return "created"
+
+    with open(path, encoding="utf-8") as f:
+        content = f.read()
+    if GITIGNORE_MANAGED_MARKER in content:
+        return "unchanged"
+    if not dry_run:
+        separator = "" if content.endswith("\n") else "\n"
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"{separator}\n{GITIGNORE_MANAGED_BLOCK}")
+    return "updated"
+
+
 def _sync_file(src, dst, *, executable=False, dry_run=False, backup_root=None, changes=None):
     """Copy `src` to `dst` only when their contents differ (or `dst` is missing).
 
@@ -1057,6 +1105,10 @@ def startapp_command(args):
 
     project_dir_name = "aa-counter" if args.project_name == "example" else args.project_name
 
+    # Seed a .gitignore so ngargparser runtime artifacts (and common cruft)
+    # stay out of the user's git history from the first commit.
+    ensure_gitignore(os.path.join(project_dir_name, ".gitignore"))
+
     # Create an empty paths.py — users declare external tool deps later via `cli deps add`.
     paths_file_path = os.path.join(project_dir_name, "paths.py")
     with open(paths_file_path, "w", encoding="utf-8") as f:
@@ -1593,6 +1645,14 @@ def sync_command(args):
                 shutil.copy(f"{TEMPLATE_DIR}/deploy/install.sh", "deploy/install.sh")
                 replace_text_in_place("deploy/install.sh", "{TOOL_NAME}", project_name)
             report("created", "deploy/install.sh (user-owned; created only when missing)")
+            files_changed += 1
+
+        # Ensure the project's .gitignore keeps ngargparser runtime artifacts
+        # (.ngargparser/, *.bak) out of git. Append-only; older projects created
+        # before scaffolds shipped a .gitignore get one here.
+        gitignore_action = ensure_gitignore(".gitignore", dry_run=dry_run)
+        if gitignore_action != "unchanged":
+            report(gitignore_action, ".gitignore (ngargparser ignore rules)")
             files_changed += 1
 
         # Advisory: legacy projects without pyproject.toml
