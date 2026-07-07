@@ -1,0 +1,46 @@
+# CI for ngargparser. Uses uv to provision the dev dependency group
+# (ruff/mypy/pytest) declared in pyproject.toml.
+#
+# GitLab sets CI=1 automatically, which disables the update notifier.
+# NGARGPARSER_NO_SELF_UPGRADE guards against any test path triggering a
+# self-upgrade + re-exec.
+
+stages:
+  - lint
+  - typecheck
+  - test
+
+variables:
+  NGARGPARSER_NO_SELF_UPGRADE: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  UV_CACHE_DIR: "$CI_PROJECT_DIR/.uv-cache"
+
+default:
+  image: python:3.12-slim
+  before_script:
+    - pip install --quiet uv
+    - uv sync
+  cache:
+    key: uv-$CI_JOB_IMAGE
+    paths:
+      - .uv-cache
+
+ruff:
+  stage: lint
+  script:
+    - uv run ruff check .
+    - uv run ruff format --check .
+
+mypy:
+  stage: typecheck
+  script:
+    - uv run mypy
+
+pytest:
+  stage: test
+  image: "python:$PYVER-slim"
+  parallel:
+    matrix:
+      - PYVER: ["3.9", "3.11", "3.12"]
+  script:
+    - uv run pytest
