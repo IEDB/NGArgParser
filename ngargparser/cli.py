@@ -1,7 +1,9 @@
 import argparse
+import filecmp
 import os
 import re
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Get the absolute path of the followings
@@ -21,6 +23,78 @@ def get_version():
 
 
 __version__ = get_version()
+
+# A project name becomes a directory, a Python module (run_<name>.py), and a
+# class prefix, so it must be a single safe path segment — no separators,
+# parent refs, absolute paths, or leading dash (which argparse-style tools and
+# shells treat as a flag).
+PROJECT_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
+
+
+def validate_project_name(name):
+    """Return an error message if `name` is unsafe to scaffold, else None.
+
+    Guards against path traversal (``../foo``), absolute paths, nested paths
+    (``a/b``), and names that aren't a valid leading directory/module segment.
+    """
+    if not name or not name.strip():
+        return "Project name must not be empty."
+    if os.path.isabs(name) or name.startswith("~"):
+        return f"Project name must be a plain name, not a path: '{name}'."
+    seps = {os.sep} | ({os.altsep} if os.altsep else set())
+    if any(s in name for s in seps):
+        return f"Project name must not contain path separators: '{name}'."
+    if not PROJECT_NAME_RE.match(name):
+        return (
+            f"Invalid project name '{name}'. Use a letter followed by letters, "
+            "digits, underscores, or hyphens (e.g. 'aa-counter')."
+        )
+    # Belt-and-suspenders: the resolved target must live directly in the CWD.
+    if (Path.cwd() / name).resolve().parent != Path.cwd().resolve():
+        return f"Project name would resolve outside the current directory: '{name}'."
+    return None
+
+
+def _backup_file(path):
+    """Copy `path` to `path`.bak before a destructive rewrite; return the backup
+    path (or None if the source didn't exist)."""
+    if not os.path.exists(path):
+        return None
+    backup_path = f"{path}.bak"
+    shutil.copy2(path, backup_path)
+    return backup_path
+
+
+def _sync_file(src, dst, *, executable=False, dry_run=False, backup_root=None, changes=None):
+    """Copy `src` to `dst` only when their contents differ (or `dst` is missing).
+
+    Records ``('created'|'updated'|'unchanged', dst)`` in `changes`. When an
+    existing file would be overwritten and `backup_root` is set, its current
+    content is first copied under `backup_root` (preserving `dst`'s relative
+    path) — unless `dry_run` is set, in which case nothing is written. Returns
+    the action string.
+    """
+    exists = os.path.exists(dst)
+    if exists and filecmp.cmp(src, dst, shallow=False):
+        if changes is not None:
+            changes.append(("unchanged", dst))
+        return "unchanged"
+
+    action = "updated" if exists else "created"
+    if not dry_run:
+        if exists and backup_root is not None:
+            backup_path = os.path.join(backup_root, dst)
+            os.makedirs(os.path.dirname(backup_path) or ".", exist_ok=True)
+            shutil.copy2(dst, backup_path)
+        parent = os.path.dirname(dst)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        shutil.copy(src, dst)
+        if executable:
+            os.chmod(dst, 0o755)
+    if changes is not None:
+        changes.append((action, dst))
+    return action
 
 
 def format_project_name(name, capitalize=False):
@@ -91,11 +165,17 @@ def write_scaffold_version(pyproject_path, version):
 
 
 def create_example_structure():
-    try:
-        project_name = "aa-counter"
+    project_name = "aa-counter"
 
-        # Create directory structure
+    # Fail fast if the target already exists, before writing anything.
+    try:
         os.makedirs(project_name)
+    except FileExistsError:
+        print(f"\033[91m✗\033[0m '{project_name}' already exists; aborting.")
+        return 1
+
+    try:
+        # Create directory structure
         os.makedirs(os.path.join(project_name, "src"))
         os.makedirs(os.path.join(project_name, "src", "core"))
         os.makedirs(os.path.join(project_name, "scripts"))
@@ -156,14 +236,24 @@ def create_example_structure():
         write_pyproject_toml(project_name, project_name)
 
         print(f"Created '{project_name}' project structure successfully.")
+        return 0
     except Exception as e:
         print(f"\033[91m✗ Error: {e}\033[0m")
+        shutil.rmtree(project_name, ignore_errors=True)
+        print(f"  └ Cleaned up partial project '{project_name}'.")
+        return 1
 
 
 def create_project_structure(project_name):
+    # Fail fast if the target already exists, before writing anything.
+    try:
+        os.makedirs(project_name)
+    except FileExistsError:
+        print(f"\033[91m✗\033[0m '{project_name}' already exists; aborting.")
+        return 1
+
     try:
         # Create directory structure
-        os.makedirs(project_name)
         os.makedirs(os.path.join(project_name, "src"))
         os.makedirs(os.path.join(project_name, "src", "core"))
         os.makedirs(os.path.join(project_name, "scripts"))
@@ -237,8 +327,12 @@ def create_project_structure(project_name):
         write_pyproject_toml(project_name, project_name)
 
         print(f"Created '{project_name}' project structure successfully.")
+        return 0
     except Exception as e:
         print(f"\033[91m✗ Error: {e}\033[0m")
+        shutil.rmtree(project_name, ignore_errors=True)
+        print(f"  └ Cleaned up partial project '{project_name}'.")
+        return 1
 
 
 def update_and_place_readme(file_path, app_name, is_example=False):
@@ -720,6 +814,10 @@ def remove_dependencies_from_file(file_path, existing_content, existing_deps):
         else:
             print("Please enter 'y' for yes or 'n' for no.")
 
+    # Back up the file before the regex rewrite, in case a hand-edited block
+    # doesn't match the expected pattern and too much/little is removed.
+    backup_path = _backup_file(file_path)
+
     # Remove dependencies from content
     updated_content = existing_content
 
@@ -740,6 +838,8 @@ def remove_dependencies_from_file(file_path, existing_content, existing_deps):
         print(
             f"\n\033[92m✓\033[0m Removed \033[92m{len(deps_to_remove)}\033[0m dependencies from '\033[92m{file_path}\033[0m'."
         )
+        if backup_path:
+            print(f"  └ Backup saved to '{backup_path}'.")
 
     except Exception as e:
         print(f"\n\033[91m✗\033[0m Error updating file: \033[91m{e}\033[0m")
@@ -844,6 +944,9 @@ def remove_deps_from_paths(file_path, names):
     if not to_remove:
         return 0
 
+    # Back up before the regex rewrite so a mismatched hand-edited block is recoverable.
+    backup_path = _backup_file(file_path)
+
     updated_content = existing_content
     for var_name, display_name in to_remove:
         pattern = rf"'''\s*\[\s*{re.escape(display_name)}\s*\]\s*'''.*?{re.escape(var_name)}_lib_path\s*=\s*[^\n]*"
@@ -857,6 +960,8 @@ def remove_deps_from_paths(file_path, names):
     print(
         f"\033[92m✓\033[0m Removed {len(to_remove)} dependency block(s) from '{file_path}': {', '.join(d for _, d in to_remove)}"
     )
+    if backup_path:
+        print(f"  └ Backup saved to '{backup_path}'.")
     return len(to_remove)
 
 
@@ -937,9 +1042,18 @@ def setup_paths_file(file_path):
 
 def startapp_command(args):
     if args.project_name == "example":
-        create_example_structure()
+        rc = create_example_structure()
     else:
-        create_project_structure(args.project_name)
+        error = validate_project_name(args.project_name)
+        if error:
+            print(f"\033[91m✗\033[0m {error}")
+            return 1
+        rc = create_project_structure(args.project_name)
+
+    # Scaffolding failed (and already cleaned up after itself) — don't write
+    # paths.py/.env into a missing or partial project.
+    if rc:
+        return rc
 
     project_dir_name = "aa-counter" if args.project_name == "example" else args.project_name
 
@@ -1360,9 +1474,11 @@ def _notify_at_exit():
 def sync_command(args):
     """Synchronize framework files in existing projects to the latest version."""
     try:
-        import filecmp
         import os
         import shutil
+
+        dry_run = getattr(args, "dry_run", False)
+        do_backup = getattr(args, "backup", True)
 
         # Check if we're in a project directory
         if not os.path.exists("src") or not os.path.exists("scripts"):
@@ -1373,7 +1489,9 @@ def sync_command(args):
         # Self-upgrade the installed ngargparser, then re-exec so the new code
         # (including __version__ used by the scaffold_version stamp below) takes
         # effect for the rest of this sync. The env-var sentinel breaks recursion.
-        if getattr(args, "upgrade", True) and not os.environ.get("NGARGPARSER_NO_SELF_UPGRADE"):
+        # --dry-run must be side-effect-free, and the re-exec drops flags, so it
+        # implies --no-upgrade.
+        if getattr(args, "upgrade", True) and not dry_run and not os.environ.get("NGARGPARSER_NO_SELF_UPGRADE"):
             import sys
 
             if getattr(args, "dev", False):
@@ -1401,163 +1519,81 @@ def sync_command(args):
             env = {**os.environ, "NGARGPARSER_NO_SELF_UPGRADE": "1"}
             os.execvpe(sys.argv[0], [sys.argv[0], "s"], env)
 
+        if dry_run:
+            print("\033[93mDRY RUN\033[0m — showing what would change; no files will be written.")
         print("Synchronizing framework files to latest version...")
 
         # Get the project name from current directory
         project_name = os.path.basename(os.getcwd())
         print(f"Project: {project_name}")
 
-        # Ensure src/core/ directory exists
-        if not os.path.exists("src/core"):
-            os.makedirs("src/core", exist_ok=True)
-            print("  └ Created src/core/ directory")
+        # Backups of any overwritten file go under a timestamped dir so an
+        # accidental clobber of a hand-edited framework file stays recoverable.
+        backup_root = None
+        if do_backup and not dry_run:
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            backup_root = os.path.join(".ngargparser", "sync-backups", timestamp)
 
-        # Update core files (src/core/*)
-        print("\nUpdating src/core/ files...")
-        core_files_updated = 0
+        changes = []
 
-        # Update NGArgumentParser.py
-        if os.path.exists("src/core/NGArgumentParser.py"):
-            if not filecmp.cmp(f"{NGPARSER_DIR}/NGArgumentParser.py", "src/core/NGArgumentParser.py", shallow=False):
-                shutil.copy(f"{NGPARSER_DIR}/NGArgumentParser.py", "src/core/NGArgumentParser.py")
-                print("  └ Updated NGArgumentParser.py")
-                core_files_updated += 1
+        def report(action, label):
+            verbs = {
+                "created": "Would create" if dry_run else "Created",
+                "updated": "Would update" if dry_run else "Updated",
+            }
+            if action in verbs:
+                print(f"  └ {verbs[action]} {label}")
             else:
-                print("  └ NGArgumentParser.py is already up to date")
-        else:
-            # Create the file in the correct location
-            shutil.copy(f"{NGPARSER_DIR}/NGArgumentParser.py", "src/core/NGArgumentParser.py")
-            print("  └ Created NGArgumentParser.py in src/core/")
-            core_files_updated += 1
+                print(f"  └ {label} is already up to date")
 
-        # Update core_validators.py
-        if os.path.exists("src/core/core_validators.py"):
-            if not filecmp.cmp(f"{NGPARSER_DIR}/core_validators.py", "src/core/core_validators.py", shallow=False):
-                shutil.copy(f"{NGPARSER_DIR}/core_validators.py", "src/core/core_validators.py")
-                print("  └ Updated core_validators.py")
-                core_files_updated += 1
-            else:
-                print("  └ core_validators.py is already up to date")
-        else:
-            # Create the file in the correct location
-            shutil.copy(f"{NGPARSER_DIR}/core_validators.py", "src/core/core_validators.py")
-            print("  └ Created core_validators.py in src/core/")
-            core_files_updated += 1
+        # Layout migrations run before the sync loop so build.sh/hooks.sh sit at
+        # their current paths first. They move user files, so they're skipped in
+        # dry-run (which must not touch the tree).
+        if not dry_run:
+            if os.path.exists("scripts/build.sh") and not os.path.exists("scripts/core/build.sh"):
+                os.makedirs("scripts/core", exist_ok=True)
+                shutil.move("scripts/build.sh", "scripts/core/build.sh")
+                print(
+                    "  └ \033[93mMigrated\033[0m scripts/build.sh → scripts/core/build.sh "
+                    "(framework-owned scripts now live under scripts/core/)"
+                )
+            # Legacy hook filenames → hooks.sh. Content is preserved exactly.
+            for legacy in ("scripts/dependencies.sh", "scripts/build_hooks.sh"):
+                if os.path.exists(legacy) and not os.path.exists("scripts/hooks.sh"):
+                    shutil.move(legacy, "scripts/hooks.sh")
+                    print(f"  └ \033[93mMigrated\033[0m {legacy} → scripts/hooks.sh")
+                    break
 
-        # Update result_writer.py (shared result serializer)
-        if os.path.exists("src/core/result_writer.py"):
-            if not filecmp.cmp(f"{NGPARSER_DIR}/result_writer.py", "src/core/result_writer.py", shallow=False):
-                shutil.copy(f"{NGPARSER_DIR}/result_writer.py", "src/core/result_writer.py")
-                print("  └ Updated result_writer.py")
-                core_files_updated += 1
-            else:
-                print("  └ result_writer.py is already up to date")
-        else:
-            # Create the file in the correct location
-            shutil.copy(f"{NGPARSER_DIR}/result_writer.py", "src/core/result_writer.py")
-            print("  └ Created result_writer.py in src/core/")
-            core_files_updated += 1
+        # Framework-owned files: (source, destination, executable). _sync_file
+        # copies only when content differs, backs up any overwrite, and records
+        # the action so the summary can count what changed.
+        framework_files = [
+            (f"{NGPARSER_DIR}/NGArgumentParser.py", "src/core/NGArgumentParser.py", False),
+            (f"{NGPARSER_DIR}/core_validators.py", "src/core/core_validators.py", False),
+            (f"{NGPARSER_DIR}/result_writer.py", "src/core/result_writer.py", False),
+            (f"{TEMPLATE_DIR}/set_pythonpath.py", "src/core/set_pythonpath.py", False),
+            (f"{TEMPLATE_DIR}/configure.py", "src/core/configure.py", True),
+            (f"{TEMPLATE_DIR}/build.sh", "scripts/core/build.sh", True),
+            (f"{TEMPLATE_DIR}/Makefile", "Makefile", False),
+        ]
 
-        # Update set_pythonpath.py
-        if os.path.exists("src/core/set_pythonpath.py"):
-            if not filecmp.cmp(f"{TEMPLATE_DIR}/set_pythonpath.py", "src/core/set_pythonpath.py", shallow=False):
-                shutil.copy(f"{TEMPLATE_DIR}/set_pythonpath.py", "src/core/set_pythonpath.py")
-                print("  └ Updated set_pythonpath.py")
-                core_files_updated += 1
-            else:
-                print("  └ set_pythonpath.py is already up to date")
-        else:
-            # Create the file in the correct location
-            shutil.copy(f"{TEMPLATE_DIR}/set_pythonpath.py", "src/core/set_pythonpath.py")
-            print("  └ Created set_pythonpath.py in src/core/")
-            core_files_updated += 1
-
-        # Update configure.py
-        if os.path.exists("src/core/configure.py"):
-            if not filecmp.cmp(f"{TEMPLATE_DIR}/configure.py", "src/core/configure.py", shallow=False):
-                shutil.copy(f"{TEMPLATE_DIR}/configure.py", "src/core/configure.py")
-                os.chmod("src/core/configure.py", 0o755)  # Make executable
-                print("  └ Updated configure.py")
-                core_files_updated += 1
-            else:
-                print("  └ configure.py is already up to date")
-        else:
-            # Create the file in the correct location
-            shutil.copy(f"{TEMPLATE_DIR}/configure.py", "src/core/configure.py")
-            os.chmod("src/core/configure.py", 0o755)  # Make executable
-            print("  └ Created configure.py in src/core/")
-            core_files_updated += 1
-
-        # Update scripts files (except hooks.sh, build.conf, do-not-distribute.txt — user-owned)
-        print("\nUpdating scripts/ files...")
-        script_files_updated = 0
-
-        # Migration: pre-scripts/core layout had build.sh at scripts/build.sh.
-        # Move it (and the directory) to scripts/core/build.sh on first sync.
-        if os.path.exists("scripts/build.sh") and not os.path.exists("scripts/core/build.sh"):
-            os.makedirs("scripts/core", exist_ok=True)
-            shutil.move("scripts/build.sh", "scripts/core/build.sh")
-            print(
-                "  └ \033[93mMigrated\033[0m scripts/build.sh → scripts/core/build.sh "
-                "(framework-owned scripts now live under scripts/core/)"
+        print("\nUpdating framework files...")
+        for src, dst, executable in framework_files:
+            action = _sync_file(
+                src, dst, executable=executable, dry_run=dry_run, backup_root=backup_root, changes=changes
             )
-            script_files_updated += 1
+            report(action, dst)
 
-        # Migration: legacy hook filenames → hooks.sh. Content is preserved exactly.
-        # Two prior names existed: dependencies.sh (original) and build_hooks.sh (brief interim).
-        for legacy in ("scripts/dependencies.sh", "scripts/build_hooks.sh"):
-            if os.path.exists(legacy) and not os.path.exists("scripts/hooks.sh"):
-                shutil.move(legacy, "scripts/hooks.sh")
-                print(f"  └ \033[93mMigrated\033[0m {legacy} → scripts/hooks.sh")
-                script_files_updated += 1
-                break
+        files_changed = sum(1 for action, _ in changes if action in ("created", "updated"))
 
-        # Ensure scripts/core/ exists
-        if not os.path.exists("scripts/core"):
-            os.makedirs("scripts/core", exist_ok=True)
-            print("  └ Created scripts/core/ directory")
-
-        # Update scripts/core/build.sh
-        if os.path.exists("scripts/core/build.sh"):
-            if not filecmp.cmp(f"{TEMPLATE_DIR}/build.sh", "scripts/core/build.sh", shallow=False):
-                shutil.copy(f"{TEMPLATE_DIR}/build.sh", "scripts/core/build.sh")
-                os.chmod("scripts/core/build.sh", 0o755)
-                print("  └ Updated scripts/core/build.sh")
-                script_files_updated += 1
-            else:
-                print("  └ scripts/core/build.sh is already up to date")
-        else:
-            shutil.copy(f"{TEMPLATE_DIR}/build.sh", "scripts/core/build.sh")
-            os.chmod("scripts/core/build.sh", 0o755)
-            print("  └ Created scripts/core/build.sh")
-            script_files_updated += 1
-
-        # Update root-level Makefile (no longer under scripts/)
-        if os.path.exists("Makefile"):
-            if not filecmp.cmp(f"{TEMPLATE_DIR}/Makefile", "Makefile", shallow=False):
-                shutil.copy(f"{TEMPLATE_DIR}/Makefile", "Makefile")
-                print("  └ Updated root Makefile")
-                script_files_updated += 1
-            else:
-                print("  └ Root Makefile is already up to date")
-        else:
-            # Create the file in the project root
-            shutil.copy(f"{TEMPLATE_DIR}/Makefile", "Makefile")
-            print("  └ Created root Makefile")
-            script_files_updated += 1
-
-        # Ensure deploy/install.sh exists. User-owned (like scripts/hooks.sh) — sync
-        # creates it from the template only if missing; never overwrites existing content.
-        # Required for nxg-tools-deployments: orchestrator runs `bash deploy/install.sh`
-        # after extracting the tarball on the target host.
+        # deploy/install.sh — user-owned; created only when missing, never overwritten.
         if not os.path.exists("deploy/install.sh"):
-            os.makedirs("deploy", exist_ok=True)
-            shutil.copy(f"{TEMPLATE_DIR}/deploy/install.sh", "deploy/install.sh")
-            replace_text_in_place("deploy/install.sh", "{TOOL_NAME}", project_name)
-            print(
-                "  └ Created \033[92mdeploy/install.sh\033[0m from template (user-owned; sync won't overwrite from here on)"
-            )
-            script_files_updated += 1
+            if not dry_run:
+                os.makedirs("deploy", exist_ok=True)
+                shutil.copy(f"{TEMPLATE_DIR}/deploy/install.sh", "deploy/install.sh")
+                replace_text_in_place("deploy/install.sh", "{TOOL_NAME}", project_name)
+            report("created", "deploy/install.sh (user-owned; created only when missing)")
+            files_changed += 1
 
         # Advisory: legacy projects without pyproject.toml
         if not os.path.exists("pyproject.toml") and os.path.exists("requirements.txt"):
@@ -1569,38 +1605,54 @@ def sync_command(args):
             )
 
         # Stamp the project with the framework version it was last synced against.
-        # Future `cli` commands can read [tool.ngargparser] scaffold_version to dispatch
-        # version-specific migrations.
+        # Future `cli` commands can read [tool.ngargparser] scaffold_version to
+        # dispatch version-specific migrations.
         stamp_updated = False
         if os.path.exists("pyproject.toml"):
-            prev = write_scaffold_version("pyproject.toml", __version__)
-            if prev is None:
-                print("\nStamping framework version...")
-                print(f"  └ Added scaffold_version = \033[92m{__version__}\033[0m to [tool.ngargparser] (was missing)")
+            current_stamp = _project_scaffold_version()
+            if current_stamp != __version__:
                 stamp_updated = True
-            elif prev != __version__:
                 print("\nStamping framework version...")
-                print(f"  └ scaffold_version: \033[93m{prev}\033[0m → \033[92m{__version__}\033[0m")
-                stamp_updated = True
+                if current_stamp is None:
+                    verb = "Would add" if dry_run else "Added"
+                    print(f"  └ {verb} scaffold_version = \033[92m{__version__}\033[0m to [tool.ngargparser]")
+                else:
+                    print(f"  └ scaffold_version: \033[93m{current_stamp}\033[0m → \033[92m{__version__}\033[0m")
+                if not dry_run:
+                    write_scaffold_version("pyproject.toml", __version__)
+
+        # README badge → current ngargparser version (green), only in README.md.
+        print("\nUpdating README version badges...")
+        current_badge = f"ngargparser-{__version__}-green.svg"
+        if dry_run:
+            readme_updated = os.path.exists("README.md") and current_badge not in Path("README.md").read_text(
+                encoding="utf-8"
+            )
+        else:
+            readme_updated = upsert_readme_badge("README.md", __version__, color="green")
+        if readme_updated:
+            print(f"  └ {'Would update' if dry_run else 'Updated'} README.md badge")
+        else:
+            print("  └ README.md badge is already current (or no README found)")
+
+        anything_changed = files_changed > 0 or stamp_updated or readme_updated
 
         # Summary
         print("\nSynchronization Summary:")
-        print(f"  └ Core files updated: \033[92m{core_files_updated}\033[0m")
-        print(f"  └ Script files updated: \033[92m{script_files_updated}\033[0m")
-        print(f"  └ Total files updated: \033[92m{core_files_updated + script_files_updated}\033[0m")
+        print(f"  └ Framework files {'to change' if dry_run else 'changed'}: \033[92m{files_changed}\033[0m")
         if stamp_updated:
-            print("  └ scaffold_version stamp: \033[92mupdated\033[0m")
+            print(f"  └ scaffold_version stamp: \033[92m{'would update' if dry_run else 'updated'}\033[0m")
+        if readme_updated:
+            print(f"  └ README badge: \033[92m{'would update' if dry_run else 'updated'}\033[0m")
 
-        # Update README badges to current ngargparser version (green) — only in README.md
-        print("\nUpdating README version badges...")
-        readme_updates = 0
-        if upsert_readme_badge("README.md", __version__, color="green"):
-            print("  └ Updated README.md badge")
-            readme_updates += 1
-        if readme_updates == 0:
-            print("  └ No README files updated (none found or already current)")
-
-        if core_files_updated + script_files_updated > 0 or stamp_updated:
+        if dry_run:
+            if anything_changed:
+                print("\n\033[93mDRY RUN\033[0m — the above changes would be made. Re-run without --dry-run to apply.")
+            else:
+                print("\n\033[92m✓\033[0m DRY RUN — project is already up to date; nothing would change.")
+        elif anything_changed:
+            if backup_root and os.path.isdir(backup_root):
+                print(f"  └ Backups of overwritten files: \033[92m{backup_root}\033[0m")
             print("\n\033[92m✓\033[0m Framework synchronization completed successfully!")
             print(f"Your {project_name} project now has the latest framework files.")
         else:
@@ -1653,6 +1705,20 @@ def main():
         action="store_false",
         default=True,
         help="Skip the self-upgrade step; only sync templates from the currently-installed ngargparser.",
+    )
+    sync_parser.add_argument(
+        "-n",
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        help="Show what would change without writing any files. Implies --no-upgrade.",
+    )
+    sync_parser.add_argument(
+        "--no-backup",
+        dest="backup",
+        action="store_false",
+        default=True,
+        help="Don't back up framework files before overwriting them (backups are on by default).",
     )
     sync_parser.add_argument(
         "--ref",

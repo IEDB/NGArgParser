@@ -44,3 +44,14 @@ def test_add_then_remove_round_trip(in_tmp_dir):
     cli.add_deps_to_paths("paths.py", ["mhci", "mhcii"])
     cli.remove_deps_from_paths("paths.py", ["mhci", "mhcii"])
     assert cli.list_deps_in_paths("paths.py") == 0
+
+
+def test_remove_backs_up_before_rewrite(in_tmp_dir):
+    cli.add_deps_to_paths("paths.py", ["mhci", "mhcii"])
+    before = (in_tmp_dir / "paths.py").read_text()
+
+    cli.remove_deps_from_paths("paths.py", ["mhci"])
+
+    backup = in_tmp_dir / "paths.py.bak"
+    assert backup.exists()
+    assert backup.read_text() == before  # pre-removal content is recoverable
