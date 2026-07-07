@@ -10,10 +10,6 @@ CURR_FILE_PATH = Path(__file__).resolve()
 NGPARSER_DIR = CURR_FILE_PATH.parent
 TEMPLATE_DIR = NGPARSER_DIR / 'templates'
 EXAMPLE_DIR = TEMPLATE_DIR / 'example-app'
-# print(CURR_FILE_PATH, type(CURR_FILE_PATH))
-# print(NGPARSER_DIR, type(NGPARSER_DIR))
-# print(TEMPLATE_DIR, type(TEMPLATE_DIR))
-# print(EXAMPLE_DIR, type(EXAMPLE_DIR))
 
 def get_version():
     try:
@@ -1512,12 +1508,6 @@ def sync_command(args):
             print("  └ Created root Makefile")
             script_files_updated += 1
         
-        # # Update do-not-distribute.txt
-        # if os.path.exists('scripts/do-not-distribute.txt'):
-        #     shutil.copy(f'{TEMPLATE_DIR}/do-not-distribute.txt', 'scripts/do-not-distribute.txt')
-        #     print("  └ Updated do-not-distribute.txt")
-        #     script_files_updated += 1
-
         # Ensure deploy/install.sh exists. User-owned (like scripts/hooks.sh) — sync
         # creates it from the template only if missing; never overwrites existing content.
         # Required for nxg-tools-deployments: orchestrator runs `bash deploy/install.sh`
