@@ -4,7 +4,7 @@ version = "0.3.1"
 description = "Standardized parser framework for CLI tools. Enforces structure for argument parsing, project scaffolding, dependency wiring, and build packaging across IEDB next-gen apps."
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 keywords = ["iedb", "nextgen", "argumentparser", "iedb tools"]
 dependencies = [
     "python-dotenv>=0.19.0",
@@ -14,7 +14,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Topic :: Software Development :: Build Tools",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -28,7 +27,7 @@ Homepage = "https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies
 cli = "ngargparser.cli:main"
 
 [dependency-groups]
-dev = ["pytest"]
+dev = ["pytest>=7", "ruff>=0.6", "mypy>=1.10"]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -40,3 +39,41 @@ packages = ["ngargparser", "ngargparser.templates"]
 [tool.setuptools.package-data]
 "ngargparser.templates" = ["*", "example-app/*", "deploy/*"]
 "ngargparser" = ["license-LJI.txt"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+addopts = "-ra -q"
+
+# NGArgumentParser.py, NGChildArgumentParser.py, validators.py, and templates/
+# are scaffold payload: they are copied into generated projects and use
+# `core.*` imports that only resolve there, so lint/typecheck must skip them.
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+extend-exclude = [
+    "ngargparser/templates",
+    "ngargparser/NGArgumentParser.py",
+    "ngargparser/NGChildArgumentParser.py",
+    "ngargparser/validators.py",
+    "build",
+    "test",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.mypy]
+# 3.9 runtime compatibility is covered by the CI test matrix; modern mypy
+# only accepts >=3.10 as an analysis target.
+python_version = "3.10"
+files = [
+    "ngargparser/cli.py",
+    "ngargparser/core_validators.py",
+    "ngargparser/result_writer.py",
+]
+ignore_missing_imports = true
+check_untyped_defs = false
+warn_unused_ignores = true
+exclude = '(^|/)(templates|build|test)/'

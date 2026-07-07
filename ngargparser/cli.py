@@ -1,8 +1,7 @@
 import argparse
-import textwrap
 import os
-import shutil
 import re
+import shutil
 from pathlib import Path
 
 # Get the absolute path of the followings
@@ -142,8 +141,8 @@ def create_example_structure():
 
         # Create and write the line into the configure file
         with open(configure_file, 'w') as f:
-            f.write(f'./src/core/configure.py')
-        
+            f.write('./src/core/configure.py')
+
         # Make the file executable
         os.chmod(configure_file, 0o755)
 
@@ -173,23 +172,23 @@ def create_project_structure(project_name):
         shutil.copy(f'{NGPARSER_DIR}/NGChildArgumentParser.py', f'{project_name}/src/{parser_file}')
         shutil.copy(f'{TEMPLATE_DIR}/preprocess.py', f'{project_name}/src/preprocess.py')
         shutil.copy(f'{TEMPLATE_DIR}/postprocess.py', f'{project_name}/src/postprocess.py')
-        shutil.copy(f'{TEMPLATE_DIR}/configure.py', f'{project_name}/src/core/configure.py')     
+        shutil.copy(f'{TEMPLATE_DIR}/configure.py', f'{project_name}/src/core/configure.py')
         # Make configure.py executable
         os.chmod(f'{project_name}/src/core/configure.py', 0o755)
-        
+
         # Copy core files to protected core/ directory
         shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', f'{project_name}/src/core/NGArgumentParser.py')
         shutil.copy(f'{NGPARSER_DIR}/core_validators.py', f'{project_name}/src/core/core_validators.py')
         shutil.copy(f'{TEMPLATE_DIR}/set_pythonpath.py', f'{project_name}/src/core/set_pythonpath.py')
         shutil.copy(f'{NGPARSER_DIR}/result_writer.py', f'{project_name}/src/core/result_writer.py')
-        
+
         # Create __init__.py for core package
         with open(f'{project_name}/src/core/__init__.py', 'w') as f:
             f.write('')
-        
+
         # Copy user-modifiable files to src/
         shutil.copy(f'{NGPARSER_DIR}/validators.py', f'{project_name}/src/validators.py')
-        
+
         # Framework-owned: scripts/core/build.sh + root Makefile (cli sync overwrites these)
         shutil.copy(f'{TEMPLATE_DIR}/build.sh', f'{project_name}/scripts/core/build.sh')
         os.chmod(f'{project_name}/scripts/core/build.sh', 0o755)
@@ -215,7 +214,7 @@ def create_project_structure(project_name):
 
         # Add default content to all the files
         replace_text_in_place(f'{project_name}/src/{exec_file}', 'CHILDPARSER', parser_name)
-        replace_text_in_place(f'{project_name}/src/{parser_file}', 'ChildArgumentParser', parser_name)        
+        replace_text_in_place(f'{project_name}/src/{parser_file}', 'ChildArgumentParser', parser_name)
         replace_text_in_place(f'{project_name}/src/core/configure.py', 'PROJECT_NAME', project_name)
 
         # Create configure executable file
@@ -223,8 +222,8 @@ def create_project_structure(project_name):
 
         # Create and write the line into the configure file
         with open(configure_file, 'w') as f:
-            f.write(f'./src/core/configure.py')
-        
+            f.write('./src/core/configure.py')
+
         # Make the file executable
         os.chmod(configure_file, 0o755)
 
@@ -273,7 +272,7 @@ def update_and_place_readme(file_path, app_name, is_example=False):
         f_md.write(content_with_badge)  # README.md includes badge
     with open(readme_plain_path, 'w') as f_plain:
         f_plain.write(base_updated_content)  # README (no extension) has no badge
-    
+
 
 def replace_text_in_place(file_path, old_text, new_text):
     """
@@ -287,14 +286,14 @@ def replace_text_in_place(file_path, old_text, new_text):
         # Read the content from the file
         with open(file_path, 'r') as file:
             content = file.read()
-        
+
         # Replace all occurrences of old_text with new_text
         modified_content = content.replace(old_text, new_text)
-        
+
         # Write the modified content back to the same file
         with open(file_path, 'w') as file:
             file.write(modified_content)
-        
+
     except Exception as e:
         print(f"\033[91m✗ An error occurred: {e}\033[0m")
 
@@ -336,10 +335,10 @@ def upsert_readme_badge(readme_path: str, version: str, color: str = "green") ->
 def normalize_content_ending(content):
     """
     Normalize the content to ensure it ends with exactly one newline.
-    
+
     Args:
         content (str): The content to normalize
-        
+
     Returns:
         str: Content with exactly one trailing newline
     """
@@ -349,10 +348,10 @@ def normalize_content_ending(content):
 def normalize_name(name):
     """
     Normalize a dependency name to a valid Python variable name.
-    
+
     Args:
         name (str): The original dependency name
-        
+
     Returns:
         str: Normalized variable name
     """
@@ -369,17 +368,17 @@ def format_display_name(name):
     """
     Format the dependency name for display in comments.
     Handles Roman numerals (i, ii) specially.
-    
+
     Args:
         name (str): The original dependency name
-        
+
     Returns:
         str: Formatted display name
     """
     # Split by common separators and capitalize each word
     words = re.split(r'[_\s-]+', name)
     formatted_words = []
-    
+
     for word in words:
         if word:  # Skip empty strings
             # Check if word is a Roman numeral (i, ii, iii, iv, v, etc.)
@@ -387,23 +386,23 @@ def format_display_name(name):
                 formatted_words.append(word.upper())
             else:
                 formatted_words.append(word.capitalize())
-    
+
     return ' '.join(formatted_words)
 
 
 def generate_dependency_section(name):
     """
     Generate the configuration section for a dependency.
-    
+
     Args:
         name (str): The dependency name
-        
+
     Returns:
         str: The configuration section
     """
     display_name = format_display_name(name)
     var_name = normalize_name(name)
-    
+
     section = f"""\n
 ''' [ {display_name} ] '''
 # Path to the {display_name} tool (required)
@@ -427,22 +426,22 @@ def generate_dependency_section(name):
 def get_dependencies():
     """
     Get the list of dependencies from user input.
-    
+
     Returns:
         list: List of dependency names
     """
     dependencies = []
-    
+
     print("\nEnter the names of all dependencies that the current app depends on.")
     print("Press Enter after each dependency name.")
     print("Press Enter on an empty line when you're done.\n")
-    
+
     while True:
         dep = input("Dependency name (or press Enter to finish): ").strip()
         if not dep:
             break
         dependencies.append(dep)
-    
+
     return dependencies
 
 
@@ -452,7 +451,7 @@ def create_paths_file(project_name_or_path):
     Integrated configuration functionality from configure.py.
     """
     print("=== Setting up paths.py configuration ===")
-    
+
     # Check if this is a project name (for startapp) or a direct file path (for setup-paths)
     if project_name_or_path.endswith('.py'):
         # Direct file path
@@ -463,7 +462,7 @@ def create_paths_file(project_name_or_path):
             project_name_or_path = 'aa-counter'
 
         paths_file_path = f'{project_name_or_path}/paths.py'
-    
+
     try:
         # Check if paths.py already exists
         if Path(paths_file_path).exists():
@@ -477,10 +476,10 @@ def create_paths_file(project_name_or_path):
                     return
                 else:
                     print("Please enter 'y' for yes or 'n' for no.")
-        
+
         # Get dependencies from user
         dependencies = get_dependencies()
-        
+
         if not dependencies:
             print("No dependencies specified. Creating empty paths.py file.")
             # Create empty file
@@ -492,25 +491,25 @@ def create_paths_file(project_name_or_path):
             print(f"Found {len(dependencies)} dependencies:")
             for i, dep in enumerate(dependencies, 1):
                 print(f"  {i}. {dep}")
-        
+
         # Create the content
         content = ""
-        
+
         # Add dependency sections if any
         if dependencies:
             for dep in dependencies:
                 content += generate_dependency_section(dep)
-        
+
         # Normalize content ending to ensure exactly one newline
         content = normalize_content_ending(content)
-        
+
         # Write to paths.py
         with open(paths_file_path, 'w', encoding='utf-8') as f:
             f.write(content)
-        
+
         print(f"\n\033[92m✓\033[0m Created '\033[92m{paths_file_path}\033[0m' with \033[92m{len(dependencies)}\033[0m dependencies.")
         print(f"You can now edit '{paths_file_path}' to set the actual paths for your dependencies.")
-        
+
     except KeyboardInterrupt:
         print("\n\n\033[91m✗\033[0m Paths.py configuration cancelled.")
     except Exception as e:
@@ -521,32 +520,32 @@ def create_paths_file(project_name_or_path):
 def parse_existing_paths_file(file_path):
     """
     Parse an existing paths.py file to extract current dependencies.
-    
+
     Args:
         file_path (str): Path to the existing paths file
-        
+
     Returns:
         tuple: (file_content, existing_dependencies_dict)
     """
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
-        
+
         # Extract existing dependencies by looking for the ''' [ Name ] ''' pattern
         import re
         existing_deps = {}
-        
+
         # Find all dependency sections
         pattern = r"'''\s*\[\s*([^\]]+)\s*\]\s*'''"
         matches = re.findall(pattern, content)
-        
+
         for match in matches:
             display_name = match.strip()
             var_name = normalize_name(display_name)
             existing_deps[var_name] = display_name
-        
+
         return content, existing_deps
-        
+
     except Exception as e:
         print(f"\n\033[91m✗\033[0m Error reading existing file: \033[91m{e}\033[0m")
         return None, {}
@@ -555,57 +554,57 @@ def parse_existing_paths_file(file_path):
 def update_paths_file(file_path, existing_content, existing_deps):
     """
     Update an existing paths file with new dependencies.
-    
+
     Args:
         file_path (str): Path to the paths file
         existing_content (str): Current file content
         existing_deps (dict): Dictionary of existing dependencies
     """
     print(f"=== Updating existing paths configuration at {file_path} ===")
-    
+
     if existing_deps:
         print(f"\nFound {len(existing_deps)} existing dependencies:")
         for i, (var_name, display_name) in enumerate(existing_deps.items(), 1):
             print(f"  {i}. {display_name}")
-    
+
     # Get new dependencies from user
     print("\nAdd new dependencies:")
     new_dependencies = get_dependencies()
-    
+
     if not new_dependencies:
         print("No new dependencies to add.")
         return
-    
+
     # Check for duplicates and prepare new sections
     new_sections = []
     skipped = []
-    
+
     for dep in new_dependencies:
         var_name = normalize_name(dep)
         if var_name in existing_deps:
             skipped.append(dep)
         else:
             new_sections.append(generate_dependency_section(dep))
-    
+
     if skipped:
         print(f"\nSkipped {len(skipped)} dependencies (already exist):")
         for dep in skipped:
             print(f"  - {dep}")
-    
+
     if not new_sections:
         print("No new dependencies to add after checking for duplicates.")
         return
-    
+
     # Append new sections to existing content
     # Remove any trailing whitespace from existing content first
     existing_content = existing_content.rstrip()
-    
+
     # If this is the first dependency being added, ensure no empty lines at the top
     if not existing_deps:
         # For the first dependency, remove all leading newlines
         first_section = new_sections[0].lstrip('\n')  # Remove leading newlines
         remaining_sections = new_sections[1:] if len(new_sections) > 1 else []
-        
+
         # If existing content is empty or just whitespace, don't add any newline
         if not existing_content.strip():
             updated_content = first_section + ''.join(remaining_sections)
@@ -615,18 +614,18 @@ def update_paths_file(file_path, existing_content, existing_deps):
     else:
         # For subsequent dependencies, use the normal format
         updated_content = existing_content + ''.join(new_sections)
-    
+
     # Normalize content ending to ensure exactly one newline
     updated_content = normalize_content_ending(updated_content)
-    
+
     # Write updated content
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(updated_content)
-        
+
         print(f"\n\033[92m✓\033[0m Updated '\033[92m{file_path}\033[0m' with \033[92m{len(new_sections)}\033[0m new dependencies.")
         print(f"You can now edit '{file_path}' to set the actual paths for your dependencies.")
-        
+
     except Exception as e:
         print(f"\n\033[91m✗\033[0m Error updating file: \033[91m{e}\033[0m")
 
@@ -634,37 +633,37 @@ def update_paths_file(file_path, existing_content, existing_deps):
 def remove_dependencies_from_file(file_path, existing_content, existing_deps):
     """
     Remove dependencies from an existing paths file.
-    
+
     Args:
         file_path (str): Path to the paths file
         existing_content (str): Current file content
         existing_deps (dict): Dictionary of existing dependencies
     """
     print(f"=== Removing dependencies from {file_path} ===")
-    
+
     if not existing_deps:
         print("No dependencies found to remove.")
         return
-    
-    print(f"\nCurrent dependencies:")
+
+    print("\nCurrent dependencies:")
     dep_list = list(existing_deps.items())
     for i, (var_name, display_name) in enumerate(dep_list, 1):
         print(f"  {i}. {display_name}")
-    
+
     # Get dependencies to remove
     print("\nEnter the numbers of dependencies to remove (e.g., 1,3,5 or 1-3):")
     print("Press Enter to cancel removal.")
-    
+
     while True:
         selection = input("Dependencies to remove: ").strip()
         if not selection:
             print("Removal cancelled.")
             return
-        
+
         try:
             # Parse selection (support both comma-separated and ranges)
             indices_to_remove = set()
-            
+
             for part in selection.split(','):
                 part = part.strip()
                 if '-' in part:
@@ -674,31 +673,31 @@ def remove_dependencies_from_file(file_path, existing_content, existing_deps):
                 else:
                     # Handle single number
                     indices_to_remove.add(int(part))
-            
+
             # Validate indices
             valid_indices = set(range(1, len(dep_list) + 1))
             invalid_indices = indices_to_remove - valid_indices
-            
+
             if invalid_indices:
                 print(f"Invalid indices: {sorted(invalid_indices)}. Please use numbers 1-{len(dep_list)}.")
                 continue
-            
+
             break
-            
+
         except ValueError:
             print("Invalid format. Use numbers separated by commas (e.g., 1,3,5) or ranges (e.g., 1-3).")
-    
+
     # Get dependencies to remove
     deps_to_remove = []
     for idx in sorted(indices_to_remove):
         var_name, display_name = dep_list[idx - 1]
         deps_to_remove.append((var_name, display_name))
-    
+
     # Confirm removal
-    print(f"\nDependencies to remove:")
+    print("\nDependencies to remove:")
     for var_name, display_name in deps_to_remove:
         print(f"  - {display_name}")
-    
+
     while True:
         confirm = input(f"\nRemove {len(deps_to_remove)} dependencies? (y/n): ").lower().strip()
         if confirm in ['y', 'yes']:
@@ -708,26 +707,26 @@ def remove_dependencies_from_file(file_path, existing_content, existing_deps):
             return
         else:
             print("Please enter 'y' for yes or 'n' for no.")
-    
+
     # Remove dependencies from content
     updated_content = existing_content
-    
+
     for var_name, display_name in deps_to_remove:
         # Create pattern to match the entire dependency section
         # This matches from ''' [ Name ] ''' to the end of the last variable
         pattern = rf"'''\s*\[\s*{re.escape(display_name)}\s*\]\s*'''.*?{re.escape(var_name)}_lib_path\s*=\s*[^\n]*"
         updated_content = re.sub(pattern, '', updated_content, flags=re.DOTALL)
-    
+
     # Normalize content ending to ensure exactly one newline
     updated_content = normalize_content_ending(updated_content)
-    
+
     # Write updated content
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(updated_content)
-        
+
         print(f"\n\033[92m✓\033[0m Removed \033[92m{len(deps_to_remove)}\033[0m dependencies from '\033[92m{file_path}\033[0m'.")
-        
+
     except Exception as e:
         print(f"\n\033[91m✗\033[0m Error updating file: \033[91m{e}\033[0m")
 
@@ -863,7 +862,7 @@ def list_deps_in_paths(file_path):
         path_value = m.group(1).strip() if m else 'None'
         status = '\033[92m●\033[0m' if path_value not in ('None', "''", '""') else '\033[93m○\033[0m'
         print(f"  {status} {display_name:<30} _path = {path_value}")
-    print(f"\n\033[92m●\033[0m = path filled in   \033[93m○\033[0m = stub (still None)")
+    print("\n\033[92m●\033[0m = path filled in   \033[93m○\033[0m = stub (still None)")
     return len(existing_deps)
 
 
@@ -877,31 +876,31 @@ def setup_paths_file(file_path):
         file_path (str): Path where to create or update the paths file
     """
     target_path = Path(file_path)
-    
+
     if target_path.exists():
         # File exists - offer options
         existing_content, existing_deps = parse_existing_paths_file(file_path)
-        
+
         if existing_content is None:
-            print(f"Could not read existing file. Creating new file instead.")
+            print("Could not read existing file. Creating new file instead.")
             create_paths_file(file_path)
             return
-        
+
         print(f"=== Paths file exists at {file_path} ===")
-        
+
         if existing_deps:
             print(f"\nFound {len(existing_deps)} existing dependencies:")
             for i, (var_name, display_name) in enumerate(existing_deps.items(), 1):
                 print(f"  {i}. {display_name}")
         else:
             print("\nNo existing dependencies found.")
-        
+
         # Ask user what they want to do
         print("\nWhat would you like to do?")
         print("1. Add new dependencies")
         print("2. Remove existing dependencies")
         print("3. Cancel")
-        
+
         while True:
             choice = input("Choose an option (1-3): ").strip()
             if choice == '1':
@@ -951,8 +950,8 @@ def startapp_command(args):
     print()
     print(f"Project '\033[1m{project_dir_name}\033[0m' is ready. Next steps:")
     print(f"  cd {project_dir_name}")
-    print(f"  uv sync                                  # install Python deps")
-    print(f"  cli deps add <tool> [<tool> ...]         # declare external tool deps (optional)")
+    print("  uv sync                                  # install Python deps")
+    print("  cli deps add <tool> [<tool> ...]         # declare external tool deps (optional)")
 
 
 def deps_command(args):
@@ -988,7 +987,8 @@ def _latest_release_tag(remote_url, timeout=10):
     "pre-releases sort below releases" intent for picking a default upgrade.
     `timeout` bounds the network call (kept short for the update notifier).
     """
-    import re, subprocess
+    import re
+    import subprocess
     try:
         out = subprocess.check_output(
             ["git", "ls-remote", "--tags", "--refs", remote_url],
@@ -1055,7 +1055,8 @@ def _checkout_version(path):
 
     Used to tailor the post-upgrade sync reminder after a local-checkout install, where the
     installed semver isn't otherwise known in-process (no re-exec; `__version__` is still stale)."""
-    import os, re
+    import os
+    import re
     try:
         with open(os.path.join(path, "pyproject.toml"), encoding="utf-8") as f:
             m = re.search(r'(?m)^version\s*=\s*"([^"]+)"', f.read())
@@ -1098,10 +1099,10 @@ def _run_self_upgrade(url):
         (e.g. a uv-managed project .venv, which ships without pip)
     Returns 0 on success, else a non-zero exit code (after printing a diagnostic).
     """
-    import sys
+    import importlib.util
     import shutil
     import subprocess
-    import importlib.util
+    import sys
 
     uv = shutil.which("uv")
     has_pip = importlib.util.find_spec("pip") is not None
@@ -1116,7 +1117,7 @@ def _run_self_upgrade(url):
                      "--reinstall", url], "uv pip"
     else:
         print("\033[91m✗\033[0m Can't upgrade: this environment has no pip and uv isn't on PATH.")
-        print(f"  Install uv (https://astral.sh/uv) or run manually:")
+        print("  Install uv (https://astral.sh/uv) or run manually:")
         print(f"    uv tool install --force --reinstall '{url}'")
         return 1
 
@@ -1260,7 +1261,8 @@ def _read_update_cache():
 
 
 def _write_update_cache(checked_at, latest):
-    import os, json
+    import json
+    import os
     path = _update_cache_file()
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -1278,7 +1280,9 @@ def _maybe_notify_update(command):
     Re-checks the remote at most once per UPDATE_CHECK_TTL; otherwise reads the
     cached result. Any failure is swallowed so a command is never affected.
     """
-    import os, sys, time
+    import os
+    import sys
+    import time
     try:
         if (command in ("upgrade", "u")
                 or os.environ.get("NGARGPARSER_NO_UPDATE_CHECK")
@@ -1324,13 +1328,13 @@ def _notify_at_exit():
 def sync_command(args):
     """Synchronize framework files in existing projects to the latest version."""
     try:
+        import filecmp
         import os
         import shutil
-        import filecmp
 
         # Check if we're in a project directory
         if not os.path.exists('src') or not os.path.exists('scripts'):
-            print(f"\033[91m✗\033[0m Error: This doesn't appear to be a valid ngargparser project directory")
+            print("\033[91m✗\033[0m Error: This doesn't appear to be a valid ngargparser project directory")
             print("Make sure you're in a project directory with src/ and scripts/ subdirectories.")
             return 1
 
@@ -1366,20 +1370,20 @@ def sync_command(args):
             os.execvpe(sys.argv[0], [sys.argv[0], "s"], env)
 
         print("Synchronizing framework files to latest version...")
-        
+
         # Get the project name from current directory
         project_name = os.path.basename(os.getcwd())
         print(f"Project: {project_name}")
-        
+
         # Ensure src/core/ directory exists
         if not os.path.exists('src/core'):
             os.makedirs('src/core', exist_ok=True)
             print("  └ Created src/core/ directory")
-        
+
         # Update core files (src/core/*)
         print("\nUpdating src/core/ files...")
         core_files_updated = 0
-        
+
         # Update NGArgumentParser.py
         if os.path.exists('src/core/NGArgumentParser.py'):
             if not filecmp.cmp(f'{NGPARSER_DIR}/NGArgumentParser.py', 'src/core/NGArgumentParser.py', shallow=False):
@@ -1393,7 +1397,7 @@ def sync_command(args):
             shutil.copy(f'{NGPARSER_DIR}/NGArgumentParser.py', 'src/core/NGArgumentParser.py')
             print("  └ Created NGArgumentParser.py in src/core/")
             core_files_updated += 1
-        
+
         # Update core_validators.py
         if os.path.exists('src/core/core_validators.py'):
             if not filecmp.cmp(f'{NGPARSER_DIR}/core_validators.py', 'src/core/core_validators.py', shallow=False):
@@ -1421,7 +1425,7 @@ def sync_command(args):
             shutil.copy(f'{NGPARSER_DIR}/result_writer.py', 'src/core/result_writer.py')
             print("  └ Created result_writer.py in src/core/")
             core_files_updated += 1
-        
+
         # Update set_pythonpath.py
         if os.path.exists('src/core/set_pythonpath.py'):
             if not filecmp.cmp(f'{TEMPLATE_DIR}/set_pythonpath.py', 'src/core/set_pythonpath.py', shallow=False):
@@ -1435,7 +1439,7 @@ def sync_command(args):
             shutil.copy(f'{TEMPLATE_DIR}/set_pythonpath.py', 'src/core/set_pythonpath.py')
             print("  └ Created set_pythonpath.py in src/core/")
             core_files_updated += 1
-        
+
         # Update configure.py
         if os.path.exists('src/core/configure.py'):
             if not filecmp.cmp(f'{TEMPLATE_DIR}/configure.py', 'src/core/configure.py', shallow=False):
@@ -1451,7 +1455,7 @@ def sync_command(args):
             os.chmod('src/core/configure.py', 0o755)  # Make executable
             print("  └ Created configure.py in src/core/")
             core_files_updated += 1
-        
+
         # Update scripts files (except hooks.sh, build.conf, do-not-distribute.txt — user-owned)
         print("\nUpdating scripts/ files...")
         script_files_updated = 0
@@ -1493,7 +1497,7 @@ def sync_command(args):
             os.chmod('scripts/core/build.sh', 0o755)
             print("  └ Created scripts/core/build.sh")
             script_files_updated += 1
-        
+
         # Update root-level Makefile (no longer under scripts/)
         if os.path.exists('Makefile'):
             if not filecmp.cmp(f'{TEMPLATE_DIR}/Makefile', 'Makefile', shallow=False):
@@ -1507,7 +1511,7 @@ def sync_command(args):
             shutil.copy(f'{TEMPLATE_DIR}/Makefile', 'Makefile')
             print("  └ Created root Makefile")
             script_files_updated += 1
-        
+
         # Ensure deploy/install.sh exists. User-owned (like scripts/hooks.sh) — sync
         # creates it from the template only if missing; never overwrites existing content.
         # Required for nxg-tools-deployments: orchestrator runs `bash deploy/install.sh`
@@ -1516,7 +1520,7 @@ def sync_command(args):
             os.makedirs('deploy', exist_ok=True)
             shutil.copy(f'{TEMPLATE_DIR}/deploy/install.sh', 'deploy/install.sh')
             replace_text_in_place('deploy/install.sh', '{TOOL_NAME}', project_name)
-            print(f"  └ Created \033[92mdeploy/install.sh\033[0m from template (user-owned; sync won't overwrite from here on)")
+            print("  └ Created \033[92mdeploy/install.sh\033[0m from template (user-owned; sync won't overwrite from here on)")
             script_files_updated += 1
 
         # Advisory: legacy projects without pyproject.toml
@@ -1535,21 +1539,21 @@ def sync_command(args):
         if os.path.exists('pyproject.toml'):
             prev = write_scaffold_version('pyproject.toml', __version__)
             if prev is None:
-                print(f"\nStamping framework version...")
+                print("\nStamping framework version...")
                 print(f"  └ Added scaffold_version = \033[92m{__version__}\033[0m to [tool.ngargparser] (was missing)")
                 stamp_updated = True
             elif prev != __version__:
-                print(f"\nStamping framework version...")
+                print("\nStamping framework version...")
                 print(f"  └ scaffold_version: \033[93m{prev}\033[0m → \033[92m{__version__}\033[0m")
                 stamp_updated = True
 
         # Summary
-        print(f"\nSynchronization Summary:")
+        print("\nSynchronization Summary:")
         print(f"  └ Core files updated: \033[92m{core_files_updated}\033[0m")
         print(f"  └ Script files updated: \033[92m{script_files_updated}\033[0m")
         print(f"  └ Total files updated: \033[92m{core_files_updated + script_files_updated}\033[0m")
         if stamp_updated:
-            print(f"  └ scaffold_version stamp: \033[92mupdated\033[0m")
+            print("  └ scaffold_version stamp: \033[92mupdated\033[0m")
 
         # Update README badges to current ngargparser version (green) — only in README.md
         print("\nUpdating README version badges...")
@@ -1561,13 +1565,13 @@ def sync_command(args):
             print("  └ No README files updated (none found or already current)")
 
         if core_files_updated + script_files_updated > 0 or stamp_updated:
-            print(f"\n\033[92m✓\033[0m Framework synchronization completed successfully!")
+            print("\n\033[92m✓\033[0m Framework synchronization completed successfully!")
             print(f"Your {project_name} project now has the latest framework files.")
         else:
-            print(f"\n\033[93m⚠\033[0m No files needed updating - your project is already up to date!")
-        
+            print("\n\033[93m⚠\033[0m No files needed updating - your project is already up to date!")
+
         return 0
-        
+
     except Exception as e:
         print(f"\033[91m✗\033[0m Error during synchronization: {e}")
         return 1
@@ -1575,10 +1579,10 @@ def sync_command(args):
 
 def main():
     parser = argparse.ArgumentParser(description='NG Argument Parser Framework')
-    
+
     # Add version argument
     parser.add_argument('-v', '--version', action='version', version=f'%(prog)s {__version__}')
-    
+
     subparsers = parser.add_subparsers(dest='command')
 
     # Create 'generate' sub-command
