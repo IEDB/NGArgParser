@@ -13,11 +13,11 @@ import dotenv
 dotenv.load_dotenv()
 
 # Get the project root directory and app name from environment variables
-APP_ROOT = os.getenv('APP_ROOT')
-APP_NAME = os.getenv('APP_NAME')
+APP_ROOT = os.getenv("APP_ROOT")
+APP_NAME = os.getenv("APP_NAME")
 
 
-def get_dependencies_from_paths(file_path='paths.py'):
+def get_dependencies_from_paths(file_path="paths.py"):
     """
     Read paths.py file and return a list of dependency tool names that have
     their required path fields filled (not None or empty string).
@@ -29,7 +29,7 @@ def get_dependencies_from_paths(file_path='paths.py'):
         list: List of dependency tool names that have valid paths
     """
     try:
-        with open(file_path, 'r') as file:
+        with open(file_path, "r") as file:
             content = file.read()
     except FileNotFoundError:
         raise FileNotFoundError(f"Could not find {file_path}")
@@ -44,7 +44,7 @@ def get_dependencies_from_paths(file_path='paths.py'):
         tool_name = tool_name.strip()
 
         # Look for the main path variable (ends with _path=)
-        path_matches = re.findall(r'(\w+_path)\s*=\s*([^#\n]+)', section_content)
+        path_matches = re.findall(r"(\w+_path)\s*=\s*([^#\n]+)", section_content)
 
         for var_name, value in path_matches:
             # Clean the value - remove quotes, whitespace, and check if it's not None or empty
@@ -53,11 +53,12 @@ def get_dependencies_from_paths(file_path='paths.py'):
             # Debug print to see what we're parsing
             # print(f"Debug: Tool='{tool_name}', Var='{var_name}', Value='{cleaned_value}'")
 
-            if cleaned_value and cleaned_value.lower() != 'none':
+            if cleaned_value and cleaned_value.lower() != "none":
                 dependencies.append(tool_name)
                 break  # Only need one valid path per tool
 
     return dependencies
+
 
 def create_directory_structure_for_dependencies(output_path, paths_file_path=None):
     """
@@ -88,7 +89,7 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
     output_dir = Path(output_path)
 
     try:
-        with open(paths_file, 'r') as file:
+        with open(paths_file, "r") as file:
             content = file.read()
     except FileNotFoundError:
         raise FileNotFoundError(f"Could not find {paths_file}")
@@ -110,13 +111,13 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
             section_content = sections[i + 1]
 
             # Look for the main path variable (ends with _path=)
-            path_matches = re.findall(r'(\w+_path)\s*=\s*([^#\n]+)', section_content)
+            path_matches = re.findall(r"(\w+_path)\s*=\s*([^#\n]+)", section_content)
 
             for var_name, value in path_matches:
                 # Clean the value - remove quotes, whitespace, and check if it's not None or empty
                 cleaned_value = value.strip().strip("'\"")
 
-                if cleaned_value and cleaned_value.lower() != 'none':
+                if cleaned_value and cleaned_value.lower() != "none":
                     has_dependencies = True
                     dependency_tools.append(tool_name)
                     break  # Only need one valid path per tool
@@ -129,8 +130,8 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
     if not curr_app_name:
         try:
             cwd = Path.cwd()
-            if 'test' in cwd.parts:
-                test_index = cwd.parts.index('test')
+            if "test" in cwd.parts:
+                test_index = cwd.parts.index("test")
                 if test_index + 1 < len(cwd.parts):
                     curr_app_name = cwd.parts[test_index + 1]
         except Exception:
@@ -141,19 +142,19 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
         curr_app_name = Path(__file__).resolve().parents[1].name
 
     # Method 3: If still not found, try to extract from the paths.py file location
-    if (not curr_app_name or curr_app_name == 'src') and paths_file_path:
+    if (not curr_app_name or curr_app_name == "src") and paths_file_path:
         try:
             paths_file = Path(paths_file_path)
-            if 'test' in paths_file.parts:
-                test_index = paths_file.parts.index('test')
+            if "test" in paths_file.parts:
+                test_index = paths_file.parts.index("test")
                 if test_index + 1 < len(paths_file.parts):
                     curr_app_name = paths_file.parts[test_index + 1]
         except Exception:
             pass
 
     # Final fallback
-    if not curr_app_name or curr_app_name == 'src':
-        curr_app_name = 'app'  # Generic fallback
+    if not curr_app_name or curr_app_name == "src":
+        curr_app_name = "app"  # Generic fallback
 
     if has_dependencies:
         # NEW LOGIC: Create structure inside each dependency folder + main tool folder
@@ -162,13 +163,13 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
         # Create structure for each dependency tool
         for tool_name in dependency_tools:
             # Convert tool name to lowercase and replace spaces with underscores for directory name
-            tool_dir_name = tool_name.lower().replace(' ', '_')
+            tool_dir_name = tool_name.lower().replace(" ", "_")
 
             # Defining alias for tool names
-            if tool_dir_name == 't_cell_class_i':
-                tool_dir_name = 'mhci'
-            elif tool_dir_name == 't_cell_class_ii':
-                tool_dir_name = 'mhcii'
+            if tool_dir_name == "t_cell_class_i":
+                tool_dir_name = "mhci"
+            elif tool_dir_name == "t_cell_class_ii":
+                tool_dir_name = "mhcii"
 
             tool_path = output_dir / tool_dir_name
 
@@ -241,6 +242,7 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
 
     return created_structures
 
+
 def validate_file(path_str):
     """Validate that the given path is a file."""
     path = Path(path_str)
@@ -250,12 +252,14 @@ def validate_file(path_str):
     validate_directory_given_filename(path_str)
     return path
 
+
 def validate_directory(path_str):
     """Validate that the given path is a directory."""
     path = Path(path_str)
     if not path.is_dir():
         raise argparse.ArgumentTypeError(f"'{path_str}' is not a valid directory.")
     return path
+
 
 def validate_directory_given_filename(path_str):
     """Validate that the parent directory of the given path exists."""
@@ -265,6 +269,7 @@ def validate_directory_given_filename(path_str):
     if not parent_dir.is_dir():
         raise argparse.ArgumentTypeError(f"'{path_str}' is not a valid directory.")
     return path
+
 
 def validate_preprocess_dir(path_str):
     """Validate preprocessing directory and create necessary structure."""
@@ -285,7 +290,6 @@ def validate_preprocess_dir(path_str):
                 print(f"- {dep}")
         else:
             print("- No dependencies found, creating default structure")
-
 
         print(f"\nCreating directory structures under: {path}")
         # Create directory structures for all dependencies under output directory

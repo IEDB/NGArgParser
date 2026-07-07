@@ -39,6 +39,7 @@ Destination:
 For tsv, any ``warnings``/``errors`` in the envelope are echoed to stderr so
 stdout stays a clean, pipeable data stream (json keeps them in the payload).
 """
+
 import json
 import sys
 from pathlib import Path
@@ -95,9 +96,7 @@ def write_results(result, output_prefix=None, output_format="tsv"):
     """
     output_format = (output_format or "tsv").lower()
     if output_format not in ("tsv", "json"):
-        raise ValueError(
-            f"unsupported output format: {output_format!r} (expected 'tsv' or 'json')"
-        )
+        raise ValueError(f"unsupported output format: {output_format!r} (expected 'tsv' or 'json')")
 
     # ---- JSON: dump the full envelope verbatim (metadata preserved) ----
     if output_format == "json":
