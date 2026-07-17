@@ -1157,8 +1157,19 @@ def deps_command(args):
     return 0
 
 
-def _latest_release_tag(remote_url, timeout=10):
-    """Return the highest semver-like tag from a git remote, or None on failure.
+class _RemoteUnavailable(Exception):
+    """Raised (only in strict mode) when `git ls-remote` can't reach the remote.
+
+    Lets callers tell "couldn't check" apart from "checked, found no tags" —
+    both of which otherwise collapse into a None return.
+    """
+
+
+_UNSET = object()  # sentinel: "argument not supplied" (distinct from None)
+
+
+def _latest_release_tag(remote_url, timeout=10, *, strict=False):
+    """Return the highest semver-like tag from a git remote, or None.
 
     Uses `git ls-remote --tags --refs` (no clone), parses tags matching
     `vX.Y.Z` (with optional pre-release/build suffix), and returns the
@@ -1166,6 +1177,11 @@ def _latest_release_tag(remote_url, timeout=10):
     parsed but compared as None < anything-else, matching the conventional
     "pre-releases sort below releases" intent for picking a default upgrade.
     `timeout` bounds the network call (kept short for the update notifier).
+
+    Returns None when the remote is reachable but has no semver tags. On a
+    transport failure (network/timeout/git error) it returns None by default,
+    or raises `_RemoteUnavailable` when `strict=True` — so a network blip is
+    not misreported as "no tags exist".
     """
     import re
     import subprocess
@@ -1177,7 +1193,9 @@ def _latest_release_tag(remote_url, timeout=10):
             text=True,
             timeout=timeout,
         )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
+        if strict:
+            raise _RemoteUnavailable(str(e)) from e
         return None
     semver_tags = []
     for line in out.splitlines():
@@ -1252,7 +1270,7 @@ def _checkout_version(path):
     return m.group(1) if m else None
 
 
-def _resolve_upgrade_url(ref="latest", dev=False):
+def _resolve_upgrade_url(ref="latest", dev=False, latest_tag=_UNSET):
     """Resolve (source, label) to upgrade ngargparser to.
 
     Honors NGARGPARSER_UPGRADE_URL (full override). `dev` forces 'master'.
@@ -1260,6 +1278,10 @@ def _resolve_upgrade_url(ref="latest", dev=False):
     to 'master' when no tags exist. A `ref` that points at a local directory
     ('.' or a path) returns that absolute path with a 'local:' label, so the
     install comes from the working tree instead of the git remote.
+
+    When `ref='latest'`, pass `latest_tag` to reuse an already-resolved tag
+    (or None for "no tags") instead of querying the remote again; omit it to
+    query here as before.
     """
     import os
 
@@ -1272,7 +1294,9 @@ def _resolve_upgrade_url(ref="latest", dev=False):
     if local:
         return local, f"local:{local}"
     if ref == "latest":
-        ref = _latest_release_tag(BASE_REPO_URL[len("git+") :]) or "master"
+        if latest_tag is _UNSET:
+            latest_tag = _latest_release_tag(BASE_REPO_URL[len("git+") :])
+        ref = latest_tag or "master"
     return f"{BASE_REPO_URL}@{ref}", ref
 
 
@@ -1366,10 +1390,27 @@ def upgrade_command(args):
     import os
 
     ref, dev = getattr(args, "ref", "latest"), getattr(args, "dev", False)
-    url, resolved = _resolve_upgrade_url(ref, dev)
-    current = __version__
-    target = resolved.lstrip("v") if resolved else resolved
     check = getattr(args, "check", False)
+    current = __version__
+
+    # Plain-latest case: resolve the tag ourselves in strict mode so a network
+    # failure is reported honestly instead of being misread as "no tags exist"
+    # (and silently resolving to master). The resolved tag is handed to
+    # _resolve_upgrade_url so it doesn't query the remote a second time.
+    latest_tag = _UNSET
+    plain_latest = (
+        ref == "latest" and not dev and _local_source(ref) is None and not os.environ.get("NGARGPARSER_UPGRADE_URL")
+    )
+    if plain_latest:
+        try:
+            latest_tag = _latest_release_tag(BASE_REPO_URL[len("git+") :], strict=True)
+        except _RemoteUnavailable:
+            print("⚠ Couldn't reach the remote to check for the latest release (network/VPN, or git unavailable).")
+            print(f"ℹ Installed: {current}    Latest: unknown")
+            return 2
+
+    url, resolved = _resolve_upgrade_url(ref, dev, latest_tag=latest_tag)
+    target = resolved.lstrip("v") if resolved else resolved
 
     # Local checkout mode (`--ref .` or `--ref <path>`): install the working tree.
     # Skips the tag-resolution / up-to-date logic — you always want what's on disk.
