@@ -169,6 +169,10 @@ setup_exclusions() {
         printf '.*\n'
         if [ -n "$distignore" ]; then
             sed 's/\r$//' "$distignore"
+            # Terminate the last line even when the file lacks a trailing newline,
+            # so its final pattern cannot fuse with the forced rules below (a blank
+            # line here is inert — .gitignore ignores blank lines).
+            printf '\n'
         fi
         printf '!README\n!deploy/\n!deploy/install.sh\n'
     } > "$IGNORE_REPO/.gitignore"

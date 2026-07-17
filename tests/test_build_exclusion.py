@@ -184,6 +184,26 @@ def test_contract_files_cannot_be_excluded(scaffolded_project):
     assert "deploy/install.sh" in members
 
 
+def test_exclusion_file_without_trailing_newline(scaffolded_project):
+    # Regression: an exclusion file whose LAST line has no trailing newline must
+    # not fuse with the forced contract rules build.sh appends after it. Before the
+    # fix, the composed pattern became "*.json!README" (a dead rule) and nothing was
+    # excluded. Note: .write_text("*.json") deliberately writes NO trailing newline.
+    (scaffolded_project / "top.json").write_text("{}\n")
+    data = scaffolded_project / "data"
+    data.mkdir()
+    (data / "x.json").write_text("{}\n")
+    (scaffolded_project / ".distignore").write_text("*.json")
+
+    _, members = run_build(scaffolded_project)
+
+    assert "top.json" not in members, "top-level *.json must be excluded"
+    assert "data/x.json" not in members, "nested *.json must be excluded"
+    # The forced deploy-contract re-include must survive (not absorbed by the fusion).
+    assert "deploy/install.sh" in members
+    assert "README.md" in members
+
+
 def test_git_dir_never_ships(scaffolded_project):
     subprocess.run(["git", "init", "-q", "."], cwd=scaffolded_project, check=True, timeout=60)
     append_rules(scaffolded_project, "!.git/")
