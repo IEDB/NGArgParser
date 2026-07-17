@@ -23,6 +23,7 @@ def test_create_project_structure_builds_expected_tree(in_tmp_dir):
         "scripts/core/build.sh",
         "scripts/build.conf",
         "scripts/hooks.sh",
+        ".distignore",
         "Makefile",
         "configure",
         "deploy/install.sh",

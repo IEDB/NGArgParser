@@ -261,9 +261,9 @@ def create_example_structure():
         os.chmod(f"{project_name}/scripts/core/build.sh", 0o755)
         # Framework-owned: root Makefile (cli sync overwrites this)
         shutil.copy(f"{TEMPLATE_DIR}/Makefile", f"{project_name}/Makefile")
-        # User-owned: scripts/build.conf, scripts/do-not-distribute.txt
+        # User-owned: scripts/build.conf, .distignore (root)
         shutil.copy(f"{TEMPLATE_DIR}/build.conf", f"{project_name}/scripts/build.conf")
-        shutil.copy(f"{TEMPLATE_DIR}/do-not-distribute.txt", f"{project_name}/scripts/do-not-distribute.txt")
+        shutil.copy(f"{TEMPLATE_DIR}/distignore", f"{project_name}/.distignore")
 
         # User-owned: deploy/install.sh — invoked by nxg-tools-deployments at deploy time.
         os.makedirs(f"{project_name}/deploy", exist_ok=True)
@@ -337,9 +337,9 @@ def create_project_structure(project_name):
         shutil.copy(f"{TEMPLATE_DIR}/build.sh", f"{project_name}/scripts/core/build.sh")
         os.chmod(f"{project_name}/scripts/core/build.sh", 0o755)
         shutil.copy(f"{TEMPLATE_DIR}/Makefile", f"{project_name}/Makefile")
-        # User-owned: scripts/build.conf, hooks.sh, do-not-distribute.txt (sync leaves alone)
+        # User-owned: scripts/build.conf, hooks.sh, .distignore (root) (sync leaves alone)
         shutil.copy(f"{TEMPLATE_DIR}/build.conf", f"{project_name}/scripts/build.conf")
-        shutil.copy(f"{TEMPLATE_DIR}/do-not-distribute.txt", f"{project_name}/scripts/do-not-distribute.txt")
+        shutil.copy(f"{TEMPLATE_DIR}/distignore", f"{project_name}/.distignore")
         shutil.copy(f"{TEMPLATE_DIR}/hooks.sh", f"{project_name}/scripts/hooks.sh")
         os.chmod(f"{project_name}/scripts/hooks.sh", 0o755)
 

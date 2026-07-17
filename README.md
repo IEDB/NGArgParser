@@ -83,6 +83,7 @@ my-app/
 ├── uv.lock                     # locked deps (commit this)
 ├── README                      # your app's user-facing README
 ├── license-LJI.txt
+├── .distignore                 # tarball exclusions — .gitignore syntax (yours)
 ├── paths.py                    # declares external tool deps (yours)
 ├── src/
 │   ├── core/                   # framework-owned (sync overwrites) — DO NOT EDIT
@@ -99,8 +100,7 @@ my-app/
 │   ├── core/                   # framework-owned (sync overwrites)
 │   │   └── build.sh            # build pipeline
 │   ├── build.conf              # build knobs (yours)
-│   ├── hooks.sh                # imperative build hook (yours)
-│   └── do-not-distribute.txt   # exclusion list (yours)
+│   └── hooks.sh                # imperative build hook (yours)
 └── deploy/
     └── install.sh              # imperative deploy hook (yours, runs on target host)
 ```
@@ -208,12 +208,43 @@ make build-verbose  # same, with full build output (no progress bar)
 make clean          # remove build/
 ```
 
+Building requires `git` on the machine running `make build` (the exclusion rules are evaluated with `git check-ignore`, and git deps in `requirements.txt` are vendored via clone).
+
 Pipeline (under the hood, `scripts/core/build.sh`):
 
 1. Set up `build/<TOOL>-<VERSION>/`
-2. Copy or symlink the source tree into the build dir (symlink by default; copy items listed in `EXCLUDE_FROM_BUILD_SYMLINK` — defaults to `libs run_*.py`)
-3. Run `scripts/hooks.sh` (your imperative hook)
-4. Tar it up
+2. Evaluate `.distignore` (exact `.gitignore` semantics, see below)
+3. Copy or symlink the source tree into the build dir, skipping excluded paths (symlink by default; copy items listed in `EXCLUDE_FROM_BUILD_SYMLINK` — defaults to `libs run_*.py`)
+4. Run `scripts/hooks.sh` (your imperative hook)
+5. Tar it up
+
+### `.distignore` — tarball exclusions
+
+Lists paths that must not ship in the tarball (or the staged `build/` tree). Lives at the project root, next to `.gitignore`. The file has **exact `.gitignore` semantics** — you can paste `.gitignore` content verbatim: wildcards, dir-only `name/`, `!` negation, `/` anchoring, and `**` all match at every depth of the project tree.
+
+> **Legacy alias:** projects scaffolded before the rename use `scripts/do-not-distribute.txt`. `build.sh` still honors that name, so those projects keep working untouched. If both exist, root `.distignore` wins. New scaffolds write `.distignore`.
+
+Built-in rules layered around your file by `build.sh`:
+
+- `.*` — hidden files and directories are excluded by default. This is the *lowest*-precedence rule, so a `!` line in your file re-includes them:
+
+  ```gitignore
+  !.env              # ship a hidden file
+  !.streamlit/       # ship a hidden dir and everything in it
+  ```
+
+  To ship only one file from a hidden dir, re-include the dir first (gitignore cannot re-include a file whose parent dir is excluded), then re-exclude the rest:
+
+  ```gitignore
+  !.streamlit/
+  .streamlit/*
+  !.streamlit/config.toml
+  ```
+
+- `.git/` and `build/` (project root) are **always** excluded — no `!` rule can bring them back.
+- `README` and `deploy/install.sh` are **always** included — the deploy orchestrator requires them at the tarball top level, so exclusion rules (including the default `*.sh`) cannot strip them.
+
+One caveat: a directory that is itself a symlink is treated as a single file by the matcher, and `tar -h` dereferences it wholesale — exclusion rules do not reach inside symlinked directories.
 
 ### `scripts/hooks.sh` — the build hook
 
@@ -521,6 +552,6 @@ self.parser_predict.add_argument(
 | `paths.py` | You (`cli deps` writes stubs; you fill in values) |
 | `scripts/hooks.sh` | You |
 | `scripts/build.conf` | You |
-| `scripts/do-not-distribute.txt` | You |
+| `.distignore` | You (`.gitignore` syntax; legacy `scripts/do-not-distribute.txt` still honored) |
 | `deploy/install.sh` | You — sync creates from template if missing, never overwrites |
 | `src/run_*.py`, `src/<App>ArgumentParser.py`, `src/preprocess.py`, `src/postprocess.py`, `src/validators.py` | You |

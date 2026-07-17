@@ -37,6 +37,13 @@ mypy:
 pytest:
   stage: test
   image: "python:$PYVER-slim"
+  # Job-level before_script replaces the default one: the slim images lack git,
+  # which the build.sh exclusion tests need (do-not-distribute.txt is evaluated
+  # with `git check-ignore`). Without it those tests skip silently.
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git
+    - pip install --quiet uv
+    - uv sync
   parallel:
     matrix:
       - PYVER: ["3.9", "3.11", "3.12"]

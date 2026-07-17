@@ -1,0 +1,33 @@
+# .distignore — paths excluded from the distributed tarball.
+# (Lives at the project root, next to .gitignore. The legacy name
+# scripts/do-not-distribute.txt is still accepted by older projects.)
+#
+# Syntax: EXACT .gitignore semantics (evaluated with `git check-ignore`).
+# Paste .gitignore content verbatim: wildcards, dir-only `name/`, `!` negation,
+# `/` anchoring, and `**` all work, at every depth of the project tree.
+#
+# Built-in rules applied by scripts/core/build.sh (not listed here):
+#   .*                       hidden files/dirs are excluded by default — LOWEST
+#                            precedence, re-include with a `!` rule below
+#   .git/  build/            the project-root .git and build dirs are ALWAYS
+#                            excluded (a `!` rule cannot bring them back)
+#   README  deploy/install.sh  ALWAYS included — the deploy orchestrator
+#                            requires them at the tarball top level
+#
+# Re-including hidden things:
+#   !.env                    ship a hidden file
+#   !.streamlit/             ship a hidden dir (and everything inside it)
+# To ship ONLY one file from a hidden dir, re-include the dir first (gitignore
+# cannot re-include a file whose parent dir is excluded), then re-exclude the
+# rest:
+#   !.streamlit/
+#   .streamlit/*
+#   !.streamlit/config.toml
+#
+# This file is USER-OWNED — `cli sync` never overwrites it.
+
+__pycache__/
+build.sh
+build.md
+Makefile
+*.sh

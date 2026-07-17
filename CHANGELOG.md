@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] — 2026-07-17
+
+### Added
+- **The tarball exclusion file now has exact `.gitignore` semantics.** `build.sh` evaluates
+  it with `git check-ignore`, so `.gitignore` content can be pasted verbatim: wildcards, dir-only
+  `name/`, `!` negation, `/` anchoring, and `**` all match at every depth of the project tree.
+  Previously only exact top-level basenames matched — wildcard entries like `**.sh` and `build/*`
+  were silently dead.
+- **Renamed the exclusion file to `.distignore` at the project root** (next to `.gitignore`),
+  replacing `scripts/do-not-distribute.txt`. New scaffolds write `.distignore`. The legacy name is
+  still honored as an alias — existing projects keep working with no change, and `cli sync` performs
+  no migration (the file is user-owned). If both exist, root `.distignore` wins.
+- Built-in `.*` baseline: hidden files/dirs are excluded from the tarball by default (lowest
+  precedence — re-include with a `!` rule, e.g. `!.env` or `!.streamlit/`). The project-root
+  `.git/` and `build/` are always excluded; `README` and `deploy/install.sh` are always included
+  (the deploy orchestrator's tarball contract — exclusion rules, including the default `*.sh`,
+  cannot strip them).
+- First behavioral test coverage of `build.sh` (`tests/test_build_exclusion.py`): runs the real
+  build in a scaffolded project and inspects the staged tree and tarball contents.
+- `git` is now a hard build prerequisite (clear preflight error if missing); CI pytest images
+  install it.
+
+### Fixed
+- The build tooling no longer ships in tarballs: `scripts/core/build.sh`, `scripts/hooks.sh`, and
+  `scripts/do-not-distribute.txt` previously leaked into every release because exclusions were
+  only applied to top-level items, never inside `scripts/` (or any other directory reached
+  through a whole-dir symlink). Nested `__pycache__/` dirs and stray dotfiles are filtered now
+  too.
+
+### Changed
+- **Migration note for existing projects** (`do-not-distribute.txt` is user-owned and never
+  synced; the new engine arrives via `cli sync` updating `scripts/core/build.sh`): old literal
+  lists keep working, but patterns now match recursively — a legacy `**.sh` entry that never
+  matched anything will now exclude every `.sh` file at any depth (except the always-included
+  `deploy/install.sh`). Projects that ship runtime `.sh`/`Makefile` files under `libs/` or `src/`
+  must add `!` re-include rules (e.g. `!libs/**/*.sh`).
+- Directories emptied by exclusion no longer appear in the tarball; genuinely empty source
+  directories still ship.
+
 ## [0.3.1] — 2026-07-03
 
 ### Changed

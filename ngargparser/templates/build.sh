@@ -63,15 +63,30 @@ else
     set -o pipefail
 fi
 
+# Globs must see dotfiles: hidden files are excluded from the build by the
+# built-in '.*' rule, but a '!' negation in .distignore can only re-include a
+# dotfile if the copy loops actually iterate over it.
+shopt -s dotglob
+
 # Resolve paths.
 # This script lives in scripts/core/ (framework-owned, sync-managed).
-# build.conf, hooks.sh, and do-not-distribute.txt live one level up in scripts/
-# (user-owned). SRC_DIR keeps its established meaning: the user-owned scripts/ dir,
-# which is what the build hook sees via the export below.
+# build.conf and hooks.sh live one level up in scripts/ (user-owned). SRC_DIR
+# keeps its established meaning: the user-owned scripts/ dir, which is what the
+# build hook sees via the export below. The exclusion file is .distignore at
+# PROJECT_ROOT (legacy: scripts/do-not-distribute.txt) — see setup_exclusions.
 BUILD_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="$(cd "$BUILD_SH_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$SRC_DIR/.." && pwd)"
 APP_NAME=$(basename "$PROJECT_ROOT")
+
+# git is a hard dependency: the .distignore exclusion file is evaluated with
+# `git check-ignore` (and git deps in requirements.txt are vendored via clone).
+if ! command -v git >/dev/null 2>&1; then
+    echo "ERROR: 'git' is required to build (distignore matching uses 'git check-ignore'). Install git and retry." >&2
+    exit 1
+fi
+# The caller's environment must not redirect our git calls into another repo.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 
 # Initialize all build.conf-overridable variables to empty, source build.conf if present,
 # then apply defaults. This lets per-project build.conf override anything below without
@@ -111,8 +126,144 @@ should_copy_not_symlink() {
     return 1
 }
 
-# Ensure we clean up the build directory on failure
-trap 'status=$?; if [ $status -ne 0 ]; then \
+# ---------------------------------------------------------------------------
+# distignore engine.
+# The exclusion file (.distignore at the project root; the legacy name
+# scripts/do-not-distribute.txt is still accepted) has EXACT .gitignore
+# semantics, evaluated by `git check-ignore` against a throwaway repo whose
+# .gitignore is composed as:
+#   1. '.*'                      built-in baseline: hidden files do not ship
+#                                (lowest precedence — '!' rules can re-include)
+#   2. the user's exclusion file, verbatim
+#   3. '!README' '!deploy/' '!deploy/install.sh'
+#                                tarball contract: the deploy orchestrator
+#                                requires these at the tarball top level
+#                                (highest precedence — not overridable)
+# The project-root build/ and .git/ dirs are hard-pruned from the candidate
+# list, so no rule (not even '!') can bring them back.
+# ---------------------------------------------------------------------------
+setup_exclusions() {
+    TMPWORK="$(mktemp -d "${TMPDIR:-/tmp}/ngbuild-exclude.XXXXXX")"
+    IGNORE_REPO="$TMPWORK/repo"
+    EXCLUDED_LIST="$TMPWORK/excluded"
+    local candidates="$TMPWORK/candidates"
+
+    git -c init.defaultBranch=main init -q "$IGNORE_REPO"
+    # A user's init.templateDir may seed info/exclude; builds must not depend
+    # on developer-machine git config.
+    : > "$IGNORE_REPO/.git/info/exclude" 2>/dev/null || true
+
+    # Resolve the exclusion file: prefer the new '.distignore' (root, then
+    # scripts/) over the legacy 'do-not-distribute.txt'. First match wins.
+    local distignore=""
+    local cand
+    for cand in "$PROJECT_ROOT/.distignore" "$SRC_DIR/.distignore" \
+                "$SRC_DIR/do-not-distribute.txt" "$PROJECT_ROOT/do-not-distribute.txt"; do
+        if [ -f "$cand" ]; then
+            distignore="$cand"
+            break
+        fi
+    done
+
+    {
+        printf '.*\n'
+        if [ -n "$distignore" ]; then
+            sed 's/\r$//' "$distignore"
+        fi
+        printf '!README\n!deploy/\n!deploy/install.sh\n'
+    } > "$IGNORE_REPO/.gitignore"
+
+    # Candidate paths: everything in the project, PROJECT_ROOT-relative,
+    # directories suffixed with '/' (required for dir-only patterns to match
+    # paths that do not exist inside the throwaway repo). Nested .git dirs are
+    # listed but not descended into, so the '.*' baseline excludes them whole.
+    (
+        cd "$PROJECT_ROOT" && {
+            find . -mindepth 1 \( -path ./build -o -path ./.git \) -prune -o \
+                -type d -name .git -prune -print -o -type d -print \
+                | sed -e 's|^\./||' -e 's|$|/|'
+            find . -mindepth 1 \( -path ./build -o -path ./.git \) -prune -o \
+                -type d -name .git -prune -o ! -type d -print \
+                | sed 's|^\./||'
+        }
+    ) > "$candidates"
+
+    # Batch evaluation. Exit 0 = some paths ignored, 1 = none ignored (not an
+    # error), >1 = fatal.
+    local status=0
+    git -C "$IGNORE_REPO" -c core.quotePath=off -c core.excludesFile=/dev/null \
+        check-ignore --stdin < "$candidates" > "$EXCLUDED_LIST" || status=$?
+    if [ "$status" -gt 1 ]; then
+        echo "ERROR: git check-ignore failed (exit $status) while evaluating distignore rules" >&2
+        exit 1
+    fi
+}
+
+# $1 = PROJECT_ROOT-relative path; directories MUST carry a trailing '/'.
+is_excluded() {
+    grep -qxF -- "$1" "$EXCLUDED_LIST"
+}
+
+# $1 = PROJECT_ROOT-relative dir path, no trailing '/'. True when any excluded
+# path lives under it (descendants of an ignored dir are individually listed,
+# so this is a complete test).
+subtree_has_exclusions() {
+    P="$1/" awk 'index($0, ENVIRON["P"]) == 1 { found = 1; exit } END { exit !found }' "$EXCLUDED_LIST"
+}
+
+# Stage one entry into the build tree, enforcing exclusions at every depth.
+#   $1 src (absolute)   $2 dstparent (absolute)
+#   $3 rel (PROJECT_ROOT-relative, no trailing '/')
+#   $4 mode: symlink|copy
+#   $5 fastpath: yes|no — 'yes' allows a whole-dir symlink/copy when nothing
+#      inside the subtree is excluded; 'no' forces per-file staging (used for
+#      src/, where hooks patch files under build/src/ and a whole-dir symlink
+#      would leak those writes back into the source tree).
+stage_entry() {
+    local src="$1" dstparent="$2" rel="$3" mode="$4" fastpath="${5:-yes}"
+    local name
+    name=$(basename "$src")
+
+    if [ -d "$src" ] && [ ! -L "$src" ]; then
+        is_excluded "$rel/" && return 0
+        if [ "$fastpath" = yes ] && ! subtree_has_exclusions "$rel"; then
+            mkdir -p "$dstparent"
+            if [ "$mode" = copy ]; then
+                log_verbose "Copying directory: $rel"
+                cp -r "$src" "$dstparent/$name"
+            else
+                log_verbose "Symlinking directory: $rel"
+                ln -sf "$src" "$dstparent/$name"
+            fi
+            return 0
+        fi
+        local child
+        for child in "$src"/*; do
+            { [ -e "$child" ] || [ -L "$child" ]; } || continue
+            stage_entry "$child" "$dstparent/$name" "$rel/$(basename "$child")" "$mode" "$fastpath"
+        done
+        # Dirs emptied by exclusion are dropped; genuinely empty dirs ship.
+        if [ ! -e "$dstparent/$name" ] && [ -z "$(ls -A "$src")" ]; then
+            mkdir -p "$dstparent/$name"
+        fi
+    else
+        is_excluded "$rel" && return 0
+        mkdir -p "$dstparent"
+        if [ "$mode" = copy ]; then
+            log_verbose "Copying file: $rel"
+            cp "$src" "$dstparent/$name"
+        else
+            log_verbose "Symlinking file: $rel"
+            ln -sf "$src" "$dstparent/$name"
+        fi
+    fi
+}
+
+# Ensure we clean up temp state always, and the build directory on failure
+TMPWORK=""
+trap 'status=$?; \
+  [ -n "$TMPWORK" ] && rm -rf "$TMPWORK"; \
+  if [ $status -ne 0 ]; then \
   echo "Build failed; removing $BUILD_DIR"; \
   [ -n "$BUILD_DIR" ] && rm -rf "$BUILD_DIR"; \
   # Remove top-level build dir if empty
@@ -270,56 +421,26 @@ if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
     fi
 fi
 
+# Evaluate the .distignore exclusion file (exact .gitignore semantics) up front
+show_progress "Evaluating distignore rules"
+setup_exclusions
+
 # Copy only the libs directory and create symlinks for everything else
 show_progress "Copying source files"
-
-# Function to symlink directory contents recursively
-symlink_directory_contents() {
-    local src_dir="$1"
-    local build_dir="$2"
-    mkdir -p "$build_dir"
-    
-    for item in "$src_dir"/*; do
-        [ -e "$item" ] || continue
-        local item_name=$(basename "$item")
-        local abs_item=$(cd "$(dirname "$item")" && pwd)/$(basename "$item")
-        
-        if [ -d "$item" ]; then
-            symlink_directory_contents "$item" "$build_dir/$item_name"
-        else
-            log_verbose "Symlinking: $item_name"
-            ln -sf "$abs_item" "$build_dir/$item_name"
-        fi
-    done
-}
 
 # Function to handle src directory
 handle_src_dir() {
     local src_dir="$1"
     local build_src_dir="$2"
     mkdir -p "$build_src_dir"
-    
+
     for src_file in "$src_dir"/*; do
-        [ -e "$src_file" ] || continue
-        
-        local src_file_name=$(basename "$src_file")
-        local abs_src_file=$(cd "$(dirname "$src_file")" && pwd)/$(basename "$src_file")
-        
-        if [ -d "$src_file" ]; then
-            if should_copy_not_symlink "$src_file_name"; then
-                log_verbose "Copying directory: $src_file_name"
-                cp -r "$src_file" "$build_src_dir/$src_file_name"
-            else
-                log_verbose "Symlinking directory contents: $src_file_name"
-                symlink_directory_contents "$src_file" "$build_src_dir/$src_file_name"
-            fi
-        elif should_copy_not_symlink "$src_file_name"; then
-            log_verbose "Copying file: $src_file_name"
-            cp "$src_file" "$build_src_dir/$src_file_name"
-        else
-            log_verbose "Symlinking file: $src_file_name"
-            ln -sf "$abs_src_file" "$build_src_dir/$src_file_name"
-        fi
+        { [ -e "$src_file" ] || [ -L "$src_file" ]; } || continue
+        local src_file_name
+        src_file_name=$(basename "$src_file")
+        local mode=symlink
+        should_copy_not_symlink "$src_file_name" && mode=copy
+        stage_entry "$src_file" "$build_src_dir" "src/$src_file_name" "$mode" no
     done
 }
 
@@ -327,18 +448,21 @@ handle_src_dir() {
 handle_item() {
     local item="$1"
     local build_dir="$2"
-    local do_not_distribute="$3"
 
-    [ ! -e "$item" ] && return
-    
+    { [ -e "$item" ] || [ -L "$item" ]; } || return 0
+
+    local item_name
     item_name=$(basename "$item")
-    
-    # Skip build directory
-    [[ "$item_name" == "build" ]] && return
-    
-    # Check do-not-distribute.txt if it exists
-    if [ -n "$do_not_distribute" ] && grep -q "^$item_name$" "$do_not_distribute" 2>/dev/null; then
-        return
+
+    # Never distribute the build output dir or the git repo. These are also
+    # pruned from the candidate list, so a '!' rule cannot re-include them.
+    [[ "$item_name" == "build" || "$item_name" == ".git" ]] && return 0
+
+    # .distignore check (exact .gitignore semantics)
+    if [ -d "$item" ] && [ ! -L "$item" ]; then
+        is_excluded "$item_name/" && return 0
+    else
+        is_excluded "$item_name" && return 0
     fi
 
     case "$item_name" in
@@ -350,22 +474,21 @@ handle_item() {
             log_verbose "Merging project libs/* into $build_dir/libs"
             mkdir -p "$build_dir/libs"
             for libentry in "$item"/*; do
-                [ -e "$libentry" ] || continue
+                { [ -e "$libentry" ] || [ -L "$libentry" ]; } || continue
                 name=$(basename "$libentry")
-                if [ -d "$libentry" ]; then
-                    cp -r "$libentry" "$build_dir/libs/$name"
-                    # remove VCS metadata if present
+                stage_entry "$libentry" "$build_dir/libs" "libs/$name" copy
+                if [ -d "$build_dir/libs/$name" ]; then
+                    # remove VCS metadata if present (the '.*' baseline already
+                    # filters these on the per-file path; this covers fast-path copies)
                     rm -rf "$build_dir/libs/$name/.git" "$build_dir/libs/$name/.github" "$build_dir/libs/$name/.gitlab"
                     ensure_init_files "$build_dir/libs/$name"
-                else
-                    cp "$libentry" "$build_dir/libs/$name"
                 fi
             done
             ;;
         "scripts")
-            mkdir -p "$build_dir/scripts"
             for scripts_file in "$item"/*; do
-                [ -e "$scripts_file" ] && ln -sf "$scripts_file" "$build_dir/scripts/$(basename "$scripts_file")"
+                { [ -e "$scripts_file" ] || [ -L "$scripts_file" ]; } || continue
+                stage_entry "$scripts_file" "$build_dir/scripts" "scripts/$(basename "$scripts_file")" symlink
             done
             ;;
         "requirements.txt")
@@ -377,15 +500,9 @@ handle_item() {
         *)
             # Default: symlink. To copy a top-level item instead, list it (or a glob)
             # in EXCLUDE_FROM_BUILD_SYMLINK in scripts/build.conf.
-            if should_copy_not_symlink "$item_name"; then
-                if [ -d "$item" ]; then
-                    cp -r "$item" "$build_dir/$item_name"
-                else
-                    cp "$item" "$build_dir/$item_name"
-                fi
-            else
-                ln -sf "$item" "$build_dir/$item_name"
-            fi
+            local mode=symlink
+            should_copy_not_symlink "$item_name" && mode=copy
+            stage_entry "$item" "$build_dir" "$item_name" "$mode" yes
             ;;
     esac
 }
@@ -393,11 +510,7 @@ handle_item() {
 show_progress "Processing project files"
 # Process all items in PROJECT_ROOT
 for item in "$PROJECT_ROOT"/*; do
-    if [ -f "$SRC_DIR/do-not-distribute.txt" ]; then
-        handle_item "$item" "$BUILD_DIR" "$SRC_DIR/do-not-distribute.txt"
-    else
-        handle_item "$item" "$BUILD_DIR" ""
-    fi
+    handle_item "$item" "$BUILD_DIR"
 done
 
 show_progress "Updating version info"
