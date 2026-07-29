@@ -48,8 +48,7 @@ def test_badge_matches_pyproject_version(readme, pyproject_version):
     match = BADGE_RE.search(readme)
     assert match, "no ngargparser shields.io version badge found in README.md"
     assert match.group(1) == pyproject_version, (
-        f"README badge says {match.group(1)}, pyproject.toml says {pyproject_version} — "
-        "bump the badge in README.md"
+        f"README badge says {match.group(1)}, pyproject.toml says {pyproject_version} — bump the badge in README.md"
     )
 
 
