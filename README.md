@@ -233,6 +233,11 @@ Built-in rules layered around your file by `build.sh`:
   !.streamlit/       # ship a hidden dir and everything in it
   ```
 
+  `.env` is shown only as a syntax example — **don't actually ship it.** Its `APP_ROOT` is an
+  absolute path on the build machine, so a shipped `.env` points every target host at a directory
+  that doesn't exist there. `./configure` regenerates it correctly at install time; see
+  [What ships in the tarball](#what-ships-in-the-tarball).
+
   To ship only one file from a hidden dir, re-include the dir first (gitignore cannot re-include a file whose parent dir is excluded), then re-exclude the rest:
 
   ```gitignore
@@ -284,6 +289,13 @@ git push  ──────────────►   make build  ───�
 ### What ships in the tarball
 
 `make build` produces `build/IEDB_NG_<TOOL>-<VERSION>.tar.gz`. The orchestrator's only contract: the tarball top-level must contain `deploy/install.sh` and a `README` file. Both are scaffolded by `cli generate` and pass through the build pipeline unchanged.
+
+**`.env` never ships** — hidden files are excluded by default, and that's deliberate: `APP_ROOT` is machine-absolute (see [`.distignore`](#distignore--tarball-exclusions)). An extracted tarball is therefore *unconfigured* until `./configure` regenerates `.env` in place. `deploy/install.sh` does that for you, so an orchestrator-driven deploy needs no extra step. Extracting a tarball by hand does — run `uv sync && source .venv/bin/activate && ./configure` before invoking anything under `src/`. Skip it and the entry script exits 1 at import time:
+
+```
+This project has not been configured yet — '.env' is missing or incomplete.
+Run './configure' from the project root (/path/to/ng_my-app-1.0.0), then re-run this command.
+```
 
 ### `deploy/install.sh` — the deploy hook
 
