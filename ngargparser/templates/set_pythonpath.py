@@ -10,7 +10,19 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
-APP_ROOT = Path(os.getenv('APP_ROOT'))
+
+# A fresh build tree or clone has no .env (build.sh's glob skips dotfiles; .env is
+# gitignored), so APP_ROOT is unset until './configure' runs. Say that outright instead
+# of letting Path(None) raise a TypeError several frames deep in pathlib.
+_app_root = os.getenv('APP_ROOT')
+if not _app_root:
+    sys.exit(
+        "This project has not been configured yet — '.env' is missing or incomplete.\n"
+        f"Run './configure' from the project root ({Path(__file__).resolve().parents[2]}), "
+        "then re-run this command."
+    )
+
+APP_ROOT = Path(_app_root)
 
 # Auto-setup nxg-tools path when this module is imported
 _nxg_tools_path = str(APP_ROOT / 'libs')

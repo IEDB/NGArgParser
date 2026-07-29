@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] — 2026-07-29
+
+### Fixed
+- An unconfigured project now says so instead of raising a `pathlib` `TypeError`.
+  `src/core/set_pythonpath.py` ran `Path(os.getenv('APP_ROOT'))` unguarded, so a tree with no
+  `.env` — every freshly extracted build tarball (`build.sh`'s `"$PROJECT_ROOT"/*` glob skips
+  dotfiles) and every fresh clone (`.env` is gitignored) — died with
+  `TypeError: expected str, bytes or os.PathLike object, not NoneType` several frames deep in
+  `pathlib`. It now exits 1 with the project root and the `./configure` command to run. An empty
+  `APP_ROOT=` is caught too; previously it yielded `Path('')` and a silently wrong `libs/` path.
+  Existing projects pick this up via `cli sync` / `cli upgrade`.
+
 ## [0.3.4] — 2026-07-17
 
 ### Fixed
