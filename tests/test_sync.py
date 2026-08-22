@@ -7,6 +7,7 @@ FRAMEWORK_FILES = [
     "src/core/result_writer.py",
     "src/core/set_pythonpath.py",
     "src/core/configure.py",
+    "configure",
     "scripts/core/build.sh",
     "Makefile",
 ]
@@ -30,6 +31,20 @@ def test_drifted_core_file_is_restored(scaffolded_project, sync_args):
     rc = cli.sync_command(sync_args())
     assert rc == 0
     assert target.read_text() == pristine
+
+
+def test_broken_launcher_is_repaired_by_sync(scaffolded_project, sync_args):
+    # Simulate a project scaffolded before the configure-launcher fix: the
+    # old broken content had no shebang and never forwarded arguments.
+    launcher = scaffolded_project / "configure"
+    launcher.write_text("./src/core/configure.py")
+
+    rc = cli.sync_command(sync_args())
+    assert rc == 0
+
+    fixed = launcher.read_text()
+    assert fixed.startswith("#!/bin/sh")
+    assert '"$@"' in fixed
 
 
 def test_stale_stamp_is_restamped(scaffolded_project, sync_args):

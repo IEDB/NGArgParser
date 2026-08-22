@@ -52,6 +52,16 @@ def test_placeholders_are_substituted(in_tmp_dir):
     assert "img.shields.io/badge/ngargparser-" in readme
 
 
+def test_configure_launcher_forwards_arguments(in_tmp_dir):
+    cli.create_project_structure("demo")
+    root = in_tmp_dir / "demo"
+
+    launcher = (root / "configure").read_text()
+    assert launcher.startswith("#!/bin/sh")
+    assert '"$@"' in launcher
+    assert launcher != "./src/core/configure.py"  # the old, broken content
+
+
 def test_generated_project_has_gitignore(in_tmp_dir):
     cli.startapp_command(Namespace(project_name="demo"))
     gitignore = in_tmp_dir / "demo" / ".gitignore"

@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 
+import argparse
 import os
 import sys
 import importlib.util
@@ -49,8 +50,66 @@ def detect_dependency_tools(config):
             # (at minimum, it should have a _path variable)
             if f"{tool_prefix}_path" in config:
                 tools[tool_prefix] = tool_prefix
-    
+
     return tools
+
+def build_arg_parser(config, detected_tools):
+    """
+    Build an argparse parser with one --<tool>-path/-venv/-module/-lib-path
+    flag per field of every tool already declared in paths.py. Flags let you
+    set a dependency's fields without hand-editing paths.py; a flag only
+    exists for a tool `cli deps add` already declared.
+    """
+    parser = argparse.ArgumentParser(
+        prog="./configure",
+        description="Regenerate .env and per-tool setup scripts from paths.py. "
+                     "Optionally set a dependency's fields without hand-editing paths.py.",
+    )
+    if not detected_tools:
+        parser.epilog = "No dependencies declared in paths.py yet — run `cli deps add <tool>` first."
+        return parser
+
+    for tool_prefix in detected_tools:
+        flag_base = tool_prefix.replace("_", "-")
+        for suffix in ("path", "venv", "module", "lib_path"):
+            var_name = f"{tool_prefix}_{suffix}"
+            current = config.get(var_name)
+            parser.add_argument(
+                f"--{flag_base}-{suffix.replace('_', '-')}",
+                default=None,
+                help=f"Set {var_name} (currently: {current!r}).",
+            )
+    return parser
+
+def apply_paths_overrides(config, args, config_path):
+    """
+    Apply any --<tool>-<field> flags to `config` and persist them back into
+    `config_path` (paths.py). Returns the set of variable names changed.
+    """
+    overrides = {
+        var_name: value
+        for var_name, value in vars(args).items()
+        if value is not None and config.get(var_name) != value
+    }
+    if not overrides:
+        return overrides
+
+    with open(config_path, "r") as f:
+        content = f.read()
+
+    for var_name, value in overrides.items():
+        content = re.sub(
+            rf"(?m)^{re.escape(var_name)}\s*=.*$",
+            f"{var_name}={value!r}",
+            content,
+        )
+        config[var_name] = value
+        print(f"* Set {var_name} = {value!r} in paths.py")
+
+    with open(config_path, "w") as f:
+        f.write(content)
+
+    return overrides
 
 def render_env_content(config, app_root):
     """Build the .env content for `config`. Returns a string; callers
@@ -147,12 +206,20 @@ def cleanup_old_shell_scripts(current_tools):
 
 def main():
     config = load_config(CONFIG_PATH)
-    
+    config_present = os.path.exists(CONFIG_PATH)
+
+    # Dynamically detect all dependency tools from paths.py, build --<tool>-*
+    # flags from them, and apply any the user supplied before doing anything
+    # else, so the rest of this run sees the updated values.
+    detected_tools = detect_dependency_tools(config)
+    args = build_arg_parser(config, detected_tools).parse_args()
+    apply_paths_overrides(config, args, CONFIG_PATH)
+
     # Always ensure APP_ROOT is present in config
     app_root = os.path.abspath(".")
     if 'APP_ROOT' not in config:
         config['APP_ROOT'] = app_root
-    
+
     # Ensure APP_NAME is set. Prefer persisted APP_NAME from .env (created by 'cli g').
     # If not present, derive from build dir name pattern 'ng_<name>-local' or fall back to directory name.
     env_app_name = os.getenv('APP_NAME')
@@ -162,12 +229,10 @@ def main():
         base_name = os.path.basename(app_root)
         match = re.match(r'^ng[_-]([A-Za-z0-9_]+?)-local$', base_name)
         config['APP_NAME'] = match.group(1) if match else base_name
-    
+
     # Regenerate .env file based on current paths.py content (this ensures
     # removed dependencies are cleaned up), but skip the write entirely when
     # nothing would actually change.
-    config_present = os.path.exists(CONFIG_PATH)
-
     env_content = render_env_content(config, app_root)
     existing_content = None
     if os.path.exists(DOT_ENV_PATH):
@@ -185,9 +250,6 @@ def main():
         print(f"* Minimal .env file {action} (no external dependencies declared).")
     else:
         print(f"* .env file {action}")
-
-    # Dynamically detect all dependency tools from paths.py
-    detected_tools = detect_dependency_tools(config)
 
     # Clean up shell scripts for removed dependencies
     removed = cleanup_old_shell_scripts(set(detected_tools.keys()))

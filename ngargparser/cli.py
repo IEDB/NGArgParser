@@ -270,15 +270,9 @@ def create_example_structure():
         shutil.copy(f"{TEMPLATE_DIR}/deploy/install.sh", f"{project_name}/deploy/install.sh")
         replace_text_in_place(f"{project_name}/deploy/install.sh", "{TOOL_NAME}", project_name)
 
-        # Create configure executable file
-        configure_file = f"{project_name}/configure"
-
-        # Create and write the line into the configure file
-        with open(configure_file, "w") as f:
-            f.write("./src/core/configure.py")
-
-        # Make the file executable
-        os.chmod(configure_file, 0o755)
+        # Copy the configure launcher (forwards args to src/core/configure.py)
+        shutil.copy(f"{TEMPLATE_DIR}/configure", f"{project_name}/configure")
+        os.chmod(f"{project_name}/configure", 0o755)
 
         # Render pyproject.toml from template (and lock with uv if available)
         write_pyproject_toml(project_name, project_name)
@@ -361,15 +355,9 @@ def create_project_structure(project_name):
         replace_text_in_place(f"{project_name}/src/{parser_file}", "ChildArgumentParser", parser_name)
         replace_text_in_place(f"{project_name}/src/core/configure.py", "PROJECT_NAME", project_name)
 
-        # Create configure executable file
-        configure_file = f"{project_name}/configure"
-
-        # Create and write the line into the configure file
-        with open(configure_file, "w") as f:
-            f.write("./src/core/configure.py")
-
-        # Make the file executable
-        os.chmod(configure_file, 0o755)
+        # Copy the configure launcher (forwards args to src/core/configure.py)
+        shutil.copy(f"{TEMPLATE_DIR}/configure", f"{project_name}/configure")
+        os.chmod(f"{project_name}/configure", 0o755)
 
         # Render pyproject.toml from template (and lock with uv if available)
         write_pyproject_toml(project_name, project_name)
@@ -1660,6 +1648,7 @@ def sync_command(args):
             (f"{NGPARSER_DIR}/result_writer.py", "src/core/result_writer.py", False),
             (f"{TEMPLATE_DIR}/set_pythonpath.py", "src/core/set_pythonpath.py", False),
             (f"{TEMPLATE_DIR}/configure.py", "src/core/configure.py", True),
+            (f"{TEMPLATE_DIR}/configure", "configure", True),
             (f"{TEMPLATE_DIR}/build.sh", "scripts/core/build.sh", True),
             (f"{TEMPLATE_DIR}/Makefile", "Makefile", False),
         ]
