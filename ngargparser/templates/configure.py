@@ -52,16 +52,22 @@ def detect_dependency_tools(config):
     
     return tools
 
-def write_env_info(config, output_path):
-    with open(output_path, "w") as f:
-        for key, value in config.items():
-            if value is None:
-                continue
+def render_env_content(config, app_root):
+    """Build the .env content for `config`. Returns a string; callers
+    decide whether it differs from what's on disk before writing."""
+    if not config or (set(config.keys()) <= {'APP_ROOT', 'APP_NAME'}):
+        return f"APP_ROOT={app_root}\nAPP_NAME={config['APP_NAME']}\n"
 
-            if isinstance(value, str):
-                value = value.strip("'").strip('"')
-            
-            f.write(f"{key.upper()}={value}\n")
+    lines = []
+    for key, value in config.items():
+        if value is None:
+            continue
+
+        if isinstance(value, str):
+            value = value.strip("'").strip('"')
+
+        lines.append(f"{key.upper()}={value}\n")
+    return "".join(lines)
 
 def create_shell_script(config, tool_prefix, output_path):
     """
@@ -157,21 +163,27 @@ def main():
         match = re.match(r'^ng[_-]([A-Za-z0-9_]+?)-local$', base_name)
         config['APP_NAME'] = match.group(1) if match else base_name
     
-    # Always regenerate .env file based on current paths.py content
-    # This ensures removed dependencies are cleaned up
-    env_exists = os.path.exists(DOT_ENV_PATH)
-    action = "updated" if env_exists else "created"
-    
+    # Regenerate .env file based on current paths.py content (this ensures
+    # removed dependencies are cleaned up), but skip the write entirely when
+    # nothing would actually change.
     config_present = os.path.exists(CONFIG_PATH)
 
-    if not config or (set(config.keys()) <= {'APP_ROOT', 'APP_NAME'}):
-        # Either no paths.py at all, or paths.py declares no dependency variables.
+    env_content = render_env_content(config, app_root)
+    existing_content = None
+    if os.path.exists(DOT_ENV_PATH):
+        with open(DOT_ENV_PATH, "r") as f:
+            existing_content = f.read()
+
+    if existing_content == env_content:
+        action = "unchanged"
+    else:
         with open(DOT_ENV_PATH, "w") as f:
-            f.write(f"APP_ROOT={app_root}\n")
-            f.write(f"APP_NAME={config['APP_NAME']}\n")
+            f.write(env_content)
+        action = "updated" if existing_content is not None else "created"
+
+    if not config or (set(config.keys()) <= {'APP_ROOT', 'APP_NAME'}):
         print(f"* Minimal .env file {action} (no external dependencies declared).")
     else:
-        write_env_info(config, DOT_ENV_PATH)
         print(f"* .env file {action}")
 
     # Dynamically detect all dependency tools from paths.py
