@@ -1109,12 +1109,6 @@ def startapp_command(args):
     # stay out of the user's git history from the first commit.
     ensure_gitignore(os.path.join(project_dir_name, ".gitignore"))
 
-    # Create an empty paths.py — users declare external tool deps later via `cli deps add`.
-    paths_file_path = os.path.join(project_dir_name, "paths.py")
-    with open(paths_file_path, "w", encoding="utf-8") as f:
-        f.write("")
-    print(f"\033[92m✓\033[0m Created empty '\033[92m{paths_file_path}\033[0m'.")
-
     # Write initial .env with APP_NAME and APP_ROOT in the new project root
     try:
         project_root_abs = os.path.abspath(project_dir_name)

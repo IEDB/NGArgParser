@@ -84,7 +84,7 @@ my-app/
 ├── README                      # your app's user-facing README
 ├── license-LJI.txt
 ├── .distignore                 # tarball exclusions — .gitignore syntax (yours)
-├── paths.py                    # declares external tool deps (yours)
+├── paths.py                    # declares external tool deps (yours; created by `cli deps add`)
 ├── src/
 │   ├── core/                   # framework-owned (sync overwrites) — DO NOT EDIT
 │   │   ├── NGArgumentParser.py

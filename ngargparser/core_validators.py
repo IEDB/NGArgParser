@@ -26,13 +26,18 @@ def get_dependencies_from_paths(file_path="paths.py"):
         file_path (str): Path to the paths.py file
 
     Returns:
-        list: List of dependency tool names that have valid paths
+        list: List of dependency tool names that have valid paths. A missing
+        file is treated the same as an existing, empty file (returns an
+        empty list) rather than raising.
     """
     try:
         with open(file_path, "r") as file:
             content = file.read()
     except FileNotFoundError:
-        raise FileNotFoundError(f"Could not find {file_path}")
+        # A missing paths.py is the scaffold's default state right after
+        # `cli startapp` (before any `cli deps add`) — treat it the same as
+        # an existing-but-empty file: zero dependencies declared.
+        return []
 
     dependencies = []
 
@@ -76,7 +81,9 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
                                                looks for paths.py in the same directory as this script
 
     Returns:
-        dict: Dictionary with tool names as keys and their created directories as values
+        dict: Dictionary with tool names as keys and their created directories
+        as values. A missing paths.py file is treated the same as an
+        existing, empty file: the default directory structure is created.
     """
     # Handle paths.py file location
     if paths_file_path is None:
@@ -92,7 +99,9 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
         with open(paths_file, "r") as file:
             content = file.read()
     except FileNotFoundError:
-        raise FileNotFoundError(f"Could not find {paths_file}")
+        # Missing file == empty file: no tool sections parsed below, so
+        # has_dependencies stays False and the default structure is built.
+        content = ""
 
     created_structures = {}
 

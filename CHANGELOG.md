@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- A project missing `paths.py` (deleted, or scaffolded before this fix) crashed with an
+  unhandled `FileNotFoundError` the moment `preprocess --output-dir` was parsed.
+  `core_validators.py`'s `get_dependencies_from_paths` and
+  `create_directory_structure_for_dependencies` both raised on a missing file instead of
+  treating it as the zero-dependency case an *empty* `paths.py` already handled correctly.
+  Both now treat "missing" the same as "empty" — genuinely unexpected read errors (e.g.
+  `paths.py` turning out to be a directory) still propagate. Existing projects pick this up
+  via `cli sync` / `cli upgrade`.
+
+### Changed
+- `cli generate` no longer writes an empty `paths.py` into new projects. It was only ever a
+  placeholder for `cli deps add` to fill in later, and pre-creating it turned out to be
+  unnecessary now that a missing `paths.py` is a fully supported state (see Fixed, above) —
+  the rest of the framework (`./configure`, `cli deps add/remove/list`) already treated a
+  missing file as valid. `cli deps add` still creates the file the first time you declare a
+  dependency.
+
 ## [0.3.5] — 2026-07-29
 
 ### Fixed

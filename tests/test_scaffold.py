@@ -61,11 +61,11 @@ def test_generated_project_has_gitignore(in_tmp_dir):
     assert "*.bak" in content
 
 
-def test_startapp_writes_paths_and_env(in_tmp_dir):
+def test_startapp_writes_env_but_not_paths(in_tmp_dir):
     rc = cli.startapp_command(Namespace(project_name="demo")) or 0
     assert rc == 0
     root = in_tmp_dir / "demo"
-    assert (root / "paths.py").exists()
+    assert not (root / "paths.py").exists()
     env = (root / ".env").read_text()
     assert "APP_NAME=demo" in env
     assert "APP_ROOT=" in env
