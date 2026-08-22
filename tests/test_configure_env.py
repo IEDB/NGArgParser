@@ -100,6 +100,13 @@ def test_help_with_no_dependencies_shows_hint_not_flags(scaffolded_project):
     assert "-path" not in output
 
 
+def test_unfilled_path_error_suggests_the_configure_flag(scaffolded_project):
+    cli.add_deps_to_paths("paths.py", ["tcell-class-i"])
+    result = run_configure(scaffolded_project, expect_success=False)
+    assert result.returncode == 1
+    assert "./configure --tcell-class-i-path=<path>" in result.stdout
+
+
 def run_launcher(project_dir, *args, expect_success=True):
     """Invoke the real `./configure` launcher (not the inner script
     directly) — this is the actual entry point users run."""

@@ -146,9 +146,11 @@ def create_shell_script(config, tool_prefix, output_path):
 
     # Check if required path is None or empty
     if tool_path is None or (isinstance(tool_path, str) and tool_path.strip() == ""):
+        flag_base = tool_prefix.replace("_", "-")
         print(
             f"\033[91m✗\033[0m \033[1m{tool_prefix}_path\033[0m is None in paths.py. "
-            f"Set the path, or run '\033[1mcli deps remove {tool_prefix}\033[0m' to drop this dependency."
+            f"Set it with '\033[1m./configure --{flag_base}-path=<path>\033[0m', "
+            f"or run '\033[1mcli deps remove {tool_prefix}\033[0m' to drop this dependency."
         )
         return False
 
