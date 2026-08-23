@@ -2,7 +2,7 @@
 
 > Framework for building IEDB-style command-line scientific tools — standardized argument parsing, dependency wiring, and reproducible tarball builds.
 
-[![ngargparser](https://img.shields.io/badge/ngargparser-0.3.5-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
+[![ngargparser](https://img.shields.io/badge/ngargparser-0.4.0-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
 
 After installing the framework, you get a `cli` command and a Python class (`NGArgumentParser`) that together produce well-shaped scientific CLI apps:
 
@@ -34,7 +34,7 @@ uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-d
 uv tool install 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git'
 
 # Pin to a tag for reproducibility (SSH form shown; HTTPS works the same way):
-uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.3.5'
+uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.4.0'
 
 # Upgrade later (either works)
 cli upgrade                 # self-update to the latest release tag on GitLab

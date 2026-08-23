@@ -5,9 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] — 2026-08-23
+
+### Added
+- `./configure` now takes a flag for every field of every declared dependency —
+  `--<name>-path`, `--<name>-venv`, `--<name>-module`, `--<name>-lib-path` — so tool paths can be
+  set from a script or a one-liner instead of hand-editing `paths.py`. Values persist into
+  `paths.py`. `./configure -h` lists the available flags with each field's current value. Flags
+  exist only for dependencies `cli deps add` has declared, so a typo'd name is rejected rather
+  than silently accepted. This replaces the `sed` line deploy scripts currently use to patch
+  `paths.py` on the target host.
+- A tool that carries its own virtualenv at `{tool_path}/.venv` — anything built by `uv sync`,
+  which is every ngargparser project — is now used automatically when the dependency's `_venv`
+  field is empty. The value is re-derived on every run and deliberately **not** written into
+  `paths.py`, so one `paths.py` works unchanged across dev laptop, dev server, and SDSC, each
+  resolving its own local `.venv`. An explicit `_venv` always wins, so pyenv and conda
+  environments (which live outside the tool directory, under their own names) are untouched.
+  Detection checks for `bin/activate` rather than just the directory, so an empty leftover
+  `.venv/` can't yield a broken setup script.
+- `./configure` warns when a configured `_path`, `_venv`, or `_lib_path` directory doesn't
+  exist. Advisory only: `.env` and the per-tool shell scripts are still written and the exit
+  code is unchanged, so a path that is valid on the deploy target but absent on the machine
+  running `./configure` still works.
 
 ### Fixed
+- The `./configure` launcher silently discarded every argument. It was a plain line of text
+  with no shebang and no `"$@"`, so the shell ran the inner script with no arguments at all —
+  `./configure --help` and every other flag were dropped without a word. It is now a real
+  `#!/bin/sh` script that forwards its arguments, and it is sync-managed, so `cli sync` repairs
+  it in projects scaffolded before this fix.
+- `.env` was truncated and rewritten on every `./configure` run even when the resulting content
+  was byte-identical, and reported "updated" regardless — the label reflected only whether the
+  file had existed beforehand, not whether anything changed. It is now written only when the
+  content actually differs, and reports `unchanged` otherwise.
+- The "path is None" error now names the exact `./configure --<name>-path=<path>` command to fix
+  it, instead of saying only that the path should be set.
 - A project missing `paths.py` (deleted, or scaffolded before this fix) crashed with an
   unhandled `FileNotFoundError` the moment `preprocess --output-dir` was parsed.
   `core_validators.py`'s `get_dependencies_from_paths` and
