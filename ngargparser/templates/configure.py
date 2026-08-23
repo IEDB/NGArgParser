@@ -154,6 +154,15 @@ def create_shell_script(config, tool_prefix, output_path):
         )
         return False
 
+    # Advisory only: a missing directory doesn't block .env/script generation,
+    # it just warns the tool may not work until the path is corrected.
+    for field, value in (("path", tool_path), ("venv", venv), ("lib_path", lib_path)):
+        if value and not os.path.isdir(value):
+            print(
+                f"\033[93m⚠\033[0m  \033[1m{tool_prefix}_{field}\033[0m = '{value}' does not exist. "
+                f"'{tool_prefix}' may fail until this is corrected."
+            )
+
     lines = ["#!/bin/bash\n"]
 
     lines.append(f"# ---- Setup for {tool_prefix.upper()} ----")

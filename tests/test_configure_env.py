@@ -107,6 +107,44 @@ def test_unfilled_path_error_suggests_the_configure_flag(scaffolded_project):
     assert "./configure --tcell-class-i-path=<path>" in result.stdout
 
 
+def test_nonexistent_path_warns_but_does_not_block(scaffolded_project):
+    cli.add_deps_to_paths("paths.py", ["tcell-class-i"])
+
+    result = run_configure(scaffolded_project, "--tcell-class-i-path=/does/not/exist")
+
+    assert result.returncode == 0
+    assert "tcell_class_i_path" in result.stdout
+    assert "does not exist" in result.stdout
+
+    env = (scaffolded_project / ".env").read_text()
+    assert "TCELL_CLASS_I_PATH=/does/not/exist" in env
+    script = (scaffolded_project / "setup_tcell_class_i_env.sh").read_text()
+    assert "export TCELL_CLASS_I_PATH=/does/not/exist" in script
+
+
+def test_existing_path_does_not_warn(scaffolded_project):
+    cli.add_deps_to_paths("paths.py", ["tcell-class-i"])
+
+    result = run_configure(scaffolded_project, f"--tcell-class-i-path={scaffolded_project}")
+
+    assert result.returncode == 0
+    assert "does not exist" not in result.stdout
+
+
+def test_nonexistent_venv_is_warned_independently_of_path(scaffolded_project):
+    cli.add_deps_to_paths("paths.py", ["tcell-class-i"])
+
+    result = run_configure(
+        scaffolded_project,
+        f"--tcell-class-i-path={scaffolded_project}",
+        "--tcell-class-i-venv=/does/not/exist/venv",
+    )
+
+    assert result.returncode == 0
+    assert "tcell_class_i_venv" in result.stdout
+    assert "does not exist" in result.stdout
+
+
 def run_launcher(project_dir, *args, expect_success=True):
     """Invoke the real `./configure` launcher (not the inner script
     directly) — this is the actual entry point users run."""
