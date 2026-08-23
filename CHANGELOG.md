@@ -29,6 +29,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   running `./configure` still works.
 
 ### Fixed
+- `predict` silently accepted `--input-tsv` and `--input-json` together. The scaffold's
+  `if/elif` chain then used the TSV and dropped the JSON, exiting 0 with believable output
+  computed from only one of the two inputs — in a batch pipeline nothing downstream could
+  detect it. They are now a real mutually exclusive group, so argparse rejects the pair with
+  exit 2 and the usage line advertises `(--input-tsv | --input-json)`. Whether an input is
+  *required* remains the tool developer's decision; the group is not marked required.
+- `predict`'s input arguments rendered *below* the output arguments in `--help`. The base
+  class now creates the input group before adding the output arguments (argparse orders
+  groups by creation, not by when they are populated) and exposes it as
+  `predict_input_group` for child parsers to populate or retitle. An unpopulated group
+  renders nothing, so tools that declare no inputs are unaffected.
+- `postprocess`'s `--postprocessed-results-dir/-p` sat in a group titled "other required
+  parameters" while being declared without `required=True`, so the help text asserted
+  something argparse never enforced. The title was the error, not the flag: `axelf` accepts
+  `-o` in its place, and `conservancy` and `rate` fall back to the working directory. It now
+  lives in the existing "optional parameters" group alongside `-o`/`-f`. Parsing is unchanged.
 - The `./configure` launcher silently discarded every argument. It was a plain line of text
   with no shebang and no `"$@"`, so the shell ran the inner script with no arguments at all —
   `./configure --help` and every other flag were dropped without a word. It is now a real
@@ -56,6 +72,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the rest of the framework (`./configure`, `cli deps add/remove/list`) already treated a
   missing file as valid. `cli deps add` still creates the file the first time you declare a
   dependency.
+- **Removed the `postprocess_required_group` attribute** from the base class, since `-p` moved
+  into the existing optional group (see Fixed, above). Nothing in ngargparser or the sibling
+  IEDB tools referenced it, but it was a public attribute of a class tools subclass: a parser
+  that called `self.postprocess_required_group.add_argument(...)` will raise `AttributeError`
+  after `cli sync`. Use `self.postprocess_optional_group`, or add a group of your own.
 
 ## [0.3.5] — 2026-07-29
 
