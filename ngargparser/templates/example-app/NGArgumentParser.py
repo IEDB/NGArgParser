@@ -275,16 +275,16 @@ class NGArgumentParser(argparse.ArgumentParser):
                                 type=validators.validate_directory,
                                 help="directory containing the result files to postprocess")
 
-        # Other required parameters
-        self.postprocess_required_group = self.parser_postprocess.add_argument_group('other required parameters')
+        # Optional parameters group. -p sits here alongside -o/-f: all three
+        # concern where output goes. It is deliberately not required — tools
+        # such as axelf, conservancy, and rate accept -o instead or fall back
+        # to the working directory.
+        self.postprocess_optional_group = self.parser_postprocess.add_argument_group('optional parameters')
 
-        self.postprocess_required_group.add_argument("--postprocessed-results-dir", "-p",
+        self.postprocess_optional_group.add_argument("--postprocessed-results-dir", "-p",
                                 dest="postprocess_result_dir",
                                 type=validators.validate_directory,
                                 help="a directory to contain the post-processed results")
-
-        # Optional parameters group  
-        self.postprocess_optional_group = self.parser_postprocess.add_argument_group('optional parameters')
 
         self.postprocess_optional_group.add_argument("--output-prefix", "-o",
                                 dest="output_prefix",
@@ -332,6 +332,14 @@ class NGArgumentParser(argparse.ArgumentParser):
 
         # Add patch for groups
         self.patch_parser_for_groups(self.parser_predict)
+
+        # Created before the output arguments so 'input options' sorts above
+        # 'output options' in help (argparse orders groups by creation, not by
+        # when they're populated). Tool-specific input arguments go here; an
+        # unpopulated group renders nothing, so tools with no inputs are
+        # unaffected. Rename per-tool with:
+        #   self.predict_input_group.title = "..."
+        self.predict_input_group = self.parser_predict.add_argument_group("input options")
 
         # Common output arguments shared across all tools (framework-owned).
         # Results serialize uniformly via core.result_writer.write_results: tsv by

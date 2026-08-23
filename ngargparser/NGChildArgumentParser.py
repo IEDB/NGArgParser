@@ -36,16 +36,19 @@ class ChildArgumentParser(NGArgumentParser):
 
         # ADD tool-specific params 
         # -----------------------------------------------------
-        self.parser_predict.add_argument("--input-tsv", "-t",
+        # Inputs are mutually exclusive: argparse rejects passing both with
+        # exit 2, rather than silently using one and ignoring the other.
+        # predict_input_group comes from the framework base class so it renders
+        # above 'output options'; rename it by setting its .title.
+        inputs = self.predict_input_group.add_mutually_exclusive_group()
+        inputs.add_argument("--input-tsv", "-t",
                                 dest="input_tsv",
                                 type=argparse.FileType('r'),
-                                default=None,
                                 help="Perform counting given a TSV file.",
                                 )
-        self.parser_predict.add_argument("--input-json", "-j",
+        inputs.add_argument("--input-json", "-j",
                                 dest="input_json",
                                 type=argparse.FileType('r'),
-                                default=None,
                                 help="Perform counting given a JSON file.",
                                 )
         # NOTE: --output-prefix/-o and --output-format/-f are provided by the
