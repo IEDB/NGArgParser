@@ -53,6 +53,29 @@ def detect_dependency_tools(config):
 
     return tools
 
+def resolve_tool_venvs(config, detected_tools):
+    """Fill in a tool's virtualenv from a .venv inside its own directory,
+    when the user hasn't set one explicitly and a usable one is there.
+
+    Resolved in memory only -- paths.py keeps its None, so the same file
+    stays portable across hosts (dev laptop, dev server, SDSC), each
+    resolving its own local .venv at configure time. A tool whose venv
+    lives elsewhere (pyenv, conda) simply isn't matched here; that's what
+    the explicit <tool>_venv setting is for.
+    """
+    for tool_prefix in detected_tools:
+        if config.get(f"{tool_prefix}_venv"):
+            continue  # an explicit setting always wins
+        tool_path = config.get(f"{tool_prefix}_path")
+        if not tool_path:
+            continue
+        candidate = os.path.join(tool_path, ".venv")
+        # Check the file that actually gets sourced, not just the directory:
+        # an empty or half-deleted .venv/ would otherwise yield a broken script.
+        if os.path.isfile(os.path.join(candidate, "bin", "activate")):
+            config[f"{tool_prefix}_venv"] = candidate
+            print(f"* {tool_prefix}: using virtualenv found at {candidate}")
+
 def build_arg_parser(config, detected_tools):
     """
     Build an argparse parser with one --<tool>-path/-venv/-module/-lib-path
@@ -225,6 +248,10 @@ def main():
     detected_tools = detect_dependency_tools(config)
     args = build_arg_parser(config, detected_tools).parse_args()
     apply_paths_overrides(config, args, CONFIG_PATH)
+
+    # Fall back to a tool's own bundled .venv for any tool without an
+    # explicit virtualenv, so paths.py doesn't need a host-specific path.
+    resolve_tool_venvs(config, detected_tools)
 
     # Always ensure APP_ROOT is present in config
     app_root = os.path.abspath(".")

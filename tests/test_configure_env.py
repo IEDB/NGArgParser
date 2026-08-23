@@ -180,3 +180,90 @@ def test_launcher_forwards_path_flag_and_persists_it(scaffolded_project):
 def test_launcher_with_no_args_still_works(scaffolded_project):
     output = run_launcher(scaffolded_project).stdout
     assert "Minimal .env file" in output
+
+
+def make_tool_dir(tmp_path, name="faketool", with_venv=True, venv_usable=True):
+    """Build a fake peer-tool directory, optionally containing a .venv.
+
+    `venv_usable=False` creates an empty .venv/ (no bin/activate) -- the
+    case a plain isdir() check would wrongly accept.
+    """
+    tool_dir = tmp_path / name
+    tool_dir.mkdir(exist_ok=True)
+    if with_venv:
+        venv = tool_dir / ".venv"
+        if venv_usable:
+            (venv / "bin").mkdir(parents=True, exist_ok=True)
+            (venv / "bin" / "activate").write_text("# fake activate\n")
+        else:
+            venv.mkdir(exist_ok=True)
+    return tool_dir
+
+
+def test_bundled_venv_is_auto_detected(scaffolded_project, tmp_path):
+    cli.add_deps_to_paths("paths.py", ["tcell-class-i"])
+    tool_dir = make_tool_dir(tmp_path)
+
+    result = run_configure(scaffolded_project, f"--tcell-class-i-path={tool_dir}")
+
+    assert result.returncode == 0
+    assert f"using virtualenv found at {tool_dir}/.venv" in result.stdout
+
+    env = (scaffolded_project / ".env").read_text()
+    assert f"TCELL_CLASS_I_VENV={tool_dir}/.venv" in env
+
+    script = (scaffolded_project / "setup_tcell_class_i_env.sh").read_text()
+    assert f"source {tool_dir}/.venv/bin/activate" in script
+
+
+def test_auto_detected_venv_is_not_written_to_paths_py(scaffolded_project, tmp_path):
+    cli.add_deps_to_paths("paths.py", ["tcell-class-i"])
+    tool_dir = make_tool_dir(tmp_path)
+
+    run_configure(scaffolded_project, f"--tcell-class-i-path={tool_dir}")
+
+    # The resolution is per-run and in-memory: paths.py stays portable.
+    paths_content = (scaffolded_project / "paths.py").read_text()
+    assert "tcell_class_i_venv=None" in paths_content
+
+
+def test_explicit_venv_is_never_overridden(scaffolded_project, tmp_path):
+    cli.add_deps_to_paths("paths.py", ["tcell-class-i"])
+    tool_dir = make_tool_dir(tmp_path)
+    explicit = make_tool_dir(tmp_path, name="pyenv-style-env") / ".venv"
+
+    result = run_configure(
+        scaffolded_project,
+        f"--tcell-class-i-path={tool_dir}",
+        f"--tcell-class-i-venv={explicit}",
+    )
+
+    assert result.returncode == 0
+    assert "using virtualenv found at" not in result.stdout
+    script = (scaffolded_project / "setup_tcell_class_i_env.sh").read_text()
+    assert f"source {explicit}/bin/activate" in script
+    assert f"{tool_dir}/.venv/bin/activate" not in script
+
+
+def test_no_bundled_venv_stays_silent(scaffolded_project, tmp_path):
+    cli.add_deps_to_paths("paths.py", ["tcell-class-i"])
+    tool_dir = make_tool_dir(tmp_path, with_venv=False)
+
+    result = run_configure(scaffolded_project, f"--tcell-class-i-path={tool_dir}")
+
+    # The pyenv/conda case: nothing found is normal, not a warning.
+    assert result.returncode == 0
+    assert "using virtualenv found at" not in result.stdout
+    assert "does not exist" not in result.stdout
+
+
+def test_unusable_venv_dir_is_not_adopted(scaffolded_project, tmp_path):
+    cli.add_deps_to_paths("paths.py", ["tcell-class-i"])
+    tool_dir = make_tool_dir(tmp_path, venv_usable=False)
+
+    result = run_configure(scaffolded_project, f"--tcell-class-i-path={tool_dir}")
+
+    assert result.returncode == 0
+    assert "using virtualenv found at" not in result.stdout
+    script = (scaffolded_project / "setup_tcell_class_i_env.sh").read_text()
+    assert "source " not in script
