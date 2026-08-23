@@ -68,10 +68,12 @@ What just happened:
 When you need an external tool dep:
 
 ```bash
-cli deps add mhci-predictor pepx     # writes stub blocks to paths.py
-$EDITOR paths.py                      # fill in actual binary paths
-./configure                           # generate per-tool setup_<name>_env.sh + .env
+cli deps add mhci-predictor pepx                    # writes stub blocks to paths.py
+./configure --mhci-predictor-path=/opt/tools/mhci   # fill in paths (or edit paths.py by hand)
+./configure                                          # generate per-tool setup_<name>_env.sh + .env
 ```
+
+See [Configuring tool paths](#configuring-tool-paths-configure) for the full set of flags.
 
 ## Project layout
 
@@ -173,7 +175,7 @@ ngargparser separates two kinds of dependencies and uses different tools for eac
 | Kind | Manage with | Manifest |
 |---|---|---|
 | Python packages (numpy, pandas, …) | `uv` | `pyproject.toml` + `uv.lock` |
-| External binaries / HPC modules / `LD_LIBRARY_PATH` | `cli deps` + manual `paths.py` edits | `paths.py` |
+| External binaries / HPC modules / `LD_LIBRARY_PATH` | `cli deps` + `./configure` | `paths.py` |
 
 ### Python packages (`uv`)
 
@@ -195,9 +197,63 @@ cli deps list                           # show declared deps + which paths are f
 cli deps                                # bare → interactive add/remove menu
 ```
 
-`cli deps add` writes a stub: `<name>_path = None`, `<name>_venv = None`, `<name>_module = None`, `<name>_lib_path = None`. You then edit `paths.py` to fill in actual paths and run `./configure` to regenerate `setup_<name>_env.sh` shell scripts and the project's `.env`.
+`cli deps add` writes a stub: `<name>_path = None`, `<name>_venv = None`, `<name>_module = None`, `<name>_lib_path = None`. Fill those in with `./configure --<name>-path=…` (or by editing `paths.py` directly), then run `./configure` to regenerate `setup_<name>_env.sh` shell scripts and the project's `.env`.
 
 `cli deps remove` accepts the original name (`mhci-predictor`), the display form (`Mhci Predictor`), or the var-name form (`mhci_predictor`).
+
+### Configuring tool paths (`./configure`)
+
+Run from the project root. It reads `paths.py` and regenerates two things: the project's `.env`, and one `setup_<name>_env.sh` per declared dependency.
+
+`./configure -h` lists a flag for every field of every dependency you've declared, along with what each is currently set to:
+
+```
+usage: ./configure [-h] [--mhci-path MHCI_PATH] [--mhci-venv MHCI_VENV]
+                   [--mhci-module MHCI_MODULE] [--mhci-lib-path MHCI_LIB_PATH]
+                   ...
+  --mhci-path MHCI_PATH
+                        Set mhci_path (currently: None).
+```
+
+Those flags set values without hand-editing `paths.py`, and they **persist** into it:
+
+```bash
+./configure --mhci-path=/opt/tools/mhci          # writes mhci_path into paths.py
+./configure --mhci-venv=/home/me/.pyenv/versions/3.11.3/envs/myenv
+./configure --mhci-module=python/3.11            # optional: environment module
+./configure --mhci-lib-path=/opt/lib             # optional: prepended to LD_LIBRARY_PATH
+```
+
+A flag only exists for a dependency `cli deps add` has already declared — a typo'd or undeclared name is rejected rather than silently creating something.
+
+#### Virtualenv resolution
+
+| `<name>_venv` in `paths.py` | What `./configure` uses |
+|---|---|
+| Set to a path | That path, always — auto-detection is skipped entirely |
+| Empty, and `<name>_path`/`.venv` exists | That `.venv`, resolved fresh each run and **not** written into `paths.py` |
+| Empty, no such `.venv` | No virtualenv — the generated script simply omits its `source` line |
+
+So a tool that bundles its own `.venv` (anything built by `uv sync`, which is every ngargparser project) needs no venv configuration at all:
+
+```
+* mhci: using virtualenv found at /opt/tools/mhci/.venv
+```
+
+Two things worth knowing about that fallback:
+
+- **It looks only at `{tool_path}/.venv`.** A virtualenv under any other name — `pyenv virtualenv 3.11.3 myenv`, a conda env, or even a `myenv/` sitting inside the tool's own directory — is not found, and must be set with `--<name>-venv=`. Nothing warns when this happens; the tool just runs against whatever Python is active.
+- **It is never written to `paths.py`.** Because it's re-derived on every run, the same `paths.py` works unchanged on your laptop, on dev, and on SDSC, each resolving its own local `.venv`. Persisting it would freeze one host's absolute path — and would go stale the moment `<name>_path` moved.
+
+#### Warnings and rewrites
+
+A configured directory that doesn't exist warns but never blocks — `.env` and the shell scripts are still written, so a path that's valid on the deploy target but absent on the machine running `./configure` is fine:
+
+```
+⚠  pepx_path = '/opt/tools/pepx' does not exist. 'pepx' may fail until this is corrected.
+```
+
+`.env` is rewritten only when its content actually changes; an otherwise identical run reports `* .env file unchanged`.
 
 
 ## Building
@@ -412,6 +468,14 @@ cli upgrade                   # self-update the cli to the latest release tag (a
 cli upgrade --check           # report installed vs latest without installing
 ```
 
+Run from inside a project (not a `cli` subcommand — it's a script in the project root):
+
+```
+./configure                   # regenerate .env + setup_<name>_env.sh from paths.py
+./configure -h                # list the flags available for your declared deps
+./configure --<name>-path=…   # set a dependency's path (also -venv, -module, -lib-path)
+```
+
 ### NGArgumentParser API
 
 `NGArgumentParser` auto-creates three subparsers: `preprocess`, `predict`, `postprocess`. All three come with built-in arguments. `predict`'s output arguments (`--output-prefix/-o`, `--output-format/-f`) are framework-owned; you add the tool-specific input arguments in your subclass.
@@ -561,7 +625,7 @@ self.parser_predict.add_argument(
 | `pyproject.toml` `[tool.ngargparser] scaffold_version` | Framework — sync stamps |
 | `pyproject.toml` (everything else) | You |
 | `uv.lock` | You (regenerated by `uv` commands) |
-| `paths.py` | You (`cli deps` writes stubs; you fill in values) |
+| `paths.py` | You (`cli deps` writes stubs; `./configure --<name>-…` or a hand edit fills in values) |
 | `scripts/hooks.sh` | You |
 | `scripts/build.conf` | You |
 | `.distignore` | You (`.gitignore` syntax; legacy `scripts/do-not-distribute.txt` still honored) |
