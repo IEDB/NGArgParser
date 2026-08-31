@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] — 2026-08-31
+
+### Added
+- `./configure` publishes `APP_VENV` in a project's own `.env` when exactly one conventional
+  virtualenv sits in the project root, next to `APP_ROOT` and `APP_NAME`. A project that
+  depends on that tool reads the key instead of guessing, so a tool whose virtualenv lives
+  outside its directory is configured once, in its own project, rather than again in every
+  project that uses it. The dependency's `paths.py` is never read: it is executable Python,
+  while `.env` is parsed as plain key/value text.
+- Bundled-virtualenv detection covers `.venv`, `venv`, `env` and `.virtualenv`, in that
+  order, so a tool that names its virtualenv something other than `.venv` is still found.
+  Convention, not discovery: no directory scan, and two matches adopt neither, naming both
+  and pointing at `--<name>-venv=` rather than binding the tool to whichever the filesystem
+  listed first.
+- A dependency that resolves no virtualenv from any source now warns that it will run under
+  whatever Python is active, instead of being silently mismatched until prediction time.
+
+### Changed
+- A candidate virtualenv is accepted only when it holds both `pyvenv.cfg` and `bin/activate`.
+  Previously `bin/activate` alone was enough, which would accept any directory that happened
+  to contain one.
+
 ## [0.4.0] — 2026-08-23
 
 ### Added

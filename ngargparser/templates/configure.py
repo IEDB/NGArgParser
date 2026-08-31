@@ -6,10 +6,14 @@ import sys
 import importlib.util
 import re
 import glob
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 
 CONFIG_PATH = "paths.py"
 DOT_ENV_PATH = ".env"
+# Keys that describe the app itself rather than one of its dependencies.
+APP_KEYS = {'APP_ROOT', 'APP_NAME', 'APP_VENV'}
+# Conventional virtualenv directory names, in the order they're tried.
+VENV_CANDIDATE_NAMES = (".venv", "venv", "env", ".virtualenv")
 load_dotenv()
 
 def load_config(path):
@@ -53,28 +57,99 @@ def detect_dependency_tools(config):
 
     return tools
 
+def is_usable_venv(path):
+    """True when `path` really is a virtualenv.
+
+    Both markers are required: pyvenv.cfg identifies a virtualenv (PEP 405),
+    and bin/activate is the file the generated setup script sources. An empty
+    or half-deleted directory fails on one or the other.
+    """
+    return os.path.isfile(os.path.join(path, "pyvenv.cfg")) and os.path.isfile(
+        os.path.join(path, "bin", "activate")
+    )
+
+def find_bundled_venvs(root):
+    """Return the conventional virtualenvs bundled inside `root`.
+
+    Convention, not discovery: only well-known directory names are tried, so
+    a scan can never bind a tool to some unrelated directory that happens to
+    contain an 'activate' file. Every match is returned, because two matches
+    is a question for the user rather than something to guess at.
+    """
+    return [
+        os.path.join(root, name)
+        for name in VENV_CANDIDATE_NAMES
+        if is_usable_venv(os.path.join(root, name))
+    ]
+
+def declared_venv(tool_path):
+    """Read a dependency's own APP_VENV out of its .env, if it publishes one.
+
+    Parsed as key/value text, never executed. The tool's paths.py is a Python
+    module, so reading that instead would run another project's code inside
+    this configure run. A tool with no .env, or one that predates APP_VENV,
+    simply declares nothing.
+    """
+    env_path = os.path.join(tool_path, DOT_ENV_PATH)
+    if not os.path.isfile(env_path):
+        return None
+    try:
+        return dotenv_values(env_path).get("APP_VENV") or None
+    except OSError:
+        return None
+
 def resolve_tool_venvs(config, detected_tools):
-    """Fill in a tool's virtualenv from a .venv inside its own directory,
-    when the user hasn't set one explicitly and a usable one is there.
+    """Fill in a tool's virtualenv when the user hasn't set one explicitly.
+
+    Two sources, in order: what the tool publishes about itself in its own
+    .env, then a conventional virtualenv directory bundled inside the tool.
 
     Resolved in memory only -- paths.py keeps its None, so the same file
     stays portable across hosts (dev laptop, dev server, SDSC), each
-    resolving its own local .venv at configure time. A tool whose venv
-    lives elsewhere (pyenv, conda) simply isn't matched here; that's what
-    the explicit <tool>_venv setting is for.
+    resolving locally at configure time. A tool whose venv lives elsewhere
+    (pyenv, conda) and that publishes nothing simply isn't matched here;
+    that's what the explicit <tool>_venv setting is for.
+
+    Returns the tools left unresolved because their bundled virtualenv was
+    ambiguous, so the caller can skip the generic "no virtualenv" warning for
+    them: "has more than one" already said it, more precisely.
     """
+    ambiguous = set()
     for tool_prefix in detected_tools:
         if config.get(f"{tool_prefix}_venv"):
             continue  # an explicit setting always wins
         tool_path = config.get(f"{tool_prefix}_path")
         if not tool_path:
             continue
-        candidate = os.path.join(tool_path, ".venv")
-        # Check the file that actually gets sourced, not just the directory:
-        # an empty or half-deleted .venv/ would otherwise yield a broken script.
-        if os.path.isfile(os.path.join(candidate, "bin", "activate")):
-            config[f"{tool_prefix}_venv"] = candidate
-            print(f"* {tool_prefix}: using virtualenv found at {candidate}")
+
+        declared = declared_venv(tool_path)
+        if declared:
+            # Adopted even when it looks wrong, for the same reason a missing
+            # path doesn't block: it may be correct on the deploy target.
+            config[f"{tool_prefix}_venv"] = declared
+            print(f"* {tool_prefix}: using virtualenv declared in its .env: {declared}")
+            if os.path.isdir(declared) and not is_usable_venv(declared):
+                print(
+                    f"\033[93m⚠\033[0m  \033[1m{tool_prefix}\033[0m declares "
+                    f"'{declared}', which has no pyvenv.cfg. Using it anyway."
+                )
+            continue
+
+        candidates = find_bundled_venvs(tool_path)
+        if len(candidates) == 1:
+            config[f"{tool_prefix}_venv"] = candidates[0]
+            print(f"* {tool_prefix}: using virtualenv found at {candidates[0]}")
+        elif candidates:
+            ambiguous.add(tool_prefix)
+            flag_base = tool_prefix.replace("_", "-")
+            names = ", ".join(os.path.basename(c) for c in candidates)
+            print(
+                f"\033[93m⚠\033[0m  \033[1m{tool_prefix}\033[0m has more than one "
+                f"virtualenv in '{tool_path}' ({names}). Not guessing: pick one with "
+                f"'\033[1m./configure --{flag_base}-venv=<path>\033[0m'."
+            )
+
+    return ambiguous
 
 def build_arg_parser(config, detected_tools):
     """
@@ -137,8 +212,11 @@ def apply_paths_overrides(config, args, config_path):
 def render_env_content(config, app_root):
     """Build the .env content for `config`. Returns a string; callers
     decide whether it differs from what's on disk before writing."""
-    if not config or (set(config.keys()) <= {'APP_ROOT', 'APP_NAME'}):
-        return f"APP_ROOT={app_root}\nAPP_NAME={config['APP_NAME']}\n"
+    if not config or (set(config.keys()) <= APP_KEYS):
+        lines = [f"APP_ROOT={app_root}\n", f"APP_NAME={config['APP_NAME']}\n"]
+        if config.get('APP_VENV'):
+            lines.append(f"APP_VENV={config['APP_VENV']}\n")
+        return "".join(lines)
 
     lines = []
     for key, value in config.items():
@@ -151,14 +229,16 @@ def render_env_content(config, app_root):
         lines.append(f"{key.upper()}={value}\n")
     return "".join(lines)
 
-def create_shell_script(config, tool_prefix, output_path):
+def create_shell_script(config, tool_prefix, output_path, warn_no_venv=True):
     """
     Create shell script for a dependency tool.
-    
+
     Args:
         config: Configuration dictionary
         tool_prefix: The prefix used for this tool's variables (e.g., 'phbr', 'pepx', 'mhci')
         output_path: Path where to write the shell script
+        warn_no_venv: Whether to warn when the tool has no virtualenv. Off for a
+            tool whose bundled virtualenvs were ambiguous, which already warned.
     """
     # Get values from config using prefix
     module = config.get(f"{tool_prefix}_module")
@@ -185,6 +265,17 @@ def create_shell_script(config, tool_prefix, output_path):
                 f"\033[93m⚠\033[0m  \033[1m{tool_prefix}_{field}\033[0m = '{value}' does not exist. "
                 f"'{tool_prefix}' may fail until this is corrected."
             )
+
+    # Nothing set, nothing published, nothing bundled: the tool inherits
+    # whatever interpreter happens to be active, which is worth saying out
+    # loud rather than leaving to be discovered at runtime.
+    if not venv and warn_no_venv:
+        flag_base = tool_prefix.replace("_", "-")
+        print(
+            f"\033[93m⚠\033[0m  \033[1m{tool_prefix}\033[0m has no virtualenv. It will run "
+            f"under whatever Python is active. Set one with "
+            f"'\033[1m./configure --{flag_base}-venv=<path>\033[0m' if it needs its own."
+        )
 
     lines = ["#!/bin/bash\n"]
 
@@ -251,7 +342,7 @@ def main():
 
     # Fall back to a tool's own bundled .venv for any tool without an
     # explicit virtualenv, so paths.py doesn't need a host-specific path.
-    resolve_tool_venvs(config, detected_tools)
+    ambiguous_venvs = resolve_tool_venvs(config, detected_tools)
 
     # Always ensure APP_ROOT is present in config
     app_root = os.path.abspath(".")
@@ -267,6 +358,15 @@ def main():
         base_name = os.path.basename(app_root)
         match = re.match(r'^ng[_-]([A-Za-z0-9_]+?)-local$', base_name)
         config['APP_NAME'] = match.group(1) if match else base_name
+
+    # Publish this project's own virtualenv so a tool that depends on it can
+    # read it from .env instead of hunting for it. Re-derived every run, so a
+    # deleted virtualenv stops being advertised. Two candidates publishes
+    # nothing: the ambiguity belongs to whoever set the project up.
+    if 'APP_VENV' not in config:
+        own_venvs = find_bundled_venvs(app_root)
+        if len(own_venvs) == 1:
+            config['APP_VENV'] = own_venvs[0]
 
     # Regenerate .env file based on current paths.py content (this ensures
     # removed dependencies are cleaned up), but skip the write entirely when
@@ -284,7 +384,7 @@ def main():
             f.write(env_content)
         action = "updated" if existing_content is not None else "created"
 
-    if not config or (set(config.keys()) <= {'APP_ROOT', 'APP_NAME'}):
+    if not config or (set(config.keys()) <= APP_KEYS):
         print(f"* Minimal .env file {action} (no external dependencies declared).")
     else:
         print(f"* .env file {action}")
@@ -306,7 +406,12 @@ def main():
     # Create shell scripts for each detected tool
     unfilled = []
     for tool_prefix in detected_tools.keys():
-        ok = create_shell_script(config, tool_prefix, output_path=f'setup_{tool_prefix}_env.sh')
+        ok = create_shell_script(
+            config,
+            tool_prefix,
+            output_path=f'setup_{tool_prefix}_env.sh',
+            warn_no_venv=tool_prefix not in ambiguous_venvs,
+        )
         if not ok:
             unfilled.append(tool_prefix)
 

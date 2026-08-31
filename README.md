@@ -2,7 +2,7 @@
 
 > Framework for building IEDB-style command-line scientific tools — standardized argument parsing, dependency wiring, and reproducible tarball builds.
 
-[![ngargparser](https://img.shields.io/badge/ngargparser-0.4.0-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
+[![ngargparser](https://img.shields.io/badge/ngargparser-0.4.1-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
 
 After installing the framework, you get a `cli` command and a Python class (`NGArgumentParser`) that together produce well-shaped scientific CLI apps:
 
@@ -34,7 +34,7 @@ uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-d
 uv tool install 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git'
 
 # Pin to a tag for reproducibility (SSH form shown; HTTPS works the same way):
-uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.4.0'
+uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.4.1'
 
 # Upgrade later (either works)
 cli upgrade                 # self-update to the latest release tag on GitLab
@@ -228,11 +228,15 @@ A flag only exists for a dependency `cli deps add` has already declared — a ty
 
 #### Virtualenv resolution
 
-| `<name>_venv` in `paths.py` | What `./configure` uses |
-|---|---|
-| Set to a path | That path, always — auto-detection is skipped entirely |
-| Empty, and `<name>_path`/`.venv` exists | That `.venv`, resolved fresh each run and **not** written into `paths.py` |
-| Empty, no such `.venv` | No virtualenv — the generated script simply omits its `source` line |
+Three sources, tried in order. The first hit wins:
+
+| Order | Source | Notes |
+|---|---|---|
+| 1 | `<name>_venv` in `paths.py` | An explicit setting always wins; nothing else is consulted |
+| 2 | `APP_VENV` in `{tool_path}/.env` | What the dependency publishes about itself |
+| 3 | A conventional virtualenv directory inside `{tool_path}` | `.venv`, `venv`, `env`, `.virtualenv`, in that order |
+
+Nothing found is not an error, but it is now said out loud, because the tool will run under whatever Python happens to be active.
 
 So a tool that bundles its own `.venv` (anything built by `uv sync`, which is every ngargparser project) needs no venv configuration at all:
 
@@ -240,10 +244,12 @@ So a tool that bundles its own `.venv` (anything built by `uv sync`, which is ev
 * mhci: using virtualenv found at /opt/tools/mhci/.venv
 ```
 
-Two things worth knowing about that fallback:
+Four things worth knowing:
 
-- **It looks only at `{tool_path}/.venv`.** A virtualenv under any other name — `pyenv virtualenv 3.11.3 myenv`, a conda env, or even a `myenv/` sitting inside the tool's own directory — is not found, and must be set with `--<name>-venv=`. Nothing warns when this happens; the tool just runs against whatever Python is active.
-- **It is never written to `paths.py`.** Because it's re-derived on every run, the same `paths.py` works unchanged on your laptop, on dev, and on SDSC, each resolving its own local `.venv`. Persisting it would freeze one host's absolute path — and would go stale the moment `<name>_path` moved.
+- **Every project publishes its own virtualenv.** When exactly one conventional virtualenv sits in the project root, `./configure` writes `APP_VENV` into that project's `.env`, alongside `APP_ROOT` and `APP_NAME`. That is what step 2 reads, so a tool whose virtualenv lives somewhere unusual only has to be configured once, in its own project, rather than again in every project that depends on it.
+- **A dependency's `paths.py` is never read.** It is a Python module, loaded by executing it, so reading another project's copy would run its code inside your `./configure`. `.env` is plain key/value text and is parsed, never executed.
+- **Convention, not discovery.** Only those four directory names are tried, and only when the candidate holds both `pyvenv.cfg` and `bin/activate`. Anything else, `pyenv virtualenv 3.11.3 myenv`, a conda env, or a `myenv/` inside the tool's own directory, must be set with `--<name>-venv=`. When two candidates match, neither is adopted: the run says which it found and asks you to pick, rather than binding the tool to whichever the filesystem listed first.
+- **Steps 2 and 3 are never written to `paths.py`.** Because they're re-derived on every run, the same `paths.py` works unchanged on your laptop, on dev, and on SDSC, each resolving locally. Persisting one would freeze a single host's absolute path — and would go stale the moment `<name>_path` moved.
 
 #### Warnings and rewrites
 
@@ -251,6 +257,12 @@ A configured directory that doesn't exist warns but never blocks — `.env` and 
 
 ```
 ⚠  pepx_path = '/opt/tools/pepx' does not exist. 'pepx' may fail until this is corrected.
+```
+
+A dependency that ends up with no virtualenv at all warns for the same reason, since the alternative is finding out at prediction time:
+
+```
+⚠  pepx has no virtualenv. It will run under whatever Python is active. Set one with './configure --pepx-venv=<path>' if it needs its own.
 ```
 
 `.env` is rewritten only when its content actually changes; an otherwise identical run reports `* .env file unchanged`.
