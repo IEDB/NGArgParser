@@ -181,9 +181,8 @@ class NGArgumentParser(argparse.ArgumentParser):
         self.description='Text to display before the argument help (by default, no text)'
         self.epilog=textwrap.dedent('''
         Please contact us with any issues encountered or questions about the software
-        through any of the channels listed below.
+        through the channel listed below.
 
-        IEDB Help Desk: https://help.iedb.org/
         IEDB Discussion Forum: https://discuss.iedb.org
         ''')
         
