@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `--help` contact block drops the retired IEDB Help Desk (https://help.iedb.org/) and lists
   only the IEDB Discussion Forum, in both the framework base class (`NGArgumentParser.py`) and the
   example-app scaffold template.
+- **Breaking:** file arguments no longer use `argparse.FileType`, which Python 3.14 deprecated.
+  `preprocess --input-json` and `postprocess --job-desc-file` in the framework base class, and
+  the scaffold's predict `--input-tsv`/`--input-json`, now use `core_validators.validate_file`.
+  They yield a `pathlib.Path`, not an open file; open it yourself after parsing. A missing file
+  still exits 2 with an argparse error. `-` no longer means stdin.
+- Downstream tools must update before their next `ngargparser sync`. A code reading on
+  2026-10-02 (not executed) found:
+  - Crash, because they call `.read()`, `.seek()` or `json.load()` on the argument: phbr,
+    pepsysco, bcell-sequence-input.
+  - Silently wrong path, because they test `hasattr(arg, "name")` and `Path.name` is only the
+    basename: axelf (postprocess), conservancy and rate (preprocess).
+  - Already path-safe: bcell-structure-input, population-coverage.
 
 ## [0.4.1] — 2026-08-31
 

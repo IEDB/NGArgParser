@@ -115,7 +115,7 @@ def convert_tsv_to_json(tfile, aa):
         "amino_acid": "L"
     }
     '''
-    with open(tfile.name, 'r') as f :
+    with open(tfile, 'r') as f :
         header = f.readline().strip().split('	')
         content = [_.strip().split('	') for _ in f.readlines()]
 
@@ -134,8 +134,8 @@ def convert_tsv_to_json(tfile, aa):
     return content
 
 def read_json(jfile):
-    content = json.load(jfile)
-    jfile.seek(0)
+    with open(jfile, 'r') as f:
+        content = json.load(f)
 
     return json.dumps(content)
 

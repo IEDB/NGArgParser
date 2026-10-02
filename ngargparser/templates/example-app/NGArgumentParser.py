@@ -213,7 +213,7 @@ class NGArgumentParser(argparse.ArgumentParser):
         # Define required parameters for preprocess subcommand
         self.preprocess_required_group.add_argument("--input-json", "-j",
                                         dest="input_json",
-                                        type=argparse.FileType('r'),
+                                        type=validators.validate_file,
                                         required=True,
                                         help="JSON file containing input parameters.",
                                         metavar="JSON_FILE")
@@ -266,7 +266,7 @@ class NGArgumentParser(argparse.ArgumentParser):
 
         self.postprocess_required_input_group.add_argument("--job-desc-file", "-j",
                                 dest="job_desc_file",
-                                type=argparse.FileType('r'),
+                                type=validators.validate_file,
                                 help="Path to job description file.")
 
         self.postprocess_required_input_group.add_argument("--input-results-dir", "-i",

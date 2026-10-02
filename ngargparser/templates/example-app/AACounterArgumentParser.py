@@ -1,5 +1,6 @@
 import textwrap
 import argparse
+import core.core_validators as validators
 from core.NGArgumentParser import NGArgumentParser
 
 
@@ -32,12 +33,12 @@ class AACounterArgumentParser(NGArgumentParser):
         inputs = self.predict_input_group.add_mutually_exclusive_group()
         inputs.add_argument("--input-tsv", "-t",
                                 dest="input_tsv",
-                                type=argparse.FileType('r'),
+                                type=validators.validate_file,
                                 help="Perform counting given a TSV file.",
                                 )
         inputs.add_argument("--input-json", "-j",
                                 dest="input_json",
-                                type=argparse.FileType('r'),
+                                type=validators.validate_file,
                                 help="Perform counting given a JSON file.",
                                 )
         self.parser_predict.add_argument("--amino-acid", "-a",

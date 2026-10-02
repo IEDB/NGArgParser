@@ -9,8 +9,8 @@ from core.result_writer import write_results
 
 
 def read_json(jfile):
-    content = json.load(jfile)
-    jfile.seek(0)
+    with open(jfile, 'r') as f:
+        content = json.load(f)
 
     return json.dumps(content)
 

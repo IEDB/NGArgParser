@@ -75,7 +75,7 @@ self.parser_predict = self.add_predict_subparser(
         )
 self.parser_predict.add_argument("--fasta", "-fa",
                         dest="fasta_file",
-                        type=argparse.FileType('r'),
+                        type=validators.validate_file,
                         default=None,
                         help="FASTA file containing protein sequence.",
                         )

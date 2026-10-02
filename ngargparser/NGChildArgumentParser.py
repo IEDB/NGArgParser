@@ -43,12 +43,12 @@ class ChildArgumentParser(NGArgumentParser):
         inputs = self.predict_input_group.add_mutually_exclusive_group()
         inputs.add_argument("--input-tsv", "-t",
                                 dest="input_tsv",
-                                type=argparse.FileType('r'),
+                                type=validators.validate_file,
                                 help="Perform counting given a TSV file.",
                                 )
         inputs.add_argument("--input-json", "-j",
                                 dest="input_json",
-                                type=argparse.FileType('r'),
+                                type=validators.validate_file,
                                 help="Perform counting given a JSON file.",
                                 )
         # NOTE: --output-prefix/-o and --output-format/-f are provided by the
