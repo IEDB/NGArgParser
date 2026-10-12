@@ -37,9 +37,7 @@ def parsed_namespace(project_dir, parser_module, parser_class, *argv):
         f"args = {parser_class}().parse_args()\n"
         "print({k: type(v).__name__ for k, v in vars(args).items()})\n"
     )
-    result = subprocess.run(
-        [sys.executable, "-c", code], cwd=project_dir, capture_output=True, text=True
-    )
+    result = subprocess.run([sys.executable, "-c", code], cwd=project_dir, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     return result.stdout
 
