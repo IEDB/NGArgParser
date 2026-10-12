@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `--help` contact block drops the retired IEDB Help Desk (https://help.iedb.org/) and lists
   only the IEDB Discussion Forum, in both the framework base class (`NGArgumentParser.py`) and the
   example-app scaffold template.
+- `cli --version` and `cli --help` now check the latest release tag on GitLab on every run and
+  report any mismatch on stderr: the "a new ngargparser is available" notice, with a link to the
+  release notes, when the installed version is behind, or a one-line note when it is ahead of the
+  latest tag. This check uses no cache and no once-a-day limit, and it also runs when output is not
+  a terminal. stdout is unchanged: exactly `cli X.Y.Z`, or the same help text. An unreachable
+  remote is reported in one line and never changes the exit code. CI and
+  `NGARGPARSER_NO_UPDATE_CHECK=1` skip the lookup. Expect both commands to take about 2 seconds
+  longer. Subcommand help, bare `cli`, and the passive notice on other `cli` commands are unchanged.
 - **Breaking:** file arguments no longer use `argparse.FileType`, which Python 3.14 deprecated.
   `preprocess --input-json` and `postprocess --job-desc-file` in the framework base class, and
   the scaffold's predict `--input-tsv`/`--input-json`, now use `core_validators.validate_file`.
@@ -23,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Silently wrong path, because they test `hasattr(arg, "name")` and `Path.name` is only the
     basename: axelf (postprocess), conservancy and rate (preprocess).
   - Already path-safe: bcell-structure-input, population-coverage.
+
+### Fixed
+- `NGARGPARSER_NO_UPDATE_CHECK=0` no longer silences the update notice. The variable is now read as
+  an on/off value: unset, empty, `0`, `false`, `no` and `off` (any case) leave the notice on, and
+  anything else turns it off. Before, any non-empty value turned it off, so setting it back to `0`
+  after `1` kept the notice hidden. Applies to both the `cli --version` check and the passive notice.
 
 ## [0.4.1] — 2026-08-31
 

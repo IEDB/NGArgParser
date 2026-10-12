@@ -1150,7 +1150,7 @@ class _RemoteUnavailable(Exception):
 _UNSET = object()  # sentinel: "argument not supplied" (distinct from None)
 
 
-def _latest_release_tag(remote_url, timeout=10, *, strict=False):
+def _latest_release_tag(remote_url, timeout=10, *, strict=False, prompt=True):
     """Return the highest semver-like tag from a git remote, or None.
 
     Uses `git ls-remote --tags --refs` (no clone), parses tags matching
@@ -1164,16 +1164,27 @@ def _latest_release_tag(remote_url, timeout=10, *, strict=False):
     transport failure (network/timeout/git error) it returns None by default,
     or raises `_RemoteUnavailable` when `strict=True` — so a network blip is
     not misreported as "no tags exist".
+
+    `prompt=False` makes the lookup non-interactive: git may not ask for
+    credentials on the terminal or through an askpass helper, so a remote that
+    wants credentials fails fast instead of stalling until `timeout`. Stored
+    credentials, credential helpers and SSH keys still apply.
     """
     import re
     import subprocess
 
+    env, stdin = None, None
+    if not prompt:
+        env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "SSH_ASKPASS": ""}
+        stdin = subprocess.DEVNULL
     try:
         out = subprocess.check_output(
             ["git", "ls-remote", "--tags", "--refs", remote_url],
             stderr=subprocess.DEVNULL,
             text=True,
             timeout=timeout,
+            env=env,
+            stdin=stdin,
         )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
         if strict:
@@ -1451,6 +1462,13 @@ def upgrade_command(args):
 UPDATE_CHECK_TTL = 24 * 60 * 60  # seconds between remote checks
 
 
+def _env_flag(name):
+    """True when environment variable `name` is switched on. Unset, empty, and
+    the usual "off" spellings (0, false, no, off; any case) count as off, so
+    `NAME=0` undoes `NAME=1`."""
+    return os.environ.get(name, "").strip().lower() not in ("", "0", "false", "no", "off")
+
+
 def _parse_semver(v):
     """Parse 'vX.Y.Z' / 'X.Y.Z' (optional pre-release/build) into (X, Y, Z), else None."""
     import re
@@ -1504,7 +1522,7 @@ def _maybe_notify_update(command):
     try:
         if (
             command in ("upgrade", "u")
-            or os.environ.get("NGARGPARSER_NO_UPDATE_CHECK")
+            or _env_flag("NGARGPARSER_NO_UPDATE_CHECK")
             or os.environ.get("CI")
             or not sys.stderr.isatty()
         ):
@@ -1523,27 +1541,140 @@ def _maybe_notify_update(command):
         if not cur or not new or new <= cur:
             return
 
-        print(
-            f"\n\033[33m⬆  A new ngargparser is available: {__version__} → {latest}\033[0m\n"
-            f"   run `cli upgrade` to update   ·   silence: NGARGPARSER_NO_UPDATE_CHECK=1",
-            file=sys.stderr,
-        )
+        _print_update_notice(latest)
     except Exception:
         pass  # an update check must never break or slow the real command
+
+
+def _release_notes_url(tag):
+    """Web URL of CHANGELOG.md as it stands at `tag`: the release notes for that tag."""
+    from urllib.parse import quote
+
+    return f"{BASE_REPO_URL[len('git+') : -len('.git')]}/-/blob/{quote(tag, safe='')}/CHANGELOG.md"
+
+
+def _print_update_notice(latest, color=True, notes_url=None):
+    """Print the 'update available' notice on stderr. `color=False` leaves out
+    the ANSI codes, for output that isn't a terminal. `notes_url` adds a
+    'release notes' line between the headline and the how-to-update line."""
+    import sys
+
+    yellow, reset = ("\033[33m", "\033[0m") if color else ("", "")
+    notes = f"   release notes: {notes_url}\n" if notes_url else ""
+    print(
+        f"\n{yellow}⬆  A new ngargparser is available: {__version__} → {latest}{reset}\n"
+        f"{notes}"
+        f"   run `cli upgrade` to update   ·   silence: NGARGPARSER_NO_UPDATE_CHECK=1",
+        file=sys.stderr,
+    )
+
+
+RELEASE_CHECK_TIMEOUT = 5  # seconds `cli --version` / `cli --help` wait for the remote before giving up
+
+
+def _check_latest_release():
+    """Look up the latest release tag right now and report on stderr how the
+    installed version compares. Called by `cli --version` and `cli --help` on
+    every run.
+
+    Unlike the passive notifier above, this never reads or writes the update
+    cache and is not limited to interactive terminals: asking for the version
+    or the help is an explicit request, so the answer is always live. Only CI
+    and the NGARGPARSER_NO_UPDATE_CHECK opt-out skip it. A remote that can't be
+    reached is reported as such, so silence always means "up to date". Any
+    failure is swallowed so the command itself never breaks.
+    """
+    import sys
+
+    try:
+        if _env_flag("NGARGPARSER_NO_UPDATE_CHECK") or os.environ.get("CI"):
+            return
+
+        try:
+            latest = _latest_release_tag(
+                BASE_REPO_URL[len("git+") :], timeout=RELEASE_CHECK_TIMEOUT, strict=True, prompt=False
+            )
+        except _RemoteUnavailable:
+            print(
+                "⚠ Couldn't check for a newer ngargparser "
+                "(GitLab unreachable: network/VPN, credentials, or git missing).",
+                file=sys.stderr,
+            )
+            return
+
+        new = _parse_semver(latest)
+        if not new:
+            return  # remote reachable but has no release tags to compare against
+
+        cur = _parse_semver(__version__)
+        if not cur or new > cur:
+            _print_update_notice(latest, color=sys.stderr.isatty(), notes_url=_release_notes_url(latest))
+        elif cur > new:
+            print(
+                f"ℹ Installed ngargparser {__version__} is ahead of the latest release tag {latest}.",
+                file=sys.stderr,
+            )
+    except Exception:
+        pass  # a release check must never break `cli --version` or `cli --help`
 
 
 _INVOKED_COMMAND = None  # canonical subcommand once argv is parsed; read by the atexit hook
 
 
 def _notify_at_exit():
-    """atexit hook so the notice also appears on `cli --version` / `cli --help`
-    (and any other early exit), where argparse exits before the end of main()."""
+    """atexit hook so the notice also appears on early exits (a subcommand's
+    `--help`, an argparse error), where argparse exits before the end of main().
+    Top-level `--version` / `--help` cancel it and run a live check instead (see
+    `_ReleaseCheckAction`)."""
     import sys
 
     command = _INVOKED_COMMAND
     if command is None and len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
         command = sys.argv[1]  # parse_args() exited early; best-effort from raw argv
     _maybe_notify_update(command)
+
+
+class _ReleaseCheckAction(argparse.Action):
+    """Base for the top-level flags that print something and then check the
+    latest release tag (see `_check_latest_release`). Subclasses say what to
+    print in `show`.
+
+    The passive atexit notifier is unregistered first, so these flags never add
+    a second, cache-based notice.
+    """
+
+    def __init__(self, option_strings, dest=argparse.SUPPRESS, default=argparse.SUPPRESS, help=None):
+        super().__init__(option_strings=option_strings, dest=dest, default=default, nargs=0, help=help)
+
+    def show(self, parser):
+        raise NotImplementedError
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        import atexit
+        import sys
+
+        atexit.unregister(_notify_at_exit)
+        self.show(parser)
+        sys.stdout.flush()  # show the output before the remote lookup starts
+        _check_latest_release()
+        parser.exit()
+
+
+class _VersionAction(_ReleaseCheckAction):
+    """`-v` / `--version`. Stands in for argparse's stock "version" action and
+    prints the same `<prog> <version>` line on stdout."""
+
+    def show(self, parser):
+        print(f"{parser.prog} {__version__}")
+
+
+class _HelpAction(_ReleaseCheckAction):
+    """`-h` / `--help` on the top-level parser. Stands in for argparse's stock
+    "help" action and prints the same help text. Subcommand parsers keep the
+    stock action."""
+
+    def show(self, parser):
+        parser.print_help()
 
 
 def sync_command(args):
@@ -1750,10 +1881,13 @@ def sync_command(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="NG Argument Parser Framework")
+    # add_help=False: the top-level -h/--help is registered by hand below so it
+    # can run the release check after printing the (unchanged) help text.
+    parser = argparse.ArgumentParser(description="NG Argument Parser Framework", add_help=False)
+    parser.add_argument("-h", "--help", action=_HelpAction, help="show this help message and exit")
 
     # Add version argument
-    parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("-v", "--version", action=_VersionAction, help="show program's version number and exit")
 
     subparsers = parser.add_subparsers(dest="command")
 
@@ -1838,9 +1972,10 @@ def main():
         help="Upgrade to the bleeding-edge tip of 'master' instead of the latest semver tag. Shortcut for --ref master.",
     )
 
-    # Register the update notifier via atexit so it fires no matter how we exit —
-    # including argparse's early exit on `--version` / `--help`, not just after a
-    # full command. Registered before parse_args() so those early exits are covered.
+    # Register the update notifier via atexit so it fires no matter how we exit,
+    # including argparse's early exits (a subcommand's `--help`, a usage error), not
+    # just after a full command. Registered before parse_args() so those early exits
+    # are covered. Top-level `--version` / `--help` unregister it and check live.
     import atexit
 
     atexit.register(_notify_at_exit)

@@ -422,7 +422,15 @@ After a successful `cli upgrade`, it reminds you to run `cli sync` — because `
 
   **Update notifier.** You don't have to remember to check — when you run `cli`, it occasionally prints a
   one-line "a newer version is available" notice (throttled to one remote check per day, shown only in an
-  interactive terminal, never in CI/pipelines). Silence it with `NGARGPARSER_NO_UPDATE_CHECK=1`.
+  interactive terminal, never in CI/pipelines). Silence it with `NGARGPARSER_NO_UPDATE_CHECK=1`; set it
+  to `0` or `false`, or unset it, to turn the notice back on.
+
+  **`cli --version` and `cli --help` always check.** Each prints its usual output, then looks up the
+  latest release tag on GitLab on every run, with no daily limit and no cache. If the installed version
+  is behind, it prints the notice each time, with a link to the release notes. If the installed version
+  is ahead of the latest tag, it says that instead. If GitLab can't be reached, it says so in one line.
+  The lookup is skipped in CI/pipelines and when `NGARGPARSER_NO_UPDATE_CHECK=1` is set. Subcommand
+  help (`cli sync --help`) and bare `cli` keep the once-a-day notice.
 
   **Install from a local checkout (contributors).** `cli upgrade --ref .` installs ngargparser from your
   current working tree instead of a release tag — handy while developing the framework itself. Pass `.`
@@ -463,8 +471,8 @@ For breaking changes — file layouts shifting, schema changes, removed APIs —
 ### CLI cheatsheet
 
 ```
-cli --version
-cli --help
+cli --version                 # installed version; checks GitLab for a newer release on every run
+cli --help                    # usage; same release check on every run
 
 cli generate <name>           # scaffold a new project (alias: g)
 cli generate example          # scaffold the aa-counter example app
