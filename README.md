@@ -460,6 +460,39 @@ cli sync
 
 It never overwrites `validators.py`, `<App>ArgumentParser.py`, `paths.py`, `hooks.sh`, `build.conf`, or anything else in user-owned space. It also migrates legacy filenames from older framework versions (e.g., `scripts/build.sh` → `scripts/core/build.sh`, `scripts/dependencies.sh` → `scripts/hooks.sh`) on first run.
 
+### Sync safety checks
+
+`cli sync` does not leave a broken project behind. Each run ends in one of four ways:
+
+| Outcome | When | Exit code |
+|---|---|---|
+| Synced and verified | The project's help screens worked before the sync and still work after | 0 |
+| Synced, could not verify | The project did not start even before the sync, has no `.venv` interpreter, or has several `src/run_*.py` | 0 |
+| Stopped, nothing changed | The project has code this framework version is known to break | 1 |
+| Rolled back | A help screen that worked before fails after, or sync hit an error. Every file is restored | 1 |
+
+How it works:
+
+- **Known clashes.** Before writing anything, sync reads your project's `src/*ArgumentParser.py` for
+  code a framework release is known to break, and stops with the file, the line numbers and the fix.
+  `cli sync --dry-run` reports the same findings. The list holds one entry today: declaring
+  `--output-prefix` or `--output-format` on `predict`, or reusing `-o` or `-f` there, which the base
+  class has owned since 0.3.0. A break that is not on the list is left to the test drive.
+- **Test drive.** When a framework file is about to change, sync runs your entry script with
+  `--help`, `predict --help`, `preprocess --help` and `postprocess --help`, before and after, using
+  the project's own `.venv` interpreter. This executes your project's code. It runs only when
+  `src/` holds exactly one `run_*.py`; with several, sync cannot tell which is the entry script and
+  runs none of them.
+- **Undo.** If a screen that worked before fails after, or sync is interrupted or hits an error,
+  sync puts back every file it touched, including moved, created and edited ones and files reached
+  through a symlink, and prints the error your project raised.
+
+`cli sync --no-verify` skips the known-clash check and the test drive, and says so. Undo on error
+still applies. Setting `NGARGPARSER_SYNC_NO_VERIFY=1` has the same effect.
+
+The test drive proves the project still starts. It cannot prove that a full `predict`, `preprocess`
+or `postprocess` run still gives the right result, so run your own tests after a sync.
+
 ### What sync can't do
 
 For breaking changes — file layouts shifting, schema changes, removed APIs — sync keeps your core files current but won't transform user-edited content. The right move there: read the release notes, scaffold a fresh project with the new framework, and port your application code over.

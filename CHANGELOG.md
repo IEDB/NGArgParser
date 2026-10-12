@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `cli sync` no longer leaves a broken project behind. It now ends in one of four ways: synced
+  and verified, synced but could not verify, stopped with nothing changed, or rolled back (the
+  last two exit 1).
+  - Known clashes: before writing anything, sync checks the project's `src/*ArgumentParser.py`
+    for code a framework release is known to break and stops with the file, line numbers and
+    fix. First entry: a project that declares `--output-prefix` / `--output-format` on `predict`,
+    or reuses `-o` / `-f` there, which the base class has owned since 0.3.0. `--dry-run` reports
+    it too.
+  - Test drive: when a framework file is about to change, sync runs the project's four help
+    screens before and after, using the project's own `.venv` interpreter. This executes project
+    code, and only when `src/` holds exactly one `run_*.py`.
+  - Undo: if a screen that worked before fails after, or sync is interrupted or errors out
+    midway, every touched file is restored, including moved, created and edited ones and files
+    reached through a symlink.
+  - `cli sync --no-verify` (or `NGARGPARSER_SYNC_NO_VERIFY=1`) skips the known-clash check and
+    the test drive, and prints that it did.
+  - Measured on copies of the 8 current tools: the 5 built on 0.1.13 to 0.2.4, which the old
+    sync left crashing on every command, are now stopped untouched; the 3 on 0.3.0 or newer
+    sync and verify.
+
 ### Changed
 - The `--help` contact block drops the retired IEDB Help Desk (https://help.iedb.org/) and lists
   only the IEDB Discussion Forum, in both the framework base class (`NGArgumentParser.py`) and the

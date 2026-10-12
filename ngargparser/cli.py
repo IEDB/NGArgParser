@@ -1677,14 +1677,322 @@ class _HelpAction(_ReleaseCheckAction):
         parser.print_help()
 
 
+# --- Sync safety -------------------------------------------------------------
+# `cli sync` overwrites framework-owned files inside someone's project. Three
+# nets keep that from leaving a broken project behind:
+#   1. known clashes: project code this framework version is known to break is
+#      reported before anything is written;
+#   2. a test drive: the project's own help screens are run before and after;
+#   3. a snapshot: if a screen that worked before fails after (or sync itself
+#      errors out), every touched file is put back exactly as it was.
+
+
+def _sync_framework_files():
+    """Framework-owned files as (source, destination, executable). `cli sync`
+    overwrites each destination whose content differs from its source."""
+    return [
+        (f"{NGPARSER_DIR}/NGArgumentParser.py", "src/core/NGArgumentParser.py", False),
+        (f"{NGPARSER_DIR}/core_validators.py", "src/core/core_validators.py", False),
+        (f"{NGPARSER_DIR}/result_writer.py", "src/core/result_writer.py", False),
+        (f"{TEMPLATE_DIR}/set_pythonpath.py", "src/core/set_pythonpath.py", False),
+        (f"{TEMPLATE_DIR}/configure.py", "src/core/configure.py", True),
+        (f"{TEMPLATE_DIR}/configure", "configure", True),
+        (f"{TEMPLATE_DIR}/build.sh", "scripts/core/build.sh", True),
+        (f"{TEMPLATE_DIR}/Makefile", "Makefile", False),
+    ]
+
+
+# Legacy file names `cli sync` moves to their current location.
+_SYNC_LEGACY_BUILD = "scripts/build.sh"
+_SYNC_LEGACY_HOOKS = ("scripts/dependencies.sh", "scripts/build_hooks.sh")
+
+
+def _sync_touched_paths(framework_files):
+    """Every project file `cli sync` may create, overwrite, move or edit."""
+    return [dst for _src, dst, _exe in framework_files] + [
+        _SYNC_LEGACY_BUILD,
+        *_SYNC_LEGACY_HOOKS,
+        "scripts/hooks.sh",
+        "deploy/install.sh",
+        ".gitignore",
+        "pyproject.toml",
+        "README.md",
+    ]
+
+
+def _framework_changes_pending(framework_files):
+    """True when sync would change a framework file or move a legacy one, i.e.
+    when there is something a test drive could be affected by."""
+    if os.path.exists(_SYNC_LEGACY_BUILD) and not os.path.exists("scripts/core/build.sh"):
+        return True
+    if not os.path.exists("scripts/hooks.sh") and any(os.path.exists(p) for p in _SYNC_LEGACY_HOOKS):
+        return True
+    return any(
+        not os.path.exists(dst) or not filecmp.cmp(src, dst, shallow=False) for src, dst, _exe in framework_files
+    )
+
+
+class _SyncSnapshot:
+    """Pre-image of the files `cli sync` may touch, so a sync can be undone exactly.
+
+    Copies each existing file into a temporary directory outside the project,
+    under the same relative path, and remembers which paths (and which
+    directories) did not exist. Sync writes *through* a symlink, so for a
+    symlinked path the content of the file it points at is what gets saved,
+    along with the link itself. `restore()` puts every file back, deletes files
+    and empty directories the sync created, and removes that sync's backup
+    directory. `discard()` drops the pre-image.
+    """
+
+    _DIRS = ("src/core", "scripts/core", "deploy", ".ngargparser", ".ngargparser/sync-backups")
+
+    def __init__(self, paths):
+        import tempfile
+
+        self._store = tempfile.mkdtemp(prefix="ngargparser-sync-")
+        self._absent_dirs = [d for d in self._DIRS if not os.path.isdir(d)]
+        # project path -> (existed, link target or None, stored copy of its content or None)
+        self._entries = {}
+        try:
+            for path in dict.fromkeys(paths):
+                link = os.readlink(path) if os.path.islink(path) else None
+                stored = None
+                if os.path.isfile(path):  # follows a symlink to the file sync would write to
+                    stored = os.path.join(self._store, path)
+                    os.makedirs(os.path.dirname(stored), exist_ok=True)
+                    shutil.copy2(path, stored)
+                self._entries[path] = (os.path.lexists(path), link, stored)
+        except BaseException:
+            self.discard()  # don't leave a half-built pre-image behind
+            raise
+
+    @staticmethod
+    def _put_back(stored, destination):
+        """Copy `stored` over `destination` without a moment where it is missing."""
+        os.makedirs(os.path.dirname(destination) or ".", exist_ok=True)
+        temporary = destination + ".ngargparser-restore"
+        try:
+            shutil.copy2(stored, temporary)
+            os.replace(temporary, destination)
+        finally:
+            if os.path.lexists(temporary):
+                os.remove(temporary)
+
+    def restore(self, backup_root=None):
+        for path, (existed, link, stored) in self._entries.items():
+            if not existed:
+                if os.path.lexists(path):
+                    os.remove(path)  # the sync created it
+            elif link is not None:
+                if not os.path.islink(path) or os.readlink(path) != link:
+                    if os.path.lexists(path):
+                        os.remove(path)
+                    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+                    os.symlink(link, path)
+                target = os.path.realpath(path)
+                if stored is not None:
+                    self._put_back(stored, target)  # the content sync overwrote through the link
+                elif os.path.isfile(target):
+                    os.remove(target)  # the link dangled before; the sync created its target
+            elif stored is not None:
+                if os.path.islink(path):
+                    os.remove(path)
+                self._put_back(stored, path)
+            # else: a directory or special file sat at this path; the snapshot left it alone
+        if backup_root and os.path.isdir(backup_root):
+            shutil.rmtree(backup_root)
+        for directory in sorted(self._absent_dirs, key=len, reverse=True):  # deepest first
+            try:
+                os.rmdir(directory)  # only removes it when the sync left it empty
+            except OSError:
+                pass
+
+    def discard(self):
+        if self._store:
+            shutil.rmtree(self._store, ignore_errors=True)
+
+    def keep(self):
+        """Leave the pre-image on disk (used when a restore failed) and return where it is.
+        Files sit under their project-relative paths, so they can be copied back by hand."""
+        store, self._store = self._store, None
+        return store
+
+
+def _clash_predict_output_options(skipped=None):
+    """Find `add_argument` calls on a project's predict parser that use an
+    option string the base class owns there: `--output-prefix`, `-o`,
+    `--output-format` or `-f`.
+
+    The base class has added `--output-prefix/-o` and `--output-format/-f` to
+    `predict` itself since 0.3.0, so a project that declares either again, or
+    reuses one of the short letters for another option, fails with argparse's
+    "conflicting option strings" as soon as its parser is built. Calling
+    `remove_argument` first does not help: it leaves the option strings
+    registered, so the re-declaration conflicts all the same.
+
+    The project's parser files are read as syntax trees, so the option names in
+    a comment or a help string don't count. A file that does not parse is
+    appended to `skipped` (when given) instead of being judged. Returns a list
+    of {'path', 'first', 'last', 'what'}.
+    """
+    import ast
+    import glob
+
+    owned = ("--output-prefix", "-o", "--output-format", "-f")
+    findings = []
+    for path in sorted(glob.glob(os.path.join("src", "*ArgumentParser.py"))):
+        try:
+            with open(path, encoding="utf-8") as f:
+                tree = ast.parse(f.read())
+        except (OSError, SyntaxError, ValueError):
+            if skipped is not None:
+                skipped.append(path)
+            continue  # unreadable here; the test drive is the net for this file
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+                continue
+            if node.func.attr != "add_argument" or "predict" not in ast.unparse(node.func.value):
+                continue
+            names = [a.value for a in node.args if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+            declared = [name for name in owned if name in names]
+            if declared:
+                findings.append(
+                    {
+                        "path": path,
+                        "first": node.lineno,
+                        "last": node.end_lineno,
+                        "what": f"declares {declared[0]} on predict",
+                    }
+                )
+    return sorted(findings, key=lambda f: (f["path"], f["first"]))
+
+
+# Project code that a framework release is known to break. Add an entry whenever
+# a release changes something project-owned code may rely on: `since` is the
+# release that made the change, `detect` returns the findings in the project in
+# the current directory, and `explain` tells the developer what to do about them.
+KNOWN_CLASHES = [
+    {
+        "since": "0.3.0",
+        "detect": _clash_predict_output_options,
+        "explain": (
+            "Since 0.3.0 the framework adds --output-prefix/-o and --output-format/-f to predict.",
+            "Declaring either again, or reusing -o or -f for another option there, makes every",
+            'command fail with "conflicting option strings".',
+            "Delete the duplicate declaration, or give your own option another letter. To change",
+            "the help text or default of the framework's option, use",
+            "self.parser_predict.update_arguments(...). Then run `cli sync` again.",
+        ),
+    },
+]
+
+
+def _find_known_clashes(skipped=None):
+    """Return [(entry, findings)] for each KNOWN_CLASHES entry found in the project.
+    Files a detector could not read are appended to `skipped` when it is given."""
+    found = []
+    for entry in KNOWN_CLASHES:
+        findings = entry["detect"](skipped)
+        if findings:
+            found.append((entry, findings))
+    return found
+
+
+def _report_known_clashes(clashes):
+    print("\n\033[91m✗\033[0m Sync stopped: this project has code the current framework breaks.")
+    for entry, findings in clashes:
+        places = [f"{f['path']}:{f['first']}" + ("" if f["last"] == f["first"] else f"-{f['last']}") for f in findings]
+        width = max(len(place) for place in places)
+        print()
+        for place, finding in zip(places, findings):
+            print(f"  {place:<{width}}   {finding['what']}")
+        print()
+        for line in entry["explain"]:
+            print(f"  {line}")
+    print("\n  Nothing was changed. To sync without these checks: cli sync --no-verify")
+
+
+def _undo_sync(snapshot, backup_root):
+    """Put the project back as it was before the sync and say so. If that fails
+    partway, keep the pre-image on disk and say where it is instead of raising."""
+    try:
+        snapshot.restore(backup_root)
+        print("  Every file was restored to its state before the sync.")
+    except OSError as e:
+        print(f"  \033[91m✗\033[0m Could not restore every file ({e}).")
+        print(f"    The files as they were before the sync are in: {snapshot.keep()}")
+
+
+SMOKE_TIMEOUT = 60  # seconds each help screen of the project's own tool may take
+_SMOKE_COMMANDS = (["--help"], ["predict", "--help"], ["preprocess", "--help"], ["postprocess", "--help"])
+
+
+def _project_python():
+    """The interpreter of the project's own virtualenv (`.venv`), or None."""
+    for relative in (os.path.join(".venv", "bin", "python"), os.path.join(".venv", "Scripts", "python.exe")):
+        if os.path.isfile(relative):
+            return os.path.abspath(relative)
+    return None
+
+
+def _smoke_check():
+    """Test drive: run the help screens of the project's entry script.
+
+    Uses the project's own interpreter, with APP_ROOT pointed at the project so
+    an unconfigured checkout can still start. Returns
+    ``{'runnable': bool, 'reason': str, 'results': {command: (passed, error)}}``;
+    `runnable` is False when there is no interpreter, or not exactly one
+    `src/run_*.py`. With several, sync cannot tell which one is the entry
+    script, and running the others with `--help` could execute whatever they do.
+    """
+    import glob
+    import subprocess
+
+    scripts = sorted(glob.glob(os.path.join("src", "run_*.py")))
+    if not scripts:
+        return {"runnable": False, "reason": "no src/run_*.py entry script was found", "results": {}}
+    if len(scripts) > 1:
+        reason = f"several src/run_*.py scripts were found ({', '.join(scripts)}), so none was run"
+        return {"runnable": False, "reason": reason, "results": {}}
+    python = _project_python()
+    if not python:
+        return {"runnable": False, "reason": "the project has no .venv interpreter (run `uv sync`)", "results": {}}
+
+    script = scripts[0]
+    env = {**os.environ, "APP_ROOT": os.getcwd(), "PYTHONDONTWRITEBYTECODE": "1"}
+    results = {}
+    for arguments in _SMOKE_COMMANDS:
+        try:
+            done = subprocess.run(
+                [python, script, *arguments],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=SMOKE_TIMEOUT,
+                env=env,
+            )
+            lines = [line for line in done.stderr.splitlines() if line.strip()]
+            passed, error = done.returncode == 0, (lines[-1].strip() if lines else f"exit code {done.returncode}")
+        except subprocess.TimeoutExpired:
+            passed, error = False, f"timed out after {SMOKE_TIMEOUT}s"
+        except OSError as e:
+            passed, error = False, str(e)
+        results[" ".join([script, *arguments])] = (passed, "" if passed else error)
+    return {"runnable": True, "reason": "", "results": results}
+
+
 def sync_command(args):
     """Synchronize framework files in existing projects to the latest version."""
+    snapshot = None
+    backup_root = None
     try:
         import os
         import shutil
 
         dry_run = getattr(args, "dry_run", False)
         do_backup = getattr(args, "backup", True)
+        verify = getattr(args, "verify", True) and not _env_flag("NGARGPARSER_SYNC_NO_VERIFY")
 
         # Check if we're in a project directory
         if not os.path.exists("src") or not os.path.exists("scripts"):
@@ -1723,6 +2031,8 @@ def sync_command(args):
             # would break compatibility with older ngargparser versions whose
             # sync subparser doesn't recognize them.
             env = {**os.environ, "NGARGPARSER_NO_SELF_UPGRADE": "1"}
+            if not verify:  # the bare re-exec drops --no-verify, so carry it in the environment
+                env["NGARGPARSER_SYNC_NO_VERIFY"] = "1"
             os.execvpe(sys.argv[0], [sys.argv[0], "s"], env)
 
         if dry_run:
@@ -1733,9 +2043,33 @@ def sync_command(args):
         project_name = os.path.basename(os.getcwd())
         print(f"Project: {project_name}")
 
+        # Safety net 1: project code this framework version is known to break
+        # stops the sync before anything is written (reported in dry-run too).
+        if verify:
+            unreadable = []
+            clashes = _find_known_clashes(unreadable)
+            if clashes:
+                _report_known_clashes(clashes)
+                return 1
+            for path in dict.fromkeys(unreadable):
+                print(
+                    f"\033[93m⚠\033[0m Could not check {path} for known clashes (it does not parse with this Python)."
+                )
+        else:
+            print("\033[93m⚠\033[0m Safety checks are off for this run (--no-verify or NGARGPARSER_SYNC_NO_VERIFY).")
+
+        # Safety nets 2 and 3: note which of the project's help screens work now,
+        # and keep a pre-image of every file about to be touched. The screens are
+        # run again once the files are in place; see "Test drive" below.
+        framework_files = _sync_framework_files()
+        baseline = None
+        if not dry_run:
+            if verify and _framework_changes_pending(framework_files):
+                baseline = _smoke_check()
+            snapshot = _SyncSnapshot(_sync_touched_paths(framework_files))
+
         # Backups of any overwritten file go under a timestamped dir so an
         # accidental clobber of a hand-edited framework file stays recoverable.
-        backup_root = None
         if do_backup and not dry_run:
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             backup_root = os.path.join(".ngargparser", "sync-backups", timestamp)
@@ -1756,34 +2090,23 @@ def sync_command(args):
         # their current paths first. They move user files, so they're skipped in
         # dry-run (which must not touch the tree).
         if not dry_run:
-            if os.path.exists("scripts/build.sh") and not os.path.exists("scripts/core/build.sh"):
+            if os.path.exists(_SYNC_LEGACY_BUILD) and not os.path.exists("scripts/core/build.sh"):
                 os.makedirs("scripts/core", exist_ok=True)
-                shutil.move("scripts/build.sh", "scripts/core/build.sh")
+                shutil.move(_SYNC_LEGACY_BUILD, "scripts/core/build.sh")
                 print(
                     "  └ \033[93mMigrated\033[0m scripts/build.sh → scripts/core/build.sh "
                     "(framework-owned scripts now live under scripts/core/)"
                 )
             # Legacy hook filenames → hooks.sh. Content is preserved exactly.
-            for legacy in ("scripts/dependencies.sh", "scripts/build_hooks.sh"):
+            for legacy in _SYNC_LEGACY_HOOKS:
                 if os.path.exists(legacy) and not os.path.exists("scripts/hooks.sh"):
                     shutil.move(legacy, "scripts/hooks.sh")
                     print(f"  └ \033[93mMigrated\033[0m {legacy} → scripts/hooks.sh")
                     break
 
-        # Framework-owned files: (source, destination, executable). _sync_file
-        # copies only when content differs, backs up any overwrite, and records
-        # the action so the summary can count what changed.
-        framework_files = [
-            (f"{NGPARSER_DIR}/NGArgumentParser.py", "src/core/NGArgumentParser.py", False),
-            (f"{NGPARSER_DIR}/core_validators.py", "src/core/core_validators.py", False),
-            (f"{NGPARSER_DIR}/result_writer.py", "src/core/result_writer.py", False),
-            (f"{TEMPLATE_DIR}/set_pythonpath.py", "src/core/set_pythonpath.py", False),
-            (f"{TEMPLATE_DIR}/configure.py", "src/core/configure.py", True),
-            (f"{TEMPLATE_DIR}/configure", "configure", True),
-            (f"{TEMPLATE_DIR}/build.sh", "scripts/core/build.sh", True),
-            (f"{TEMPLATE_DIR}/Makefile", "Makefile", False),
-        ]
-
+        # Framework-owned files (see _sync_framework_files). _sync_file copies
+        # only when content differs, backs up any overwrite, and records the
+        # action so the summary can count what changed.
         print("\nUpdating framework files...")
         for src, dst, executable in framework_files:
             action = _sync_file(
@@ -1852,6 +2175,32 @@ def sync_command(args):
 
         anything_changed = files_changed > 0 or stamp_updated or readme_updated
 
+        # Test drive: every help screen that worked before the sync must still
+        # work now. If one doesn't, undo the whole sync and say why.
+        verification = None
+        if baseline is not None:
+            worked_before = [command for command, result in baseline["results"].items() if result[0]]
+            if not baseline["runnable"]:
+                verification = ("unverified", baseline["reason"])
+            elif not worked_before:
+                first_error = next(iter(baseline["results"].values()))[1]
+                verification = ("unverified", f"it did not start before the sync either ({first_error})")
+            else:
+                after = _smoke_check()["results"]
+                broken = [command for command in worked_before if not after.get(command, (False, ""))[0]]
+                if broken:
+                    print(
+                        "\n\033[91m✗\033[0m Sync rolled back: these commands worked before the sync and fail after it.\n"
+                    )
+                    for command in broken:
+                        print(f"  {command}")
+                        print(f"      {after.get(command, (False, 'did not run'))[1]}")
+                    print()
+                    _undo_sync(snapshot, backup_root)
+                    print("  Fix the cause, or sync without these checks: cli sync --no-verify")
+                    return 1
+                verification = ("verified", f"{len(worked_before)} of {len(baseline['results'])}")
+
         # Summary
         print("\nSynchronization Summary:")
         print(f"  └ Framework files {'to change' if dry_run else 'changed'}: \033[92m{files_changed}\033[0m")
@@ -1873,11 +2222,30 @@ def sync_command(args):
         else:
             print("\n\033[93m⚠\033[0m No files needed updating - your project is already up to date!")
 
+        if verification and verification[0] == "verified":
+            print(
+                f"\033[92m✓\033[0m Verified: every help screen that worked before the sync still works ({verification[1]})."
+            )
+        elif verification:
+            print(f"\033[93m⚠\033[0m Could not verify that the project still runs: {verification[1]}.")
+
         return 0
+
+    except KeyboardInterrupt:
+        print("\n\033[91m✗\033[0m Sync interrupted.")
+        if snapshot is not None:
+            _undo_sync(snapshot, backup_root)
+        raise
 
     except Exception as e:
         print(f"\033[91m✗\033[0m Error during synchronization: {e}")
+        if snapshot is not None:
+            _undo_sync(snapshot, backup_root)
         return 1
+
+    finally:
+        if snapshot is not None:
+            snapshot.discard()
 
 
 def main():
@@ -1937,6 +2305,13 @@ def main():
         action="store_false",
         default=True,
         help="Don't back up framework files before overwriting them (backups are on by default).",
+    )
+    sync_parser.add_argument(
+        "--no-verify",
+        dest="verify",
+        action="store_false",
+        default=True,
+        help="Skip the safety checks: the known-clash check and the before/after test drive of the project's help screens.",
     )
     sync_parser.add_argument(
         "--ref",
