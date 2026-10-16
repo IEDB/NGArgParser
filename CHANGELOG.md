@@ -28,6 +28,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     sync left crashing on every command, are now stopped untouched; the 3 on 0.3.0 or newer
     sync and verify.
 
+- `scripts/deps.sh`, a new user-owned hook for every download a tool needs at run time (git
+  clones, archives, data). `make build` runs it at the start, in an empty temp dir, and moves each
+  top-level entry it leaves into the project's `libs/`. The fetch is skipped while deps.sh is
+  unchanged and its entries are still in `libs/` (state in `.ngargparser/deps-stamp`; delete it to
+  force a fetch). A failed fetch leaves `libs/` as it was and stops the build. Fetched directories
+  get `__init__.py` files, and a managed `libs/.gitignore` keeps them out of git. `cli generate`
+  creates the template; `cli sync` does not add it to existing projects.
+- `make build` checks that the tool starts: it runs the entry script's `--help`, `predict --help`,
+  `preprocess --help` and `postprocess --help` from the build dir with the project's `.venv` and
+  `APP_ROOT` set to the build, before packing. A crash fails the build and shows the last error
+  line. No `.venv`, or more than one `src/run_*.py`, skips the check with a notice.
+- `make build` checks every symlink in the build: each must be relative and resolve inside it.
+  Absolute, dangling, looping and escaping links fail the build and are listed.
+
 ### Changed
 - The `--help` contact block drops the retired IEDB Help Desk (https://help.iedb.org/) and lists
   only the IEDB Discussion Forum, in both the framework base class (`NGArgumentParser.py`) and the
@@ -53,11 +67,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     basename: axelf (postprocess), conservancy and rate (preprocess).
   - Already path-safe: bcell-structure-input, population-coverage.
 
+- **Breaking:** `make build` copies the project into `build/<TOOL>-<VERSION>/` instead of
+  symlinking it, and packs with `tar -czf` instead of `tar -chzf`. Symlinks inside the project and
+  its dependencies are kept as links, so a dependency's internal link (such as `data -> ../data`)
+  is no longer stored twice, and `.git` inside a linked folder no longer ships. Developers edit and
+  run in the project folder; `build/` is output, and its files are made read-only after packing so
+  a fix typed there fails to save instead of vanishing on the next build. Hooks now patch the copy
+  only, so nothing a hook writes reaches the project.
+- **Breaking:** `scripts/hooks.sh` is for patching the build copy. Downloads in it still work but
+  run on every build; move them to `scripts/deps.sh`.
+- **Breaking:** old layouts stop the build with a message naming the fix, instead of being read or
+  silently ignored: `scripts/do-not-distribute.txt`, a root `do-not-distribute.txt`, or
+  `scripts/.distignore` without a root `.distignore`; `scripts/build_hooks.sh` or
+  `scripts/dependencies.sh` without `scripts/hooks.sh`; a symlinked `libs/`. `cli sync` still
+  renames the old hook names. The README has a migration checklist for existing tools.
+- A failed build now also removes the previous tarball, so an old one never looks fresh.
+
 ### Fixed
 - `NGARGPARSER_NO_UPDATE_CHECK=0` no longer silences the update notice. The variable is now read as
   an on/off value: unset, empty, `0`, `false`, `no` and `off` (any case) leave the notice on, and
   anything else turns it off. Before, any non-empty value turned it off, so setting it back to `0`
   after `1` kept the notice hidden. Applies to both the `cli --version` check and the passive notice.
+
+### Removed
+- **Breaking:** `EXCLUDE_FROM_BUILD_SYMLINK` in `scripts/build.conf`. Everything is copied; a
+  leftover setting prints a notice and has no effect.
+- **Breaking:** cloning git URLs listed in `requirements.txt` at build time. `requirements.txt`
+  now ships as an ordinary file. No current tool used this; put such clones in `scripts/deps.sh`.
 
 ## [0.4.1] — 2026-08-31
 

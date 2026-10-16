@@ -1,4 +1,9 @@
+import shutil
+import stat
+import subprocess
 from argparse import Namespace
+
+import pytest
 
 from ngargparser import cli
 
@@ -23,6 +28,7 @@ def test_create_project_structure_builds_expected_tree(in_tmp_dir):
         "scripts/core/build.sh",
         "scripts/build.conf",
         "scripts/hooks.sh",
+        "scripts/deps.sh",
         ".distignore",
         "Makefile",
         "configure",
@@ -32,6 +38,15 @@ def test_create_project_structure_builds_expected_tree(in_tmp_dir):
     ]
     for rel in expected:
         assert (root / rel).exists(), f"missing scaffolded file: {rel}"
+
+
+@pytest.mark.parametrize("script", ["scripts/hooks.sh", "scripts/deps.sh"])
+def test_user_hooks_are_executable_bash(in_tmp_dir, script):
+    cli.create_project_structure("demo")
+    path = in_tmp_dir / "demo" / script
+    assert stat.S_IMODE(path.stat().st_mode) == 0o755
+    if shutil.which("bash"):
+        subprocess.run(["bash", "-n", str(path)], check=True, timeout=30)
 
 
 def test_placeholders_are_substituted(in_tmp_dir):

@@ -63,7 +63,7 @@ What just happened:
 - **`cli generate`** scaffolded a fresh project tree at `my-app/`. Non-interactive: no prompts, scriptable.
 - **`uv sync`** read `pyproject.toml`, locked deps into `uv.lock`, installed them into `.venv/`.
 - **`uv run python …`** ran the entry script through the project venv. Out of the box your app understands `preprocess`, `predict`, and `postprocess` subcommands.
-- **`make build`** ran the build pipeline (copy + symlink, run hooks, tarball). Output ships to HPC.
+- **`make build`** fetched dependencies (none yet), copied the project into `build/`, checked that the tool starts, and packed the tarball. Output ships to HPC. Keep editing and running in `my-app/` itself; `build/` is a read-only copy that the next build replaces.
 
 When you need an external tool dep:
 
@@ -87,6 +87,7 @@ my-app/
 ├── license-LJI.txt
 ├── .distignore                 # tarball exclusions — .gitignore syntax (yours)
 ├── paths.py                    # declares external tool deps (yours; created by `cli deps add`)
+├── libs/                       # vendored code: yours, plus deps fetched by scripts/deps.sh (git-ignored)
 ├── src/
 │   ├── core/                   # framework-owned (sync overwrites) — DO NOT EDIT
 │   │   ├── NGArgumentParser.py
@@ -102,7 +103,8 @@ my-app/
 │   ├── core/                   # framework-owned (sync overwrites)
 │   │   └── build.sh            # build pipeline
 │   ├── build.conf              # build knobs (yours)
-│   └── hooks.sh                # imperative build hook (yours)
+│   ├── deps.sh                 # dependency downloads into libs/ (yours)
+│   └── hooks.sh                # build hook that patches the build copy (yours)
 └── deploy/
     └── install.sh              # imperative deploy hook (yours, runs on target host)
 ```
@@ -170,12 +172,13 @@ The full parser API is in [Reference](#reference) at the bottom.
 
 ## Dependencies
 
-ngargparser separates two kinds of dependencies and uses different tools for each:
+ngargparser separates three kinds of dependencies and uses different tools for each:
 
 | Kind | Manage with | Manifest |
 |---|---|---|
 | Python packages (numpy, pandas, …) | `uv` | `pyproject.toml` + `uv.lock` |
 | External binaries / HPC modules / `LD_LIBRARY_PATH` | `cli deps` + `./configure` | `paths.py` |
+| Code and data the tool loads from `libs/` (git repos, executables, data) | `scripts/deps.sh`, run by `make build` | `scripts/deps.sh` |
 
 ### Python packages (`uv`)
 
@@ -268,29 +271,78 @@ A dependency that ends up with no virtualenv at all warns for the same reason, s
 `.env` is rewritten only when its content actually changes; an otherwise identical run reports `* .env file unchanged`.
 
 
+### Vendored dependencies (`scripts/deps.sh`)
+
+Code and data your tool imports or reads from `libs/` (git repositories such as allele-validator, predictor executables, percentile data) are downloaded by `scripts/deps.sh`. This is separate from `cli deps`, which records where external tools live on a host.
+
+```bash
+# scripts/deps.sh runs in an empty temp dir; each top-level entry it leaves lands in libs/
+git clone -b v0.5.4 --single-branch --depth 1 \
+    ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/allele-validator.git
+rm -rf allele-validator/.git
+```
+
+`make build` runs it first, and only when needed:
+
+| Situation | What happens |
+|---|---|
+| First build, or `scripts/deps.sh` changed | deps.sh runs; on success each entry replaces `libs/<entry>` |
+| deps.sh unchanged, and everything it fetched is still in `libs/` | Skipped |
+| deps.sh fails | `libs/` stays as it was and the build stops |
+| You want a fresh download anyway | `rm .ngargparser/deps-stamp`, then `make build` |
+
+After a fetch:
+
+- Fetched directories get `__init__.py` files, so a run from the project folder imports them the same way the build does.
+- `libs/.gitignore` lists the fetched entries so they stay out of git (the file ignores itself). If `libs/.gitignore` is your own file, the build leaves it alone and warns about any fetched entry git would still pick up.
+- The build refuses to overwrite a `libs/<name>` that deps.sh did not fetch, so code you commit in `libs/` is safe.
+
+Fetched entries ship as deps.sh left them: `.distignore` and the hidden-file rule apply to your project files, not to dependencies. The build only strips `.git`, `.github`, `.gitlab` and `__pycache__` from them, so delete anything else you do not want shipped inside deps.sh. Never write a token into deps.sh; read it from a CI/CD variable such as `TOOLS_DEPLOY_TOKEN`, as the template shows.
+
+`make clean` removes `build/` only. Fetched dependencies stay in `libs/`, so the next build does not download them again.
+
 ## Building
 
 ```bash
 make build          # produce build/IEDB_NG_<TOOL>-<VERSION>.tar.gz
 make build-verbose  # same, with full build output (no progress bar)
-make clean          # remove build/
+make clean          # remove build/ (fetched dependencies in libs/ stay)
 ```
 
-Building requires `git` on the machine running `make build` (the exclusion rules are evaluated with `git check-ignore`, and git deps in `requirements.txt` are vendored via clone).
+Building requires `git` on the machine running `make build` (the exclusion rules are evaluated with `git check-ignore`, and `scripts/deps.sh` is fingerprinted with `git hash-object`).
+
+### Developing: edit and run in the project folder
+
+Edit, run and debug in the project folder. Once `make build` has fetched `libs/`, the project folder has everything the build has, so no build is needed between fixes:
+
+```bash
+uv run python src/run_my_app.py predict -j input.json -o out
+```
+
+`build/` is output: every `make build` replaces it. Its files are read-only, so an editor refuses to save a fix there instead of the fix silently vanishing on the next build. Directories stay writable, so `make clean`, the next build, and new files written by `./configure` keep working. Rewriting an existing file there does not (for example `./configure --x-path=…`, which edits `paths.py`); do that in the project folder.
 
 Pipeline (under the hood, `scripts/core/build.sh`):
 
-1. Set up `build/<TOOL>-<VERSION>/`
-2. Evaluate `.distignore` (exact `.gitignore` semantics, see below)
-3. Copy or symlink the source tree into the build dir, skipping excluded paths (symlink by default; copy items listed in `EXCLUDE_FROM_BUILD_SYMLINK` — defaults to `libs run_*.py`)
-4. Run `scripts/hooks.sh` (your imperative hook)
-5. Tar it up
+1. Set up `build/<TOOL>-<VERSION>/` and remove the previous tarball
+2. Fetch dependencies with `scripts/deps.sh` into `libs/`, unless nothing changed (see [Vendored dependencies](#vendored-dependencies-scriptsdepssh))
+3. Evaluate `.distignore` (exact `.gitignore` semantics, see below)
+4. Copy the project into the build dir, skipping excluded paths. Symlinks are copied as links, never followed
+5. Run `scripts/hooks.sh` against the copy
+6. Check symlinks: each must be relative and resolve inside the build, or the build fails and lists them
+7. Check that the tool starts: run the entry script's `--help`, `predict --help`, `preprocess --help` and `postprocess --help` from the build dir with the project's `.venv`, and `APP_ROOT` set to the build. A crash fails the build and shows the error line. With no `.venv`, or more than one `src/run_*.py`, the check is skipped with a notice
+8. Tar it up (symlinks stored as links), then make the build copy read-only
+
+Removed layouts stop the build with a message that names the fix:
+
+- `scripts/do-not-distribute.txt`, a root `do-not-distribute.txt`, or `scripts/.distignore`, without a root `.distignore`
+- `scripts/build_hooks.sh` or `scripts/dependencies.sh` without `scripts/hooks.sh`
+- a `libs/` that is a symlink
+
+See [Migrating an existing tool](#migrating-an-existing-tool-to-scriptsdepssh).
 
 ### `.distignore` — tarball exclusions
 
 Lists paths that must not ship in the tarball (or the staged `build/` tree). Lives at the project root, next to `.gitignore`. The file has **exact `.gitignore` semantics** — you can paste `.gitignore` content verbatim: wildcards, dir-only `name/`, `!` negation, `/` anchoring, and `**` all match at every depth of the project tree.
-
-> **Legacy alias:** projects scaffolded before the rename use `scripts/do-not-distribute.txt`. `build.sh` still honors that name, so those projects keep working untouched. If both exist, root `.distignore` wins. New scaffolds write `.distignore`.
 
 Built-in rules layered around your file by `build.sh`:
 
@@ -317,25 +369,22 @@ Built-in rules layered around your file by `build.sh`:
 - `.git/` and `build/` (project root) are **always** excluded — no `!` rule can bring them back.
 - `README` and `deploy/install.sh` are **always** included — the deploy orchestrator requires them at the tarball top level, so exclusion rules (including the default `*.sh`) cannot strip them.
 
-One caveat: a directory that is itself a symlink is treated as a single file by the matcher, and `tar -h` dereferences it wholesale — exclusion rules do not reach inside symlinked directories.
+The rules reach every depth of your project, including code you keep in `libs/`. A symlink is copied as a link, so rules never follow it into its target. Dependencies fetched by `scripts/deps.sh` are not filtered (see [Vendored dependencies](#vendored-dependencies-scriptsdepssh)).
 
 ### `scripts/hooks.sh` — the build hook
 
-This is your imperative escape hatch. It runs after the source tree is in place but before the tarball is created. Working dir: `build/<TOOL>/libs/`. Available env vars: `BUILD_DIR`, `PROJECT_ROOT`, `APP_NAME`, `TOOL_NAME`, `TOOL_VERSION`, `TOOL_DIR`, `SRC_DIR`.
+This is your imperative escape hatch. It runs after the project is copied into the build dir, before the checks and the tarball. It works on that copy, so nothing it changes reaches the project. Working dir: `build/<TOOL>/libs/`. Available env vars: `BUILD_DIR`, `PROJECT_ROOT`, `APP_NAME`, `TOOL_NAME`, `TOOL_VERSION`, `TOOL_DIR`, `SRC_DIR`.
 
-Use it for: vendoring git deps, downloading archives, copying local binaries, code generation, patching files, signing, validation — anything `bash` can do.
+Use it for: patching copied files, copying local binaries, code generation, signing, validation, or anything else `bash` can do. Downloads belong in `scripts/deps.sh`, which fetches once into the project instead of on every build. Symlinks a hook creates must be relative and stay inside the build.
 
 ### `scripts/build.conf` — declarative knobs
 
 ```bash
-# Items to COPY instead of symlink (glob-matched). Default: "libs run_*.py".
-EXCLUDE_FROM_BUILD_SYMLINK="libs run_*.py"
-
 # Tarball filename prefix.
 TARBALL_PREFIX="IEDB_"
 ```
 
-`build.conf` is user-owned — sync never touches it.
+`build.conf` is user-owned — sync never touches it. `EXCLUDE_FROM_BUILD_SYMLINK` is gone, because the build copies everything; a leftover setting prints a notice and has no effect.
 
 ## Deploying
 
@@ -375,13 +424,13 @@ The orchestrator passes five env vars (`IEDB_STANDALONE_NAME`, `IEDB_VERSION`, `
 
 ### Build hook vs. deploy hook
 
-The two `*.sh` user-owned files are easy to confuse. They run at different times in different places:
+The three user-owned `*.sh` files are easy to confuse. They run at different times in different places:
 
-| | `scripts/hooks.sh` | `deploy/install.sh` |
-|---|---|---|
-| When | Build time (developer / CI) | Deploy time (target server) |
-| Invoked by | `scripts/core/build.sh` | nxg-tools-deployments orchestrator |
-| Purpose | Pull stuff INTO the tarball (vendor git deps, codegen, patch source) | Set up the extracted tarball ON the server (uv sync, configure, edit paths.py) |
+| | `scripts/deps.sh` | `scripts/hooks.sh` | `deploy/install.sh` |
+|---|---|---|---|
+| When | Start of `make build`, only when deps.sh changed | Every `make build`, after copying | Deploy time (target server) |
+| Invoked by | `scripts/core/build.sh` | `scripts/core/build.sh` | nxg-tools-deployments orchestrator |
+| Purpose | Download dependencies INTO the project's `libs/` (git repos, archives, data) | Patch the build copy (codegen, edits, extra files) | Set up the extracted tarball ON the server (uv sync, configure, edit paths.py) |
 
 ## Upgrading the framework
 
@@ -458,7 +507,7 @@ cli sync
 - the `[tool.ngargparser] scaffold_version` stamp in `pyproject.toml`
 - the README badge (flips to green to mark "synced")
 
-It never overwrites `validators.py`, `<App>ArgumentParser.py`, `paths.py`, `hooks.sh`, `build.conf`, or anything else in user-owned space. It also migrates legacy filenames from older framework versions (e.g., `scripts/build.sh` → `scripts/core/build.sh`, `scripts/dependencies.sh` → `scripts/hooks.sh`) on first run.
+It never overwrites `validators.py`, `<App>ArgumentParser.py`, `paths.py`, `hooks.sh`, `deps.sh`, `build.conf`, or anything else in user-owned space. It also migrates legacy filenames from older framework versions (e.g., `scripts/build.sh` → `scripts/core/build.sh`, `scripts/dependencies.sh` → `scripts/hooks.sh`) on first run.
 
 ### Sync safety checks
 
@@ -496,6 +545,20 @@ or `postprocess` run still gives the right result, so run your own tests after a
 ### What sync can't do
 
 For breaking changes — file layouts shifting, schema changes, removed APIs — sync keeps your core files current but won't transform user-edited content. The right move there: read the release notes, scaffold a fresh project with the new framework, and port your application code over.
+
+### Migrating an existing tool to `scripts/deps.sh`
+
+The copy-based build (see [Building](#building)) needs these steps once per existing tool:
+
+1. Run `cli sync` to get the new `scripts/core/build.sh`. Sync also renames `scripts/dependencies.sh` or `scripts/build_hooks.sh` to `scripts/hooks.sh`.
+2. Copy `scripts/deps.sh` from a fresh `cli generate` (or from ngargparser's `templates/deps.sh`). Move every clone and download from `scripts/hooks.sh` into it. deps.sh runs in its own temp dir, so drop `$BUILD_DIR` from those lines; keep patching steps in hooks.sh.
+3. If the tool has `scripts/do-not-distribute.txt` and no root `.distignore`, run `git mv scripts/do-not-distribute.txt .distignore`. The syntax is the same.
+4. Delete `EXCLUDE_FROM_BUILD_SYMLINK` from `scripts/build.conf`.
+5. Delete hand-fetched copies in `libs/` that deps.sh now fetches; the build refuses to overwrite entries it did not fetch. If `libs/` itself is a symlink, replace it with a real directory.
+6. Keep `scripts/deps.sh` out of the tarball. The default `.distignore` does this with `*.sh`; a `.distignore` that lists scripts by name needs `/scripts/deps.sh`.
+7. Remove, or list in `.distignore`, any folder whose symlinks are absolute or point outside the project. The build now fails on them instead of shipping what they point at.
+8. Run `uv sync` and `make build`, then compare the tarball contents with the last release: `diff <(tar -tzf old.tar.gz | sort) <(tar -tzf build/<new>.tar.gz | sort)`.
+9. Keep `TOOLS_DEPLOY_TOKEN` in CI. A CI checkout starts with an empty `libs/`, so every CI build fetches.
 
 ---
 
@@ -680,7 +743,10 @@ self.parser_predict.add_argument(
 | `uv.lock` | You (regenerated by `uv` commands) |
 | `paths.py` | You (`cli deps` writes stubs; `./configure --<name>-…` or a hand edit fills in values) |
 | `scripts/hooks.sh` | You |
+| `scripts/deps.sh` | You (created by `cli generate`; sync never creates or overwrites it) |
 | `scripts/build.conf` | You |
-| `.distignore` | You (`.gitignore` syntax; legacy `scripts/do-not-distribute.txt` still honored) |
+| `.distignore` | You (`.gitignore` syntax) |
+| `libs/` | You, except entries fetched by `scripts/deps.sh` |
+| `libs/.gitignore` | Framework while its first line is the build's marker; yours otherwise (the build then leaves it alone) |
 | `deploy/install.sh` | You — sync creates from template if missing, never overwrites |
 | `src/run_*.py`, `src/<App>ArgumentParser.py`, `src/preprocess.py`, `src/postprocess.py`, `src/validators.py` | You |

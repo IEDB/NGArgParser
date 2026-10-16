@@ -116,3 +116,11 @@ def test_sync_gitignore_idempotent_on_fresh_project(scaffolded_project, sync_arg
     before = gitignore.read_text()  # fresh scaffold already has the managed block
     cli.sync_command(sync_args())
     assert gitignore.read_text() == before
+
+
+def test_sync_does_not_create_deps_sh(scaffolded_project, sync_args):
+    # scripts/deps.sh is user-owned and new projects get it from `cli generate`;
+    # existing projects add it themselves when they migrate.
+    (scaffolded_project / "scripts" / "deps.sh").unlink()
+    cli.sync_command(sync_args())
+    assert not (scaffolded_project / "scripts" / "deps.sh").exists()
