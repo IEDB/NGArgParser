@@ -88,6 +88,69 @@ def test_entry_dropped_from_deps_is_removed(scaffolded_project, run_build):
     assert not any(name.startswith("libs/depA") for name in run.members)
 
 
+# A lost stamp (libs/ copied into a fresh clone, or .ngargparser/ deleted) falls
+# back on the managed libs/.gitignore, which lists the same fetched names.
+
+
+def test_missing_stamp_falls_back_on_libs_gitignore(scaffolded_project, run_build):
+    write_get_libs(scaffolded_project, "mkdir depA && echo v1 > depA/version")
+    run_build(scaffolded_project)
+    (scaffolded_project / ".ngargparser" / "libs-stamp").unlink()
+
+    write_get_libs(scaffolded_project, "mkdir depA && echo v2 > depA/version")
+    run_build(scaffolded_project)
+
+    assert (scaffolded_project / "libs" / "depA" / "version").read_text() == "v2\n"
+    assert stamp(scaffolded_project)[2:] == ["depA"]
+
+
+def test_missing_stamp_removes_dropped_entries(scaffolded_project, run_build):
+    write_get_libs(scaffolded_project, "mkdir depA depB")
+    run_build(scaffolded_project)
+    (scaffolded_project / ".ngargparser" / "libs-stamp").unlink()
+
+    write_get_libs(scaffolded_project, "mkdir depA")
+    run_build(scaffolded_project)
+
+    assert (scaffolded_project / "libs" / "depA").is_dir()
+    assert not (scaffolded_project / "libs" / "depB").exists()
+
+
+def test_missing_stamp_still_protects_hand_made_entries(scaffolded_project, run_build):
+    write_get_libs(scaffolded_project, "mkdir depA")
+    run_build(scaffolded_project)
+    hand_made = scaffolded_project / "libs" / "depB"
+    hand_made.mkdir()
+    (hand_made / "notes.txt").write_text("mine\n")
+    (scaffolded_project / ".ngargparser" / "libs-stamp").unlink()
+
+    write_get_libs(scaffolded_project, "mkdir depA depB")
+    run = run_build(scaffolded_project, expect_ok=False)
+
+    assert run.proc.returncode != 0
+    assert "libs/depB already exists and was not fetched by scripts/get_libs.sh" in run.proc.stderr
+    assert (hand_made / "notes.txt").read_text() == "mine\n"
+
+
+@pytest.mark.parametrize("libs_gitignore", ["deleted", "yours"])
+def test_no_record_explains_both_cases(scaffolded_project, run_build, libs_gitignore):
+    write_get_libs(scaffolded_project, "mkdir depA && echo v1 > depA/version")
+    run_build(scaffolded_project)
+    (scaffolded_project / ".ngargparser" / "libs-stamp").unlink()
+    gitignore = scaffolded_project / "libs" / ".gitignore"
+    if libs_gitignore == "deleted":
+        gitignore.unlink()
+    else:  # a project-owned file without the marker is not a record of fetches
+        gitignore.write_text("/depA\n")
+
+    run = run_build(scaffolded_project, expect_ok=False)
+
+    assert run.proc.returncode != 0
+    assert "If you made it yourself, rename it" in run.proc.stderr
+    assert "delete libs/depA and build again" in run.proc.stderr
+    assert (scaffolded_project / "libs" / "depA" / "version").read_text() == "v1\n"
+
+
 @pytest.mark.parametrize("progress", [False, True])
 def test_failed_fetch_leaves_libs_untouched(scaffolded_project, run_build, progress):
     write_get_libs(scaffolded_project, "mkdir depA && echo v1 > depA/version")

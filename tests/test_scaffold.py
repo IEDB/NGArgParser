@@ -17,6 +17,7 @@ def test_create_project_structure_builds_expected_tree(in_tmp_dir):
         "src/core/NGArgumentParser.py",
         "src/core/core_validators.py",
         "src/core/result_writer.py",
+        "src/core/app_env.py",
         "src/core/set_pythonpath.py",
         "src/core/configure.py",
         "src/core/__init__.py",
@@ -100,6 +101,9 @@ def test_startapp_writes_env_but_not_paths(in_tmp_dir):
     env = (root / ".env").read_text()
     assert "APP_NAME=demo" in env
     assert "APP_ROOT=" in env
+    # The start-up script a tool that depends on this one runs.
+    assert "APP_ENTRY=src/run_demo.py" in env
+    assert (root / "src" / "run_demo.py").is_file()
 
 
 class TestValidateProjectName:

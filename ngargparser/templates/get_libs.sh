@@ -9,9 +9,10 @@
 # When it runs: at the start of `make build`, before the project is copied into
 # build/. It is skipped while this file is unchanged and everything it fetched
 # last time is still in libs/. To force a fresh fetch, delete the folders this
-# script fetched into libs/ (listed in libs/.gitignore) and build again. Don't
-# delete .ngargparser/libs-stamp: it records which libs/ folders the build
-# owns, and without it the build refuses to replace them.
+# script fetched into libs/ (listed in libs/.gitignore) and build again.
+# .ngargparser/libs-stamp records which libs/ folders the build owns; if it is
+# lost, the build reads the same list from libs/.gitignore. If both are gone,
+# delete the fetched folders in libs/ and build again.
 #
 # Working directory: an empty temp dir. When the script succeeds, each
 # top-level entry it leaves there replaces libs/<entry> in the project, gets

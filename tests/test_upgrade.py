@@ -81,3 +81,21 @@ def test_latest_release_tag_no_tags_returns_none_even_strict(monkeypatch):
     # Reachable remote, but ls-remote output has no semver tags.
     monkeypatch.setattr(subprocess, "check_output", lambda *a, **k: "abc123\trefs/tags/nightly\n")
     assert cli._latest_release_tag("https://example.invalid/repo.git", strict=True) is None
+
+
+@pytest.mark.parametrize(
+    "tags, expected",
+    [
+        (["v0.4.1", "v0.4.2-test"], "v0.4.1"),
+        (["v0.4.2", "v0.4.2-test"], "v0.4.2"),
+        (["v0.4.2-test", "v0.4.2"], "v0.4.2"),
+        (["v0.4.2", "v0.4.3-test"], "v0.4.2"),
+        (["v1.0.0-rc1", "v0.9.0"], "v0.9.0"),
+        (["v0.4.2-test"], None),
+        (["v0.9.0", "v0.10.0"], "v0.10.0"),  # control: numeric, not text, order
+    ],
+)
+def test_latest_release_tag_skips_pre_releases(monkeypatch, tags, expected):
+    out = "".join(f"abc123\trefs/tags/{tag}\n" for tag in tags)
+    monkeypatch.setattr(subprocess, "check_output", lambda *a, **k: out)
+    assert cli._latest_release_tag("https://example.invalid/repo.git") == expected

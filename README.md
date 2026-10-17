@@ -270,6 +270,17 @@ A dependency that ends up with no virtualenv at all warns for the same reason, s
 
 `.env` is rewritten only when its content actually changes; an otherwise identical run reports `* .env file unchanged`.
 
+At run time each tool reads its own `.env` (found next to its `src/`, not by searching parent folders). `APP_ROOT` and `APP_NAME` always come from that file, so a tool started by another tool (phbr starting tc1) imports its own `libs/`, not the caller's. Other keys keep the usual rule: a value already set in the environment wins.
+
+**Calling another tool: `APP_ENTRY`.** Every tool publishes its start-up script in its own `.env` as `APP_ENTRY` (`cli generate` writes `APP_ENTRY=src/run_<name>.py`; `./configure` keeps it, or finds the single `src/run_*.py`). With several `run_*.py` scripts, set `APP_ENTRY=src/<script>` in `.env` yourself. A tool that depends on it reads that value, and its `./configure` exports the full path as `<NAME>_ENTRY`, next to `<NAME>_PATH`, in `.env` and in `setup_<name>_env.sh`. Call the dependency through it instead of hard-coding the script's file name, which can change between its versions:
+
+```bash
+source setup_tcell_class_i_env.sh
+python3 "$TCELL_CLASS_I_ENTRY" predict -j job.json -o out
+```
+
+A dependency that publishes no `APP_ENTRY` (an older tool, or not an ngargparser tool) gets no `<NAME>_ENTRY`.
+
 
 ### Vendored dependencies (`scripts/get_libs.sh`)
 
@@ -298,7 +309,7 @@ After a fetch:
 - Fetched directories get `__init__.py` files, so a run from the project folder imports them the same way the build does.
 - `libs/.gitignore` lists the fetched entries so they stay out of git (the file ignores itself). If `libs/.gitignore` is your own file, the build leaves it alone and warns about any fetched entry git would still pick up.
 - The build refuses to overwrite a `libs/<name>` that get_libs.sh did not fetch, so code you commit in `libs/` is safe.
-- Don't delete `.ngargparser/libs-stamp`. It records which `libs/` folders the build owns, and without it the build refuses to replace them.
+- `.ngargparser/libs-stamp` records which `libs/` folders the build owns. If it is lost (a fresh clone with `libs/` copied in, or `.ngargparser/` deleted), the build reads the same list from `libs/.gitignore`, whose first line marks it as the build's. If both are gone, delete the fetched folders in `libs/` and build again.
 
 Fetched entries ship as get_libs.sh left them: `.distignore` and the hidden-file rule apply to your project files, not to dependencies. The build only strips `.git`, `.github`, `.gitlab` and `__pycache__` from them, so delete anything else you do not want shipped inside get_libs.sh. Never write a token into get_libs.sh; read it from a CI/CD variable such as `TOOLS_DEPLOY_TOKEN`, as the template shows.
 
@@ -456,6 +467,11 @@ After a successful `cli upgrade`, it reminds you to run `cli sync` — because `
   you never type a long `git+https://…` command. Works from **any** directory and touches no project
   files. Add `--check` to see installed-vs-latest without installing.
 
+  Only release tags (`vX.Y.Z`) count as the latest. Pre-release tags such as `v0.4.2-test` or
+  `v1.0.0-rc1` are skipped by `cli upgrade`, `cli sync`, the update notice and `cli --version`, so a
+  test tag never reaches other developers by default. Install one on purpose with
+  `cli upgrade --ref v0.4.2-test` or `cli sync --ref v0.4.2-test`.
+
   ```bash
   cli upgrade --check        # is a newer release available?
   cli upgrade                # update the cli to the latest tag (alias: u)
@@ -497,7 +513,10 @@ After a successful `cli upgrade`, it reminds you to run `cli sync` — because `
   ```
 
 - **`cli sync`** — refreshes the **framework-owned files inside a project** to match the installed
-  version (and self-upgrades first, unless `--no-upgrade`). Run it from inside an existing project:
+  version (and self-upgrades first, unless `--no-upgrade`). `cli sync --dry-run` installs nothing, so
+  its preview uses the installed version's files; it prints which ngargparser a real run would install
+  first, and warns when that would replace your local checkout (use `--no-upgrade` to sync from the
+  checkout). Run it from inside an existing project:
 
 ```bash
 cd path/to/your-app

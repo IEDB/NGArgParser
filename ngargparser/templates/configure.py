@@ -11,7 +11,7 @@ from dotenv import load_dotenv, dotenv_values
 CONFIG_PATH = "paths.py"
 DOT_ENV_PATH = ".env"
 # Keys that describe the app itself rather than one of its dependencies.
-APP_KEYS = {'APP_ROOT', 'APP_NAME', 'APP_VENV'}
+APP_KEYS = {'APP_ROOT', 'APP_NAME', 'APP_VENV', 'APP_ENTRY'}
 # Conventional virtualenv directory names, in the order they're tried.
 VENV_CANDIDATE_NAMES = (".venv", "venv", "env", ".virtualenv")
 load_dotenv()
@@ -97,6 +97,64 @@ def declared_venv(tool_path):
         return dotenv_values(env_path).get("APP_VENV") or None
     except OSError:
         return None
+
+def declared_entry(tool_path):
+    """Read a dependency's own APP_ENTRY (its start-up script) out of its .env.
+
+    Same rules as declared_venv: parsed as key/value text, never executed.
+    Returns the script as a path under `tool_path`, or None when the tool
+    publishes nothing (no .env, or a tool that predates APP_ENTRY).
+    """
+    env_path = os.path.join(tool_path, DOT_ENV_PATH)
+    if not os.path.isfile(env_path):
+        return None
+    try:
+        entry = dotenv_values(env_path).get("APP_ENTRY")
+    except OSError:
+        return None
+    if not entry:
+        return None
+    return entry if os.path.isabs(entry) else os.path.join(tool_path, entry)
+
+def resolve_tool_entries(config, detected_tools):
+    """Record each dependency's published start-up script as <tool>_entry.
+
+    In memory only, like a resolved virtualenv: paths.py is never written, and
+    the value lands in .env and setup_<tool>_env.sh as <TOOL>_ENTRY. A caller
+    then runs `python3 "$<TOOL>_ENTRY" predict ...` instead of hard-coding the
+    dependency's script name, which can change between its versions.
+    """
+    for tool_prefix in detected_tools:
+        tool_path = config.get(f"{tool_prefix}_path")
+        if not tool_path or not os.path.isdir(tool_path):
+            continue
+        entry = declared_entry(tool_path)
+        if entry:
+            config[f"{tool_prefix}_entry"] = entry
+            print(f"* {tool_prefix}: start-up script declared in its .env: {entry}")
+
+def own_entry(app_root):
+    """The start-up script this project publishes as APP_ENTRY, relative to app_root.
+
+    A value already in this project's .env file wins when it names a file, so
+    a project with several src/run_*.py scripts can choose one. It is read from
+    the file, not os.environ: a tool that started this one may have passed its
+    own APP_ENTRY down. Otherwise the single src/run_*.py is used, the same rule
+    as the build's startup check. With none or several, nothing is published.
+    """
+    env_path = os.path.join(app_root, DOT_ENV_PATH)
+    if os.path.isfile(env_path):
+        declared = dotenv_values(env_path).get("APP_ENTRY")
+        if declared and os.path.isfile(os.path.join(app_root, declared)):
+            return declared
+    scripts = sorted(glob.glob(os.path.join(app_root, "src", "run_*.py")))
+    if len(scripts) == 1:
+        return os.path.relpath(scripts[0], app_root)
+    print(
+        f"\033[93m⚠\033[0m  No APP_ENTRY published: found {len(scripts)} src/run_*.py scripts. "
+        f"Add '\033[1mAPP_ENTRY=src/<script>\033[0m' to .env so tools that depend on this one can find it."
+    )
+    return None
 
 def resolve_tool_venvs(config, detected_tools):
     """Fill in a tool's virtualenv when the user hasn't set one explicitly.
@@ -216,6 +274,8 @@ def render_env_content(config, app_root):
         lines = [f"APP_ROOT={app_root}\n", f"APP_NAME={config['APP_NAME']}\n"]
         if config.get('APP_VENV'):
             lines.append(f"APP_VENV={config['APP_VENV']}\n")
+        if config.get('APP_ENTRY'):
+            lines.append(f"APP_ENTRY={config['APP_ENTRY']}\n")
         return "".join(lines)
 
     lines = []
@@ -297,6 +357,11 @@ def create_shell_script(config, tool_prefix, output_path, warn_no_venv=True):
     # Required: Export tool path
     lines.append(f"export {env_var}={tool_path}")
 
+    # Optional: the start-up script the tool publishes in its .env (APP_ENTRY)
+    entry = config.get(f"{tool_prefix}_entry")
+    if entry:
+        lines.append(f"export {tool_prefix.upper()}_ENTRY={entry}")
+
     with open(output_path, "w") as f:
         f.write("\n".join(lines) + "\n")
 
@@ -343,6 +408,7 @@ def main():
     # Fall back to a tool's own bundled .venv for any tool without an
     # explicit virtualenv, so paths.py doesn't need a host-specific path.
     ambiguous_venvs = resolve_tool_venvs(config, detected_tools)
+    resolve_tool_entries(config, detected_tools)
 
     # Always ensure APP_ROOT is present in config
     app_root = os.path.abspath(".")
@@ -367,6 +433,13 @@ def main():
         own_venvs = find_bundled_venvs(app_root)
         if len(own_venvs) == 1:
             config['APP_VENV'] = own_venvs[0]
+
+    # Publish this project's start-up script the same way, so a tool that
+    # depends on it runs $<TOOL>_ENTRY instead of hard-coding a file name.
+    if 'APP_ENTRY' not in config:
+        entry = own_entry(app_root)
+        if entry:
+            config['APP_ENTRY'] = entry
 
     # Regenerate .env file based on current paths.py content (this ensures
     # removed dependencies are cleaned up), but skip the write entirely when

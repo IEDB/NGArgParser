@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 
@@ -451,3 +452,88 @@ def test_project_with_no_dependencies_gains_no_venv_warning(scaffolded_project, 
 
     assert result.returncode == 0
     assert "has no virtualenv" not in strip_ansi(result.stdout)
+
+
+# APP_ENTRY: each tool publishes its start-up script; a tool that depends on it
+# reads it and exports <TOOL>_ENTRY, instead of hard-coding the script's name.
+
+
+def env_lines(project_dir):
+    return (project_dir / ".env").read_text().splitlines()
+
+
+def test_project_publishes_its_entry_script(scaffolded_project):
+    (scaffolded_project / ".env").unlink()
+
+    run_configure(scaffolded_project)
+
+    assert "APP_ENTRY=src/run_demo.py" in env_lines(scaffolded_project)
+
+
+def test_entry_script_survives_a_rerun(scaffolded_project):
+    run_configure(scaffolded_project)
+    output = run_configure(scaffolded_project).stdout
+
+    assert "unchanged" in output
+    assert "APP_ENTRY=src/run_demo.py" in env_lines(scaffolded_project)
+
+
+def test_several_run_scripts_publish_nothing_and_warn(scaffolded_project, strip_ansi):
+    (scaffolded_project / ".env").unlink()
+    (scaffolded_project / "src" / "run_other.py").write_text("print('other')\n")
+
+    output = strip_ansi(run_configure(scaffolded_project).stdout)
+
+    assert "No APP_ENTRY published: found 2 src/run_*.py scripts" in output
+    assert not any(line.startswith("APP_ENTRY=") for line in env_lines(scaffolded_project))
+
+
+def test_entry_set_by_hand_in_env_is_kept(scaffolded_project):
+    (scaffolded_project / "src" / "run_other.py").write_text("print('other')\n")
+    env_file = scaffolded_project / ".env"
+    env_file.write_text(env_file.read_text().replace("APP_ENTRY=src/run_demo.py", "APP_ENTRY=src/run_other.py"))
+
+    run_configure(scaffolded_project)
+
+    assert "APP_ENTRY=src/run_other.py" in env_lines(scaffolded_project)
+
+
+def test_inherited_entry_is_ignored(scaffolded_project):
+    # A tool that starts this one may pass its own APP_ENTRY down; only the file counts.
+    result = subprocess.run(
+        [sys.executable, "src/core/configure.py"],
+        cwd=scaffolded_project,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "APP_ENTRY": "src/run_caller.py"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "APP_ENTRY=src/run_demo.py" in env_lines(scaffolded_project)
+
+
+def test_dependency_entry_is_exported(scaffolded_project, tmp_path):
+    cli.add_deps_to_paths("paths.py", ["tcell-class-i"])
+    tool_dir = make_tool_dir(tmp_path, with_venv=False)
+    (tool_dir / ".env").write_text(f"APP_ROOT={tool_dir}\nAPP_NAME=faketool\nAPP_ENTRY=src/run_faketool.py\n")
+
+    result = run_configure(scaffolded_project, f"--tcell-class-i-path={tool_dir}")
+
+    entry = tool_dir / "src" / "run_faketool.py"
+    assert f"start-up script declared in its .env: {entry}" in result.stdout
+    assert f"TCELL_CLASS_I_ENTRY={entry}" in env_lines(scaffolded_project)
+    script = (scaffolded_project / "setup_tcell_class_i_env.sh").read_text()
+    assert f"export TCELL_CLASS_I_ENTRY={entry}" in script
+    assert "tcell_class_i_entry" not in (scaffolded_project / "paths.py").read_text()
+
+
+def test_dependency_without_entry_gets_no_entry_line(scaffolded_project, tmp_path):
+    cli.add_deps_to_paths("paths.py", ["tcell-class-i"])
+    tool_dir = make_tool_dir(tmp_path, with_venv=False)
+    declare_app_venv(tool_dir, make_venv(tmp_path / "some-env"))  # a .env without APP_ENTRY
+
+    result = run_configure(scaffolded_project, f"--tcell-class-i-path={tool_dir}")
+
+    assert "start-up script" not in result.stdout
+    assert not any(line.startswith("TCELL_CLASS_I_ENTRY=") for line in env_lines(scaffolded_project))
+    assert "_ENTRY" not in (scaffolded_project / "setup_tcell_class_i_env.sh").read_text()

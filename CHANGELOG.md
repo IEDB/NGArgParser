@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Each tool publishes its start-up script as `APP_ENTRY` in its `.env`. `cli generate` writes
+  `APP_ENTRY=src/run_<name>.py`; `./configure` keeps a value already in `.env` (never one inherited
+  from the environment) or uses the single `src/run_*.py`, and warns when it can't choose. For each
+  dependency that publishes one, `./configure` exports `<NAME>_ENTRY` (the full path) next to
+  `<NAME>_PATH` in `.env` and `setup_<name>_env.sh`, so a caller runs `"$<NAME>_ENTRY"` instead of
+  hard-coding a script name such as `src/tcell_mhci.py`, which tc1's newer version renames.
+- `cli sync --dry-run` says which ngargparser a real run would install first. The dry run skips that
+  self-upgrade, so its preview uses the installed version's files; the new line makes the difference
+  visible. When the installed ngargparser is a local checkout, it also warns that a real run replaces
+  it, and names `--no-upgrade` as the way to sync from the checkout.
 - `cli sync` no longer leaves a broken project behind. It now ends in one of four ways: synced
   and verified, synced but could not verify, stopped with nothing changed, or rolled back (the
   last two exit 1).
@@ -33,7 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shows the pattern for those). `make build` runs it at the start, in an empty temp dir, and moves each
   top-level entry it leaves into the project's `libs/`. The fetch is skipped while get_libs.sh is
   unchanged and its entries are still in `libs/` (state in `.ngargparser/libs-stamp`; to force a
-  fetch, delete the fetched folders in `libs/`). A failed fetch leaves `libs/` as it was and stops the build. Fetched directories
+  fetch, delete the fetched folders in `libs/`). If the stamp is lost, the build reads which `libs/`
+  entries it owns from the managed `libs/.gitignore`, so it can still replace them. A failed fetch leaves `libs/` as it was and stops the build. Fetched directories
   get `__init__.py` files, and a managed `libs/.gitignore` keeps them out of git. `cli generate`
   creates the template; `cli sync` does not add it to existing projects.
 - `make build` checks that the tool starts: it runs the entry script's `--help`, `predict --help`,
@@ -94,6 +105,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed build now also removes the previous tarball, so an old one never looks fresh.
 
 ### Fixed
+- A tool started by another tool now uses its own `.env` for `APP_ROOT` and `APP_NAME`. Child
+  processes inherit the caller's values, and every core module loaded `.env` without overriding
+  them, so tc1 started by phbr put phbr's `libs/` on its import path: a crash when a module was
+  missing, or a silently different library version. The new `src/core/app_env.py` loads the tool's
+  own `.env` by its exact path (no more searching parent folders). Without a `.env`, an inherited
+  `APP_ROOT` that points at another tool is dropped, so the tool stops with "not configured"; one
+  that points at the tool itself (the build's startup check) is kept.
+- The latest release no longer resolves to a pre-release tag. `v0.4.2-test` used to beat both
+  `v0.4.1` and `v0.4.2`, because tags were compared as text after the version numbers, so every
+  test tag became what `cli sync` and `cli upgrade` installed and what the update notice and
+  `cli --version` pointed to. Tags with a `-` suffix (`-test`, `-rc1`) are now skipped; install one
+  on purpose with `--ref`.
 - `NGARGPARSER_NO_UPDATE_CHECK=0` no longer silences the update notice. The variable is now read as
   an on/off value: unset, empty, `0`, `false`, `no` and `off` (any case) leave the notice on, and
   anything else turns it off. Before, any non-empty value turned it off, so setting it back to `0`

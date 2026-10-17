@@ -323,6 +323,24 @@ stamp_names() {
     return 0
 }
 
+# Names of the libs/ entries this build fetched, so it may replace them. The
+# stamp is the record; when it is lost (a fresh clone with libs/ copied in, or
+# .ngargparser/ deleted), the managed libs/.gitignore lists the same names. Its
+# marker line shows the build wrote it, so hand-made entries stay protected.
+owned_names() {
+    if [ -f "$LIBS_STAMP" ]; then
+        stamp_names
+        return 0
+    fi
+    local gitignore="$LIBS_DIR/.gitignore"
+    if [ -f "$gitignore" ] && [ "$(sed -n 1p "$gitignore")" = "$LIBS_GITIGNORE_MARKER" ]; then
+        # Skip the marker and the self-ignore line, then undo gitignore_pattern:
+        # drop the anchoring '/' and the glob escapes.
+        sed -e '1d' -e '\|^/\.gitignore$|d' -e 's|^/||' -e 's/\\\(.\)/\1/g' "$gitignore"
+    fi
+    return 0
+}
+
 write_stamp() {
     {
         echo "$STAMP_FORMAT"
@@ -443,11 +461,16 @@ fetch_libs() {
 
     # Never replace something in libs/ that get_libs.sh does not own.
     local old
-    old=$(stamp_names)
+    old=$(owned_names)
     while IFS= read -r name; do
         [ -n "$name" ] || continue
         if { [ -e "$LIBS_DIR/$name" ] || [ -L "$LIBS_DIR/$name" ]; } && ! in_list "$name" "$old"; then
-            error "libs/$name already exists and was not fetched by scripts/get_libs.sh. Remove or rename it, then build again."
+            if [ -n "$old" ] || [ -f "$LIBS_STAMP" ]; then
+                error "libs/$name already exists and was not fetched by scripts/get_libs.sh. Remove or rename it, then build again."
+            else
+                # No record at all: the entry may be hand-made or an orphaned fetch.
+                error "libs/$name already exists and was not fetched by scripts/get_libs.sh. If you made it yourself, rename it or stop get_libs.sh from creating it. If get_libs.sh fetched it in an earlier build (the record in .ngargparser/ is gone), delete libs/$name and build again."
+            fi
             exit 1
         fi
     done <<< "$produced"

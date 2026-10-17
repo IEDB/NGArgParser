@@ -248,6 +248,7 @@ def create_example_structure():
         shutil.copy(f"{NGPARSER_DIR}/core_validators.py", f"{project_name}/src/core/core_validators.py")
         shutil.copy(f"{TEMPLATE_DIR}/set_pythonpath.py", f"{project_name}/src/core/set_pythonpath.py")
         shutil.copy(f"{NGPARSER_DIR}/result_writer.py", f"{project_name}/src/core/result_writer.py")
+        shutil.copy(f"{NGPARSER_DIR}/app_env.py", f"{project_name}/src/core/app_env.py")
 
         # Create __init__.py for core package
         with open(f"{project_name}/src/core/__init__.py", "w") as f:
@@ -319,6 +320,7 @@ def create_project_structure(project_name):
         shutil.copy(f"{NGPARSER_DIR}/core_validators.py", f"{project_name}/src/core/core_validators.py")
         shutil.copy(f"{TEMPLATE_DIR}/set_pythonpath.py", f"{project_name}/src/core/set_pythonpath.py")
         shutil.copy(f"{NGPARSER_DIR}/result_writer.py", f"{project_name}/src/core/result_writer.py")
+        shutil.copy(f"{NGPARSER_DIR}/app_env.py", f"{project_name}/src/core/app_env.py")
 
         # Create __init__.py for core package
         with open(f"{project_name}/src/core/__init__.py", "w") as f:
@@ -1098,13 +1100,19 @@ def startapp_command(args):
     # stay out of the user's git history from the first commit.
     ensure_gitignore(os.path.join(project_dir_name, ".gitignore"))
 
-    # Write initial .env with APP_NAME and APP_ROOT in the new project root
+    # Write initial .env with APP_NAME and APP_ROOT in the new project root, plus
+    # APP_ENTRY: the start-up script a tool that depends on this one runs.
     try:
+        import glob
+
         project_root_abs = os.path.abspath(project_dir_name)
         env_file_path = os.path.join(project_dir_name, ".env")
+        entry_scripts = sorted(glob.glob(os.path.join(project_dir_name, "src", "run_*.py")))
         with open(env_file_path, "w", encoding="utf-8") as f:
             f.write(f"APP_ROOT={project_root_abs}\n")
             f.write(f"APP_NAME={project_dir_name}\n")
+            if len(entry_scripts) == 1:
+                f.write(f"APP_ENTRY=src/{os.path.basename(entry_scripts[0])}\n")
         print(f"\033[92m✓\033[0m Created initial '.env' at '\033[92m{env_file_path}\033[0m'")
     except Exception as e:
         print(f"\033[91m✗\033[0m Error writing initial .env: \033[91m{e}\033[0m")
@@ -1152,16 +1160,17 @@ _UNSET = object()  # sentinel: "argument not supplied" (distinct from None)
 
 
 def _latest_release_tag(remote_url, timeout=10, *, strict=False, prompt=True):
-    """Return the highest semver-like tag from a git remote, or None.
+    """Return the highest release tag from a git remote, or None.
 
-    Uses `git ls-remote --tags --refs` (no clone), parses tags matching
-    `vX.Y.Z` (with optional pre-release/build suffix), and returns the
-    highest one by numeric (major, minor, patch). Pre-release suffixes are
-    parsed but compared as None < anything-else, matching the conventional
-    "pre-releases sort below releases" intent for picking a default upgrade.
-    `timeout` bounds the network call (kept short for the update notifier).
+    Uses `git ls-remote --tags --refs` (no clone), keeps tags matching
+    `vX.Y.Z` (an optional `+build` suffix is allowed), and returns the
+    highest one by numeric (major, minor, patch). Pre-release tags such as
+    `v0.4.2-test` or `v1.0.0-rc1` are skipped, so a test tag never becomes the
+    default upgrade or the version the update notice points to; install one
+    on purpose with `--ref`. `timeout` bounds the network call (kept short
+    for the update notifier).
 
-    Returns None when the remote is reachable but has no semver tags. On a
+    Returns None when the remote is reachable but has no release tags. On a
     transport failure (network/timeout/git error) it returns None by default,
     or raises `_RemoteUnavailable` when `strict=True` — so a network blip is
     not misreported as "no tags exist".
@@ -1195,7 +1204,7 @@ def _latest_release_tag(remote_url, timeout=10, *, strict=False, prompt=True):
     for line in out.splitlines():
         ref = line.split("\t", 1)[-1] if "\t" in line else ""
         name = ref.rsplit("/", 1)[-1]
-        m = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", name)
+        m = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:\+.*)?", name)
         if m:
             semver_tags.append((tuple(int(g) for g in m.groups()), name))
     return max(semver_tags)[1] if semver_tags else None
@@ -1246,6 +1255,16 @@ def _is_ngargparser_checkout(path):
     if 'name = "ngargparser"' not in content:
         return False, f"'{path}' doesn't look like the ngargparser repo (pyproject name is not 'ngargparser')."
     return True, ""
+
+
+def _local_checkout():
+    """Return the checkout path when this ngargparser runs from a source checkout
+    (an editable install of the repo), else None. An installed release lives in
+    site-packages, whose parent is not an ngargparser checkout."""
+    import os
+
+    parent = os.path.dirname(str(NGPARSER_DIR))
+    return parent if _is_ngargparser_checkout(parent)[0] else None
 
 
 def _checkout_version(path):
@@ -1695,6 +1714,7 @@ def _sync_framework_files():
         (f"{NGPARSER_DIR}/NGArgumentParser.py", "src/core/NGArgumentParser.py", False),
         (f"{NGPARSER_DIR}/core_validators.py", "src/core/core_validators.py", False),
         (f"{NGPARSER_DIR}/result_writer.py", "src/core/result_writer.py", False),
+        (f"{NGPARSER_DIR}/app_env.py", "src/core/app_env.py", False),
         (f"{TEMPLATE_DIR}/set_pythonpath.py", "src/core/set_pythonpath.py", False),
         (f"{TEMPLATE_DIR}/configure.py", "src/core/configure.py", True),
         (f"{TEMPLATE_DIR}/configure", "configure", True),
@@ -1988,6 +2008,41 @@ def _smoke_check():
     return {"runnable": True, "reason": "", "results": results}
 
 
+def _report_dry_run_upgrade(ref, dev):
+    """--dry-run skips the self-upgrade a real sync starts with, so its preview
+    shows the installed version's files. Say what a real run would install
+    first, and warn when that replaces a local checkout. Reads the remote's
+    tags (no install), resolving the target the way `upgrade_command` does."""
+    import os
+
+    latest_tag = _UNSET
+    plain_latest = (
+        ref == "latest" and not dev and _local_source(ref) is None and not os.environ.get("NGARGPARSER_UPGRADE_URL")
+    )
+    if plain_latest:
+        try:
+            latest_tag = _latest_release_tag(
+                BASE_REPO_URL[len("git+") :], timeout=RELEASE_CHECK_TIMEOUT, strict=True, prompt=False
+            )
+        except _RemoteUnavailable:
+            print("⚠ Couldn't check which ngargparser a real run would install (GitLab unreachable).")
+            return
+
+    url, resolved = _resolve_upgrade_url(ref, dev, latest_tag=latest_tag)
+    from_local = resolved.startswith("local:")
+    target = f"from the local checkout {url}" if from_local else resolved
+    print(
+        f"ℹ A real run first installs ngargparser {target} (installed: {__version__}), then syncs from it. "
+        "This preview uses the installed version's files."
+    )
+    checkout = _local_checkout()
+    if checkout and not (from_local and os.path.realpath(url) == os.path.realpath(checkout)):
+        print(
+            f"⚠ The installed ngargparser is your local checkout at {checkout}; a real run replaces it with "
+            f"{target}. To sync from the checkout, use --no-upgrade."
+        )
+
+
 def sync_command(args):
     """Synchronize framework files in existing projects to the latest version."""
     snapshot = None
@@ -2043,6 +2098,8 @@ def sync_command(args):
 
         if dry_run:
             print("\033[93mDRY RUN\033[0m — showing what would change; no files will be written.")
+            if getattr(args, "upgrade", True) and not os.environ.get("NGARGPARSER_NO_SELF_UPGRADE"):
+                _report_dry_run_upgrade(getattr(args, "ref", "latest"), getattr(args, "dev", False))
         print("Synchronizing framework files to latest version...")
 
         # Get the project name from current directory

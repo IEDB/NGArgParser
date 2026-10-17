@@ -7,9 +7,11 @@ Import this module to automatically configure Python paths
 import sys
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+from core.app_env import load_app_env
 
-load_dotenv()
+# This tool's .env; APP_ROOT and APP_NAME always come from its own file, even
+# when another tool started this one and passed its values down.
+load_app_env()
 
 # A fresh build tree or clone has no .env (build.sh's glob skips dotfiles; .env is
 # gitignored), so APP_ROOT is unset until './configure' runs. Say that outright instead

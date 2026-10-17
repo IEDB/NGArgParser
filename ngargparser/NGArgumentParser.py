@@ -7,10 +7,10 @@ import os
 import core.core_validators as validators
 from pathlib import Path
 from typing import TypedDict, List
-import dotenv
+from core.app_env import load_app_env
 
-# Load environment variables from .env file
-dotenv.load_dotenv()
+# Load this tool's .env (APP_ROOT and APP_NAME always from its own file)
+load_app_env()
 
 # Get the project root directory from environment variable
 APP_ROOT = os.getenv('APP_ROOT')

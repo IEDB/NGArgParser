@@ -7,10 +7,11 @@ import os
 import re
 from pathlib import Path
 
-import dotenv
+# Relative: core.app_env in a tool, ngargparser.app_env in the package's own tests.
+from .app_env import load_app_env
 
-# Load environment variables from .env file
-dotenv.load_dotenv()
+# Load this tool's .env (APP_ROOT and APP_NAME always from its own file)
+load_app_env()
 
 # Get the project root directory and app name from environment variables
 APP_ROOT = os.getenv("APP_ROOT")
