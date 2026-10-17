@@ -106,6 +106,15 @@ def test_startapp_writes_env_but_not_paths(in_tmp_dir):
     assert (root / "src" / "run_demo.py").is_file()
 
 
+def test_generated_validators_are_ready_to_append_to(in_tmp_dir):
+    # A developer pastes custom validators at the end of this file; they raise
+    # argparse.ArgumentTypeError, so the file must import argparse and end with a newline.
+    cli.create_project_structure("demo")
+    text = (in_tmp_dir / "demo" / "src" / "validators.py").read_text()
+    assert text.endswith("\n")
+    assert "\nimport argparse\n" in text
+
+
 class TestValidateProjectName:
     def test_accepts_reasonable_names(self):
         for name in ("demo", "aa-counter", "tool_v2"):

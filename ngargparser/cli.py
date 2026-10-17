@@ -1852,9 +1852,10 @@ def _clash_predict_output_options(skipped=None):
     The base class has added `--output-prefix/-o` and `--output-format/-f` to
     `predict` itself since 0.3.0, so a project that declares either again, or
     reuses one of the short letters for another option, fails with argparse's
-    "conflicting option strings" as soon as its parser is built. Calling
-    `remove_argument` first does not help: it leaves the option strings
-    registered, so the re-declaration conflicts all the same.
+    "conflicting option strings" as soon as its parser is built. A declaration
+    that follows `remove_argument(<option>, "predict")` in the same file is not
+    a clash: removing an option frees all its names (removing --output-format
+    frees -f too), so the project can declare its own.
 
     The project's parser files are read as syntax trees, so the option names in
     a comment or a help string don't count. A file that does not parse is
@@ -1865,6 +1866,13 @@ def _clash_predict_output_options(skipped=None):
     import glob
 
     owned = ("--output-prefix", "-o", "--output-format", "-f")
+    # Removing either name of a framework option frees both.
+    pairs = {
+        "--output-prefix": {"--output-prefix", "-o"},
+        "-o": {"--output-prefix", "-o"},
+        "--output-format": {"--output-format", "-f"},
+        "-f": {"--output-format", "-f"},
+    }
     findings = []
     for path in sorted(glob.glob(os.path.join("src", "*ArgumentParser.py"))):
         try:
@@ -1874,13 +1882,26 @@ def _clash_predict_output_options(skipped=None):
             if skipped is not None:
                 skipped.append(path)
             continue  # unreadable here; the test drive is the net for this file
-        for node in ast.walk(tree):
-            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+        calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)]
+        freed = []  # (line, names) for each remove_argument(<option>, "predict")
+        for node in calls:
+            if node.func.attr != "remove_argument":
                 continue
+            values = [a.value for a in node.args if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+            values += [
+                k.value.value for k in node.keywords if k.arg == "subparser_name" and isinstance(k.value, ast.Constant)
+            ]
+            if len(values) >= 2 and values[1] == "predict":
+                freed.append((node.lineno, pairs.get(values[0], {values[0]})))
+        for node in calls:
             if node.func.attr != "add_argument" or "predict" not in ast.unparse(node.func.value):
                 continue
             names = [a.value for a in node.args if isinstance(a, ast.Constant) and isinstance(a.value, str)]
-            declared = [name for name in owned if name in names]
+            declared = [
+                name
+                for name in owned
+                if name in names and not any(line < node.lineno and name in gone for line, gone in freed)
+            ]
             if declared:
                 findings.append(
                     {
@@ -1907,7 +1928,9 @@ KNOWN_CLASHES = [
             'command fail with "conflicting option strings".',
             "Delete the duplicate declaration, or give your own option another letter. To change",
             "the help text or default of the framework's option, use",
-            "self.parser_predict.update_arguments(...). Then run `cli sync` again.",
+            "self.parser_predict.update_arguments(...); to replace it, call",
+            'self.remove_argument("--output-format", "predict") before your add_argument(...).',
+            "Then run `cli sync` again.",
         ),
     },
 ]

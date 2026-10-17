@@ -16,6 +16,25 @@ load_app_env()
 APP_ROOT = os.getenv('APP_ROOT')
 
 
+def _not_a_file(value):
+    """argparse check for a folder the preprocess step creates or fills. It only
+    rejects a path that exists and isn't a folder; it creates nothing."""
+    path = Path(value)
+    if path.exists() and not path.is_dir():
+        raise argparse.ArgumentTypeError(f"'{value}' exists and is not a directory.")
+    return path
+
+
+def _unknown_option(name, parser, where):
+    """ValueError for an option `parser` doesn't have, naming the closest one."""
+    import difflib
+
+    known = sorted({s for action in parser._actions for s in action.option_strings})
+    close = difflib.get_close_matches(name, known, n=1)
+    hint = f"; did you mean {close[0]}?" if close else f". Its options: {', '.join(known)}"
+    return ValueError(f"No option {name} in {where}{hint}")
+
+
 class SubparserWrapper:
     """
     A wrapper class for argparse subparsers that allows setting help text 
@@ -97,7 +116,13 @@ class SubparserWrapper:
             **new_kwargs: New properties to apply to the argument (help, default, group, metavar, etc.)
 
         Returns:
-            bool: True if the argument was successfully updated, False otherwise
+            bool: True once the argument is updated.
+
+        Raises:
+            ValueError: the option doesn't exist here (the message suggests the closest
+                name), or `args` names options other than its current ones. Renaming
+                is not supported: remove_argument() it, then add_argument() the new one.
+            TypeError: a keyword is neither an attribute of the option nor `group`.
 
         Example:
             self.parser_postprocess.update_arguments("--custom-output-format", "-c",
@@ -128,8 +153,23 @@ class SubparserWrapper:
                 break
         
         if not target_action or not original_group:
-            return False
-        
+            raise _unknown_option(argument_name, self._subparser, self._subparser_name)
+
+        # Option strings live in argparse's lookup table too, which this method
+        # does not touch, so a new name would show in help but never parse.
+        if len(args) > 1 and set(args) != set(target_action.option_strings):
+            raise ValueError(
+                f"update_arguments can't rename {'/'.join(target_action.option_strings)} to "
+                f"{'/'.join(args)}: remove_argument('{argument_name}', '{self._subparser_name}') "
+                f"it, then add_argument() the new option."
+            )
+
+        unknown = [key for key in new_kwargs if key != 'group' and not hasattr(target_action, key)]
+        if unknown:
+            raise TypeError(
+                f"update_arguments() got keyword(s) {argument_name} doesn't have: {', '.join(unknown)}"
+            )
+
         # Remove from original group
         original_group._group_actions.remove(target_action)
         
@@ -139,7 +179,7 @@ class SubparserWrapper:
         
         # Apply new properties to the action
         for key, value in new_kwargs.items():
-            if hasattr(target_action, key):
+            if key != 'group':
                 setattr(target_action, key, value)
         
         # Handle group change if specified
@@ -225,18 +265,20 @@ class NGArgumentParser(argparse.ArgumentParser):
                                         help="JSON file containing input parameters.",
                                         metavar="JSON_FILE")
         
+        # The checks below only check. The folders are created in parse_args(),
+        # once the whole command line has been read and is valid.
         self.preprocess_required_group.add_argument("--output-dir", "-o",
                                         dest="output_dir",
-                                        type=self._validate_and_set_preprocess_defaults,
+                                        type=_not_a_file,
                                         required=True,
                                         help="prediction result output directory.",
                                         metavar="OUTPUT_DIR")
-        
+
         # Define optional parameters for preprocess subcommand
         # defaults will be set dynamically based on output-dir
         self.preprocess_optional_group.add_argument("--params-dir",
                                         dest="preprocess_parameters_dir",
-                                        type=validators.validate_directory,
+                                        type=_not_a_file,
                                         help="""
                                         a directory to store preprocessed JSON input files
                                         (default: $OUTPUT_DIR/predict-inputs/params)
@@ -245,7 +287,7 @@ class NGArgumentParser(argparse.ArgumentParser):
         # defaults will be set dynamically based on output-dir
         self.preprocess_optional_group.add_argument("--inputs-dir",
                                         dest="preprocess_inputs_dir",
-                                        type=validators.validate_directory,
+                                        type=_not_a_file,
                                         help="""
                                         a directory to store other, non-JSON inputs (e.g., fasta files)
                                         (default: $OUTPUT_DIR/predict-inputs/data)
@@ -426,12 +468,18 @@ class NGArgumentParser(argparse.ArgumentParser):
         elif not job_desc_provided and not input_dir_provided:
             self.parser_postprocess.error("one of the arguments --job-desc-file --input-results-dir is required")
     
-    def parse_args(self):
+    def parse_args(self, args=None, namespace=None):
         """Parse command line arguments and perform validation.
 
         This method extends the base ArgumentParser's parse_args() to add custom validation
-        for mutually exclusive arguments in the postprocess command. It ensures that exactly 
+        for mutually exclusive arguments in the postprocess command. It ensures that exactly
         one of --job-desc-file or --input-results-dir is provided when using postprocess.
+
+        Args:
+            args: The arguments to parse, as a list of strings. None (the default) reads the
+                command line (sys.argv), so a test can pass a list instead:
+                parse_args(["predict", "-j", "in.json"]).
+            namespace: An object to put the results on, as in argparse.
 
         Returns:
             argparse.Namespace: The parsed command-line arguments with all validations passed
@@ -439,12 +487,20 @@ class NGArgumentParser(argparse.ArgumentParser):
         Raises:
             ArgumentError: If validation fails for mutually exclusive arguments
         """
-        args = super().parse_args()
+        args = super().parse_args(args, namespace)
         
         # If preprocess command is used and output_dir is set, set defaults for other args
         if hasattr(args, 'subcommand') and args.subcommand == 'preprocess':
             if hasattr(args, 'output_dir') and args.output_dir:
                 from pathlib import Path
+                # The whole command line is valid now, so create the folders. Then
+                # check the folders the user named (they may live under -o), so the
+                # order of -o, --params-dir and --inputs-dir doesn't matter.
+                self._create_preprocess_dirs(args.output_dir)
+                for flag, value in (("--params-dir", args.preprocess_parameters_dir),
+                                    ("--inputs-dir", args.preprocess_inputs_dir)):
+                    if value and not Path(value).is_dir():
+                        self.parser_preprocess.error(f"argument {flag}: '{value}' is not a valid directory.")
                 if not args.preprocess_inputs_dir:
                     args.preprocess_inputs_dir = str(Path(args.output_dir) / "predict-inputs" / "data")
                 if not args.preprocess_parameters_dir:
@@ -515,31 +571,35 @@ class NGArgumentParser(argparse.ArgumentParser):
                                 from which to remove the argument
 
         Note:
-            The method handles removal from both the argument group and the main subparser
-            to ensure complete cleanup of the argument.
+            The whole option goes, under every name it has: removing '--output-format'
+            also frees '-f', so add_argument() can declare a replacement afterwards.
+
+        Raises:
+            ValueError: `subparser_name` is not predict, preprocess or postprocess, that
+                subparser hasn't been added yet, or it has no such option (the message
+                suggests the closest name).
         """
+        if subparser_name not in ('predict', 'preprocess', 'postprocess'):
+            raise ValueError(
+                f"remove_argument: unknown subparser {subparser_name!r}; use predict, preprocess or postprocess."
+            )
+        subparser = getattr(self, f"parser_{subparser_name}", None)
+        if subparser is None:
+            raise ValueError(f"remove_argument: the {subparser_name} subparser hasn't been added yet.")
 
-        actions_to_remove = []
-        subparser = None
+        action = subparser._option_string_actions.get(argument_name)
+        if action is None:
+            raise _unknown_option(argument_name, subparser, subparser_name)
 
-        if subparser_name == 'predict':
-            subparser = self.parser_predict
-
-        if subparser_name == 'preprocess':
-            subparser = self.parser_preprocess
-
-        if subparser_name == 'postprocess':
-            subparser = self.parser_postprocess
-
-        for group in subparser._action_groups:
-            for action in group._group_actions:
-                if argument_name in action.option_strings:
-                    actions_to_remove.append((action, group._group_actions))
-
-        for action, group_actions in actions_to_remove:
-            # Need to remove from both the group and the subparser
-            group_actions.remove(action)
-            subparser._actions.remove(action)
+        # argparse records an option in three places: the parser's actions (what
+        # parses), its groups (what --help shows) and the option-string table
+        # (what each typed name maps to, and what a new declaration conflicts with).
+        subparser._actions.remove(action)
+        for group in [*subparser._action_groups, *subparser._mutually_exclusive_groups]:
+            if action in group._group_actions:
+                group._group_actions.remove(action)
+        for option_string in action.option_strings:
+            subparser._option_string_actions.pop(option_string, None)
 
 
     @staticmethod
@@ -633,102 +693,28 @@ class NGArgumentParser(argparse.ArgumentParser):
             p1.add_argument(*action.option_strings, **kwargs)
 
 
-    def _validate_and_set_preprocess_defaults(self, output_dir):
+    def _create_preprocess_dirs(self, output_dir):
+        """Create the preprocess folder layout under `output_dir` (the layout depends
+        on whether paths.py declares dependencies; see
+        core_validators.create_directory_structure_for_dependencies).
+
+        Called by parse_args() only after the whole command line is valid, so a
+        command that fails leaves nothing behind. A folder that can't be created
+        stops the command with a usage error instead of printing and carrying on.
         """
-        Custom validator that creates the output directory structure and returns
-        default values for preprocess directories.
-        
-        NEW LOGIC:
-        - If there are dependencies: Set defaults to main tool's directories
-        - If no dependencies: Set defaults to output directory's directories
-        """
-        from pathlib import Path
-        from .core_validators import create_directory_structure_for_dependencies, get_dependencies_from_paths
-        
-        output_path = Path(output_dir)
-        
-        # Create the directory structure
-        print(f"Creating directory structure under: {output_path}")
-        created = create_directory_structure_for_dependencies(output_path)
-        
+        print(f"Creating directory structure under: {output_dir}")
+        errors = []
+        created = validators.create_directory_structure_for_dependencies(output_dir, errors=errors)
+        if errors:
+            self.parser_preprocess.error(
+                f"argument --output-dir: could not create the folders under '{output_dir}': {errors[0]}"
+            )
+
         print(f"Successfully created directory structures for {len(created)} tools:")
         for tool_name, dirs in created.items():
             print(f"\n{tool_name}:")
             for dir_path in dirs:
                 print(f"  - {dir_path}")
-        
-        # Determine the correct default paths based on whether there are dependencies
-        try:
-            # Check if there are dependencies by looking for paths.py
-            paths_file = Path(APP_ROOT) / "paths.py" if APP_ROOT else Path(__file__).resolve().parent.parent / "paths.py"
-            dependencies = get_dependencies_from_paths(paths_file)
-            
-            if dependencies:
-                # With dependencies: Use main tool's directories
-                # Get the current app name using the same logic as core_validators
-                curr_app_name = self._get_current_app_name(paths_file)
-                self._default_inputs_dir = str(output_path / curr_app_name / "predict-inputs" / "data")
-                self._default_params_dir = str(output_path / curr_app_name / "predict-inputs" / "params")
-            else:
-                # No dependencies: Use output directory's directories
-                self._default_inputs_dir = str(output_path / "predict-inputs" / "data")
-                self._default_params_dir = str(output_path / "predict-inputs" / "params")
-                
-        except Exception as e:
-            # Fallback to no-dependencies case if paths.py can't be read
-            print(f"Warning: Could not read paths.py, using default structure: {e}")
-            self._default_inputs_dir = str(output_path / "predict-inputs" / "data")
-            self._default_params_dir = str(output_path / "predict-inputs" / "params")
-        
-        return output_path
-
-    def _get_default_inputs_dir(self):
-        """Get the default inputs directory if it was set by the output-dir validator."""
-        return getattr(self, '_default_inputs_dir', None)
-    
-    def _get_default_params_dir(self):
-        """Get the default params directory if it was set by the output-dir validator."""
-        return getattr(self, '_default_params_dir', None)
-
-    def _get_current_app_name(self, paths_file=None):
-        """Get the current app name using multiple detection methods."""
-        curr_app_name = None
-        
-        # Method 1: Try to get from current working directory (most reliable)
-        try:
-            cwd = Path.cwd()
-            # Look for the app name in the current working directory path
-            # This should be something like /path/to/test/cd4ep
-            if 'test' in cwd.parts:
-                test_index = cwd.parts.index('test')
-                if test_index + 1 < len(cwd.parts):
-                    curr_app_name = cwd.parts[test_index + 1]
-        except Exception:
-            pass
-        
-        # Method 2: Fallback to the old method if Method 1 fails
-        if not curr_app_name:
-            curr_app_name = Path(__file__).resolve().parents[1].name
-        
-        # Method 3: If still not found, try to extract from the paths.py file location
-        if not curr_app_name or curr_app_name == 'src':
-            try:
-                # Look for the app name in the paths.py file path
-                if paths_file:
-                    paths_file = Path(paths_file)
-                    # If paths.py is in test/appname/paths.py, extract appname
-                    if 'test' in paths_file.parts:
-                        test_index = paths_file.parts.index('test')
-                        if test_index + 1 < len(paths_file.parts):
-                            curr_app_name = paths_file.parts[test_index + 1]
-            except Exception:
-                pass
-        
-        # Final fallback
-        if not curr_app_name or curr_app_name == 'src':
-            curr_app_name = 'app'  # Generic fallback
-            
-        return curr_app_name
 
 
 class JobDescriptionParams(TypedDict):

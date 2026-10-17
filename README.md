@@ -73,7 +73,7 @@ cli deps add mhci-predictor pepx                    # writes stub blocks to path
 ./configure                                          # generate per-tool setup_<name>_env.sh + .env
 ```
 
-See [Configuring tool paths](#configuring-tool-paths-configure) for the full set of flags.
+`./configure` runs with the project's `.venv` when it has one, so it works right after `uv sync` without activating anything. See [Configuring tool paths](#configuring-tool-paths-configure) for the full set of flags.
 
 ## Project layout
 
@@ -133,6 +133,7 @@ All three subparsers come with built-in arguments so you don't redefine them: `p
 
 The argument parser for your app lives in `src/MyAppArgumentParser.py` and subclasses `NGArgumentParser`:
 
+<!-- example: class -->
 ```python
 import textwrap
 import argparse
@@ -154,7 +155,7 @@ class MyAppArgumentParser(NGArgumentParser):
         # --output-prefix/-o and --output-format/-f are already provided by the
         # base class — add your tool-specific *input* args here instead.
         self.parser_predict.add_argument(
-            "--threshold", "-t",
+            "--threshold",
             dest="threshold",
             help="Score threshold",
             metavar="THRESHOLD",
@@ -167,8 +168,9 @@ Common patterns:
 - **Argument grouping** — pass `group="<label>"` to any `add_argument` call.
 - **Custom validators** — define a function in `src/validators.py` that raises `argparse.ArgumentTypeError` on bad input, then pass it as `type=...` on `add_argument`.
 - **Updating inherited arguments** — to change a default or help text on an argument from the parent class, call `parser.update_arguments(...)` instead of redefining.
+- **Testing your parser** — `parse_args` takes a list, the same as argparse's, so a test doesn't touch the real command line: `args = MyAppArgumentParser().parse_args(["predict", "-j", "in.json"])`. With no list it reads the command line as usual. If your parser overrides `parse_args`, accept and pass on the list: `def parse_args(self, args=None, namespace=None):` then `args = super().parse_args(args, namespace)`.
 
-The full parser API is in [Reference](#reference) at the bottom.
+The examples in this README are run against a freshly generated tool by `tests/test_readme_examples.py`, so they work when pasted. The full parser API is in [Reference](#reference) at the bottom.
 
 ## Dependencies
 
@@ -206,7 +208,7 @@ cli deps                                # bare → interactive add/remove menu
 
 ### Configuring tool paths (`./configure`)
 
-Run from the project root. It reads `paths.py` and regenerates two things: the project's `.env`, and one `setup_<name>_env.sh` per declared dependency.
+Run from the project root. It reads `paths.py` and regenerates two things: the project's `.env`, and one `setup_<name>_env.sh` per declared dependency. The launcher uses `.venv/bin/python` when the project has one, so the venv doesn't need to be active; without python-dotenv available it says to run `uv sync` first. `APP_NAME` is read from the project's own `.env` file, so a value passed down by a calling tool is ignored.
 
 `./configure -h` lists a flag for every field of every dependency you've declared, along with what each is currently set to:
 
@@ -630,6 +632,11 @@ Run from inside a project (not a `cli` subcommand — it's a script in the proje
 --assume-valid                 (skip validation)
 ```
 
+`preprocess` reads and checks the whole command line before it creates the folder layout under
+`-o`, so a command that fails leaves nothing behind and the order of `-o`, `--params-dir` and
+`--inputs-dir` doesn't matter. A `-o` that is an existing file, or a folder that can't be created,
+stops with an error. A `--params-dir`/`--inputs-dir` outside `-o` must already exist.
+
 #### Built-in `predict` arguments
 
 ```
@@ -653,6 +660,7 @@ Predict output is serialized by `core.result_writer.write_results` (see **Result
 
 Every subparser exposes `.help` and `.description` as plain attributes:
 
+<!-- example: self -->
 ```python
 self.parser_preprocess.help = 'Custom preprocess help'
 self.parser_preprocess.description = 'Detailed preprocess instructions'
@@ -660,9 +668,10 @@ self.parser_preprocess.description = 'Detailed preprocess instructions'
 
 #### Argument grouping
 
+<!-- example: self -->
 ```python
 self.parser_predict.add_argument(
-    "--threshold", "-t",
+    "--threshold",
     help="Score threshold",
     group="prediction options",   # args sharing this label cluster in --help
 )
@@ -675,6 +684,7 @@ and `--output-format/-f`. To tweak one for **your** tool (change its default, he
 choices, or group), call `update_arguments(...)` — it edits the inherited argument **in
 place**:
 
+<!-- example: self -->
 ```python
 # e.g. make this tool default to json instead of the framework-wide tsv:
 self.parser_predict.update_arguments(
@@ -691,6 +701,13 @@ command line (`-f tsv`) still overrides whatever default you set.
 > ⚠️ Use `update_arguments` for this — do **not** re-declare an inherited argument with a
 > fresh `add_argument("--output-format", ...)`. That raises `conflicting option strings`.
 > (To replace one entirely, `remove_argument(...)` first, then `add_argument(...)`.)
+
+`update_arguments` changes an option's properties (help, default, choices, required, metavar, dest)
+and its help section (`group=`); it can't rename one, so pass the option's existing names or just
+its first. `remove_argument("--output-format", "predict")` removes the option under all its names,
+so `-f` is free again too. Both raise a clear error for a misspelled option ("did you mean
+--output-format?"), a misspelled subcommand, a rename, or an unknown keyword, instead of silently
+doing nothing.
 
 #### Result output (`core.result_writer`)
 
@@ -726,6 +743,7 @@ stderr for tsv so stdout stays a clean data stream.
 
 #### Built-in validators
 
+<!-- example: imports -->
 ```python
 from core.core_validators import (
     validate_file,                     # file exists + readable
@@ -737,8 +755,12 @@ from core.core_validators import (
 
 #### Custom validators
 
+<!-- example: validators -->
 ```python
 # src/validators.py
+import argparse
+
+
 def validate_peptide_length(value):
     try:
         length = int(value)
@@ -747,11 +769,14 @@ def validate_peptide_length(value):
     if not 1 <= length <= 50:
         raise argparse.ArgumentTypeError("peptide length must be 1–50")
     return length
+```
 
+<!-- example: self -->
+```python
 # src/MyAppArgumentParser.py
 self.parser_predict.add_argument(
     "--peptide-length",
-    type=validate_peptide_length,
+    type=validators.validate_peptide_length,   # the template imports validators
 )
 ```
 

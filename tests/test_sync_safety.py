@@ -132,9 +132,9 @@ def test_clash_detector_ignores_mentions_that_are_not_declarations(scaffolded_pr
     assert cli._clash_predict_output_options() == []
 
 
-def test_remove_then_redeclare_is_still_a_clash(runnable_project):
-    # remove_argument() leaves the option strings registered with argparse, so declaring the
-    # option again conflicts exactly as if it had never been removed.
+def test_remove_then_redeclare_is_not_a_clash(runnable_project):
+    # remove_argument() frees every name of the option (here -f too), so the project
+    # may declare its own afterwards: the README's recipe for replacing an option.
     parser = runnable_project / PARSER_FILE
     parser.write_text(
         parser.read_text()
@@ -142,8 +142,22 @@ def test_remove_then_redeclare_is_still_a_clash(runnable_project):
         + '        self.parser_predict.add_argument("--output-format", "-f", dest="output_format", default="json")\n'
     )
 
+    assert cli._clash_predict_output_options() == []
+    # Checked by running the project, not assumed: it starts.
+    passed, error = cli._smoke_check()["results"]["src/run_demo.py --help"]
+    assert passed, error
+
+
+def test_redeclare_before_the_removal_is_still_a_clash(runnable_project):
+    # Control: the removal has to come first; declaring before it conflicts at once.
+    parser = runnable_project / PARSER_FILE
+    parser.write_text(
+        parser.read_text()
+        + '\n        self.parser_predict.add_argument("--output-format", "-f", dest="output_format", default="json")\n'
+        + '        self.remove_argument("--output-format", "predict")\n'
+    )
+
     assert [f["what"] for f in cli._clash_predict_output_options()] == ["declares --output-format on predict"]
-    # Checked by running the project, not assumed: it no longer starts.
     passed, error = cli._smoke_check()["results"]["src/run_demo.py --help"]
     assert not passed and "conflicting option strings" in error
 

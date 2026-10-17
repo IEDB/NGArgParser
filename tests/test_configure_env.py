@@ -537,3 +537,94 @@ def test_dependency_without_entry_gets_no_entry_line(scaffolded_project, tmp_pat
     assert "start-up script" not in result.stdout
     assert not any(line.startswith("TCELL_CLASS_I_ENTRY=") for line in env_lines(scaffolded_project))
     assert "_ENTRY" not in (scaffolded_project / "setup_tcell_class_i_env.sh").read_text()
+
+
+# ./configure works without activating the venv: the launcher runs configure.py
+# with the project's .venv/bin/python when there is one.
+
+
+def fake_project_python(project_dir):
+    """A .venv/bin/python that records it was used, then runs the test interpreter."""
+    marker = project_dir / "used-venv-python"
+    python = project_dir / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True, exist_ok=True)
+    python.write_text(f'#!/bin/sh\necho used > "{marker}"\nexec "{sys.executable}" "$@"\n')
+    python.chmod(0o755)
+    return marker
+
+
+def test_launcher_uses_the_project_venv_without_activation(scaffolded_project):
+    marker = fake_project_python(scaffolded_project)
+
+    # No Python on PATH at all: only the project's .venv can run configure.py.
+    result = subprocess.run(
+        ["./configure"],
+        cwd=scaffolded_project,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PATH": "/nonexistent"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert marker.exists()
+    assert "Minimal .env file" in result.stdout
+
+
+def test_launcher_without_a_venv_falls_back_to_the_shebang(scaffolded_project):
+    # Control: no .venv, so the launcher runs configure.py directly, as before.
+    marker = scaffolded_project / "used-venv-python"
+
+    result = run_launcher(scaffolded_project)
+
+    assert "Minimal .env file" in result.stdout
+    assert not marker.exists()
+
+
+def test_missing_dotenv_says_to_run_uv_sync(scaffolded_project, tmp_path):
+    broken = tmp_path / "no-dotenv"
+    broken.mkdir()
+    (broken / "dotenv.py").write_text("raise ImportError('python-dotenv is not installed')\n")
+
+    result = subprocess.run(
+        [sys.executable, "src/core/configure.py"],
+        cwd=scaffolded_project,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONPATH": str(broken)},
+    )
+
+    assert result.returncode == 1
+    assert "./configure needs python-dotenv. Run `uv sync` first" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+# APP_NAME comes from this project's own .env, never from a calling tool.
+
+
+def test_inherited_app_name_is_ignored(scaffolded_project):
+    result = subprocess.run(
+        [sys.executable, "src/core/configure.py"],
+        cwd=scaffolded_project,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "APP_NAME": "caller"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "APP_NAME=demo" in env_lines(scaffolded_project)
+
+
+def test_without_app_name_in_env_the_folder_name_is_used(scaffolded_project):
+    # Control: the fallback still applies, and an inherited value doesn't replace it.
+    (scaffolded_project / ".env").write_text(f"APP_ROOT={scaffolded_project}\n")
+
+    result = subprocess.run(
+        [sys.executable, "src/core/configure.py"],
+        cwd=scaffolded_project,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "APP_NAME": "caller"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "APP_NAME=demo" in env_lines(scaffolded_project)

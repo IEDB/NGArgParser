@@ -66,7 +66,7 @@ def get_dependencies_from_paths(file_path="paths.py"):
     return dependencies
 
 
-def create_directory_structure_for_dependencies(output_path, paths_file_path=None):
+def create_directory_structure_for_dependencies(output_path, paths_file_path=None, errors=None):
     """
     Read paths.py file, identify dependencies, and create the required directory
     structure for each dependency tool under the specified output directory.
@@ -80,6 +80,9 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
         output_path (str or Path): The output directory where tool structures will be created
         paths_file_path (str or Path, optional): Path to the paths.py file. If None,
                                                looks for paths.py in the same directory as this script
+        errors (list, optional): When given, each directory that could not be created
+                                 is appended as a message (it is printed either way), so
+                                 the caller can stop instead of carrying on.
 
     Returns:
         dict: Dictionary with tool names as keys and their created directories
@@ -95,6 +98,12 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
 
     # Output directory location
     output_dir = Path(output_path)
+
+    def report_failure(directory, e):
+        message = f"Error creating directory {directory}: {e}"
+        print(message)
+        if errors is not None:
+            errors.append(message)
 
     try:
         with open(paths_file, "r") as file:
@@ -201,12 +210,12 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
                         directory.mkdir(parents=True, exist_ok=True)
                         created_dirs.append(str(directory))
                     except Exception as e:
-                        print(f"Error creating directory {directory}: {e}")
+                        report_failure(directory, e)
 
                 created_structures[tool_name] = created_dirs
 
             except Exception as e:
-                print(f"Error creating directory {tool_path}: {e}")
+                report_failure(tool_path, e)
 
         # Create structure for the main tool (phbr in your example)
         main_tool_directories = [
@@ -223,7 +232,7 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
                 directory.mkdir(parents=True, exist_ok=True)
                 created_dirs.append(str(directory))
             except Exception as e:
-                print(f"Error creating directory {directory}: {e}")
+                report_failure(directory, e)
 
         created_structures[curr_app_name] = created_dirs
 
@@ -246,7 +255,7 @@ def create_directory_structure_for_dependencies(output_path, paths_file_path=Non
                 directory.mkdir(parents=True, exist_ok=True)
                 created_dirs.append(str(directory))
             except Exception as e:
-                print(f"Error creating directory {directory}: {e}")
+                report_failure(directory, e)
 
         created_structures["default"] = created_dirs
 

@@ -6,6 +6,9 @@
 #           dest="preprocess_inputs_dir",
 #           type=validators.validate_directory)
 # ====================================================================================
+# A custom validator raises argparse.ArgumentTypeError for a bad value.
+import argparse
+
 # Import all core validators (DO NOT MODIFY)
 import core.set_pythonpath  # This automatically configures PYTHONPATH
 from core.core_validators import (

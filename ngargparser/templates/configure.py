@@ -6,7 +6,10 @@ import sys
 import importlib.util
 import re
 import glob
-from dotenv import load_dotenv, dotenv_values
+try:
+    from dotenv import load_dotenv, dotenv_values
+except ImportError:
+    sys.exit("./configure needs python-dotenv. Run `uv sync` first; it installs it into .venv.")
 
 CONFIG_PATH = "paths.py"
 DOT_ENV_PATH = ".env"
@@ -417,7 +420,11 @@ def main():
 
     # Ensure APP_NAME is set. Prefer persisted APP_NAME from .env (created by 'cli g').
     # If not present, derive from build dir name pattern 'ng_<name>-local' or fall back to directory name.
-    env_app_name = os.getenv('APP_NAME')
+    # Read from the file, not os.environ: a tool that started this one may have
+    # passed its own APP_NAME down.
+    env_app_name = None
+    if os.path.isfile(DOT_ENV_PATH):
+        env_app_name = dotenv_values(DOT_ENV_PATH).get('APP_NAME')
     if env_app_name:
         config['APP_NAME'] = env_app_name
     elif 'APP_NAME' not in config:

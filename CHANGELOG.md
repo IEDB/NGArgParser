@@ -105,6 +105,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed build now also removes the previous tarball, so an old one never looks fresh.
 
 ### Fixed
+- `preprocess` no longer creates folders while it is still reading the command line. The `-o`
+  check built the folder layout as soon as argparse read it, so a command that then failed (a
+  missing `-j`) left the folders behind; `--params-dir`/`--inputs-dir` under `-o` worked only when
+  given after `-o`; and `-o` pointing at a file printed five "Error creating directory" lines,
+  then "Successfully created", and exited 0. The layout is now created in `parse_args` once the
+  command line is valid, a folder that can't be created stops with a usage error, and `-o` that is
+  a file is rejected up front. The layout, the values tools read and the printed lines are as
+  before. `create_directory_structure_for_dependencies` takes an optional `errors` list.
+- `./configure` works without activating the venv. The launcher ran `configure.py` with whatever
+  `python3` came first on `PATH`, usually one without python-dotenv, so the Quickstart's
+  `./configure` failed with `No module named 'dotenv'`. It now uses the project's `.venv/bin/python`
+  when there is one, and a missing python-dotenv prints "run `uv sync` first" instead of a traceback.
+- `./configure` reads `APP_NAME` from the project's own `.env` file. An `APP_NAME` passed down by a
+  calling tool used to win and was written into this project's `.env`.
+- `parse_args` takes an argument list (`parse_args(["predict", "-j", "in.json"])`), as argparse's
+  does, so a tool can test its own parser; with no list it reads the command line as before. A
+  tool that overrides `parse_args` keeps working, and passes the list on once its override takes
+  `args=None, namespace=None`.
+- The README's examples work when pasted into a freshly generated tool. The `--threshold -t`
+  examples clashed with the template's `--input-tsv -t`; the custom-validator example lacked
+  `import argparse` and referred to its function without `validators.`; and the template
+  `src/validators.py` lacked `import argparse` and a final newline, so a pasted function could
+  land on its last comment line. `tests/test_readme_examples.py` now runs every marked example
+  (`<!-- example: ... -->`) against a fresh scaffold.
+- `remove_argument` and `update_arguments` now change what parses, not only what `--help` shows.
+  A removed option used to stay accepted, and re-adding it (the README's recipe for replacing an
+  option) failed with "conflicting option strings"; removal now frees every name of the option.
+  `update_arguments` used to accept a rename that never parsed, and a misspelled option or keyword
+  did nothing silently. Both helpers now raise a clear error for a misspelled option (with a "did
+  you mean" suggestion), a misspelled subcommand, a rename, or an unknown keyword. Calls that pass
+  an option's existing names, as current tools do, behave as before. `cli sync` no longer reports
+  a re-declaration that follows `remove_argument` of the same option as a clash.
 - A tool started by another tool now uses its own `.env` for `APP_ROOT` and `APP_NAME`. Child
   processes inherit the caller's values, and every core module loaded `.env` without overriding
   them, so tc1 started by phbr put phbr's `libs/` on its import path: a crash when a module was
