@@ -261,8 +261,8 @@ def create_example_structure():
         os.chmod(f"{project_name}/scripts/core/build.sh", 0o755)
         # Framework-owned: root Makefile (cli sync overwrites this)
         shutil.copy(f"{TEMPLATE_DIR}/Makefile", f"{project_name}/Makefile")
-        # User-owned: scripts/build.conf, .distignore (root)
-        shutil.copy(f"{TEMPLATE_DIR}/build.conf", f"{project_name}/scripts/build.conf")
+        # User-owned: scripts/core/build.conf, .distignore (root)
+        shutil.copy(f"{TEMPLATE_DIR}/build.conf", f"{project_name}/scripts/core/build.conf")
         shutil.copy(f"{TEMPLATE_DIR}/distignore", f"{project_name}/.distignore")
 
         # User-owned: deploy/install.sh — invoked by nxg-tools-deployments at deploy time.
@@ -331,13 +331,12 @@ def create_project_structure(project_name):
         shutil.copy(f"{TEMPLATE_DIR}/build.sh", f"{project_name}/scripts/core/build.sh")
         os.chmod(f"{project_name}/scripts/core/build.sh", 0o755)
         shutil.copy(f"{TEMPLATE_DIR}/Makefile", f"{project_name}/Makefile")
-        # User-owned: scripts/build.conf, hooks.sh, deps.sh, .distignore (root) (sync leaves alone)
-        shutil.copy(f"{TEMPLATE_DIR}/build.conf", f"{project_name}/scripts/build.conf")
+        # User-owned: scripts/core/build.conf, get_libs.sh, .distignore (root) (sync leaves alone).
+        # scripts/hooks.sh is optional and not created; templates/hooks.sh is the starting point.
+        shutil.copy(f"{TEMPLATE_DIR}/build.conf", f"{project_name}/scripts/core/build.conf")
         shutil.copy(f"{TEMPLATE_DIR}/distignore", f"{project_name}/.distignore")
-        shutil.copy(f"{TEMPLATE_DIR}/hooks.sh", f"{project_name}/scripts/hooks.sh")
-        os.chmod(f"{project_name}/scripts/hooks.sh", 0o755)
-        shutil.copy(f"{TEMPLATE_DIR}/deps.sh", f"{project_name}/scripts/deps.sh")
-        os.chmod(f"{project_name}/scripts/deps.sh", 0o755)
+        shutil.copy(f"{TEMPLATE_DIR}/get_libs.sh", f"{project_name}/scripts/get_libs.sh")
+        os.chmod(f"{project_name}/scripts/get_libs.sh", 0o755)
 
         # User-owned: deploy/install.sh — invoked by nxg-tools-deployments at deploy time.
         os.makedirs(f"{project_name}/deploy", exist_ok=True)
@@ -1707,6 +1706,7 @@ def _sync_framework_files():
 # Legacy file names `cli sync` moves to their current location.
 _SYNC_LEGACY_BUILD = "scripts/build.sh"
 _SYNC_LEGACY_HOOKS = ("scripts/dependencies.sh", "scripts/build_hooks.sh")
+_SYNC_LEGACY_BUILD_CONF = "scripts/build.conf"
 
 
 def _sync_touched_paths(framework_files):
@@ -1715,6 +1715,8 @@ def _sync_touched_paths(framework_files):
         _SYNC_LEGACY_BUILD,
         *_SYNC_LEGACY_HOOKS,
         "scripts/hooks.sh",
+        _SYNC_LEGACY_BUILD_CONF,
+        "scripts/core/build.conf",
         "deploy/install.sh",
         ".gitignore",
         "pyproject.toml",
@@ -1728,6 +1730,8 @@ def _framework_changes_pending(framework_files):
     if os.path.exists(_SYNC_LEGACY_BUILD) and not os.path.exists("scripts/core/build.sh"):
         return True
     if not os.path.exists("scripts/hooks.sh") and any(os.path.exists(p) for p in _SYNC_LEGACY_HOOKS):
+        return True
+    if os.path.exists(_SYNC_LEGACY_BUILD_CONF) and not os.path.exists("scripts/core/build.conf"):
         return True
     return any(
         not os.path.exists(dst) or not filecmp.cmp(src, dst, shallow=False) for src, dst, _exe in framework_files
@@ -2088,7 +2092,7 @@ def sync_command(args):
             else:
                 print(f"  └ {label} is already up to date")
 
-        # Layout migrations run before the sync loop so build.sh/hooks.sh sit at
+        # Layout migrations run before the sync loop so build.sh/hooks.sh/build.conf sit at
         # their current paths first. They move user files, so they're skipped in
         # dry-run (which must not touch the tree).
         if not dry_run:
@@ -2105,6 +2109,11 @@ def sync_command(args):
                     shutil.move(legacy, "scripts/hooks.sh")
                     print(f"  └ \033[93mMigrated\033[0m {legacy} → scripts/hooks.sh")
                     break
+            # build.conf moved next to build.sh. Content is preserved exactly.
+            if os.path.exists(_SYNC_LEGACY_BUILD_CONF) and not os.path.exists("scripts/core/build.conf"):
+                os.makedirs("scripts/core", exist_ok=True)
+                shutil.move(_SYNC_LEGACY_BUILD_CONF, "scripts/core/build.conf")
+                print(f"  └ \033[93mMigrated\033[0m {_SYNC_LEGACY_BUILD_CONF} → scripts/core/build.conf")
 
         # Framework-owned files (see _sync_framework_files). _sync_file copies
         # only when content differs, backs up any overwrite, and records the

@@ -55,7 +55,7 @@ def test_tool_that_crashes_fails_the_build(scaffolded_project, run_build, fake_v
 def test_missing_dependency_in_build_fails(scaffolded_project, run_build, fake_venv):
     # The import works in the project folder only if the build copied libs/.
     fake_venv(scaffolded_project)
-    (scaffolded_project / "scripts" / "deps.sh").write_text("mkdir mydep && echo 'VALUE = 1' > mydep/core.py\n")
+    (scaffolded_project / "scripts" / "get_libs.sh").write_text("mkdir mydep && echo 'VALUE = 1' > mydep/core.py\n")
     run_script = scaffolded_project / "src" / "run_demo.py"
     run_script.write_text(
         run_script.read_text().replace("import core.set_pythonpath", "import core.set_pythonpath\nimport mydep.core", 1)

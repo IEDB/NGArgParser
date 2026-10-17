@@ -1,7 +1,7 @@
-"""Behavioral tests for the dependency fetch step of build.sh (scripts/deps.sh).
+"""Behavioral tests for the dependency fetch step of build.sh (scripts/get_libs.sh).
 
-deps.sh runs in an empty temp dir; its top-level entries replace libs/<entry>
-in the project. The step is skipped while deps.sh is unchanged and everything
+get_libs.sh runs in an empty temp dir; its top-level entries replace libs/<entry>
+in the project. The step is skipped while get_libs.sh is unchanged and everything
 it fetched is still there, and a failed fetch leaves libs/ as it was.
 """
 
@@ -16,19 +16,19 @@ pytestmark = pytest.mark.skipif(
     reason="build.sh tests require bash and git",
 )
 
-MARKER = "# Managed by scripts/core/build.sh: entries fetched by scripts/deps.sh. Do not edit."
+MARKER = "# Managed by scripts/core/build.sh: entries fetched by scripts/get_libs.sh. Do not edit."
 
 
-def write_deps(project_dir, body):
-    (project_dir / "scripts" / "deps.sh").write_text(f"#!/bin/bash\nset -euo pipefail\n{body}\n")
+def write_get_libs(project_dir, body):
+    (project_dir / "scripts" / "get_libs.sh").write_text(f"#!/bin/bash\nset -euo pipefail\n{body}\n")
 
 
 def stamp(project_dir):
-    return (project_dir / ".ngargparser" / "deps-stamp").read_text().splitlines()
+    return (project_dir / ".ngargparser" / "libs-stamp").read_text().splitlines()
 
 
 def test_fetch_lands_in_project_libs(scaffolded_project, run_build):
-    write_deps(scaffolded_project, "mkdir -p depA/pkg && echo 'x = 1' > depA/pkg/mod.py\necho blob > blob.bin")
+    write_get_libs(scaffolded_project, "mkdir -p depA/pkg && echo 'x = 1' > depA/pkg/mod.py\necho blob > blob.bin")
 
     run = run_build(scaffolded_project)
 
@@ -41,31 +41,31 @@ def test_fetch_lands_in_project_libs(scaffolded_project, run_build):
     assert gitignore[:2] == [MARKER, "/.gitignore"]
     assert set(gitignore[2:]) == {"/depA", "/blob.bin"}
     lines = stamp(scaffolded_project)
-    assert lines[0] == "ngargparser-deps-stamp 1"
+    assert lines[0] == "ngargparser-libs-stamp 1"
     assert lines[1].startswith("hash ") and lines[1] != "hash pending"
     assert set(lines[2:]) == {"depA", "blob.bin"}
-    assert not list((scaffolded_project / ".ngargparser").glob("deps-fetch.*")), "temp dir must be cleaned up"
+    assert not list((scaffolded_project / ".ngargparser").glob("libs-fetch.*")), "temp dir must be cleaned up"
     assert "libs/depA/pkg/mod.py" in run.members
     assert "libs/blob.bin" in run.members
 
 
 def test_unchanged_deps_are_not_fetched_again(scaffolded_project, run_build):
     runs = scaffolded_project.parent / "runs.log"
-    write_deps(scaffolded_project, f"echo run >> {runs}\nmkdir depA")
+    write_get_libs(scaffolded_project, f"echo run >> {runs}\nmkdir depA")
 
     run_build(scaffolded_project)
     second = run_build(scaffolded_project)
     assert runs.read_text().count("run") == 1
-    assert "Dependencies up to date" in second.proc.stdout
+    assert "Libs up to date" in second.proc.stdout
 
-    deps_sh = scaffolded_project / "scripts" / "deps.sh"
-    deps_sh.write_text(deps_sh.read_text() + "# a comment changes the content\n")
+    get_libs_sh = scaffolded_project / "scripts" / "get_libs.sh"
+    get_libs_sh.write_text(get_libs_sh.read_text() + "# a comment changes the content\n")
     run_build(scaffolded_project)
     assert runs.read_text().count("run") == 2
 
 
 def test_missing_entry_is_fetched_again(scaffolded_project, run_build):
-    write_deps(scaffolded_project, "mkdir depA && touch depA/a.py")
+    write_get_libs(scaffolded_project, "mkdir depA && touch depA/a.py")
     run_build(scaffolded_project)
 
     shutil.rmtree(scaffolded_project / "libs" / "depA")
@@ -75,10 +75,10 @@ def test_missing_entry_is_fetched_again(scaffolded_project, run_build):
 
 
 def test_entry_dropped_from_deps_is_removed(scaffolded_project, run_build):
-    write_deps(scaffolded_project, "mkdir depA depB")
+    write_get_libs(scaffolded_project, "mkdir depA depB")
     run_build(scaffolded_project)
 
-    write_deps(scaffolded_project, "mkdir depB")
+    write_get_libs(scaffolded_project, "mkdir depB")
     run = run_build(scaffolded_project)
 
     libs = scaffolded_project / "libs"
@@ -90,18 +90,18 @@ def test_entry_dropped_from_deps_is_removed(scaffolded_project, run_build):
 
 @pytest.mark.parametrize("progress", [False, True])
 def test_failed_fetch_leaves_libs_untouched(scaffolded_project, run_build, progress):
-    write_deps(scaffolded_project, "mkdir depA && echo v1 > depA/version")
+    write_get_libs(scaffolded_project, "mkdir depA && echo v1 > depA/version")
     run_build(scaffolded_project)
     before = stamp(scaffolded_project)
 
-    write_deps(scaffolded_project, "mkdir depA && echo v2 > depA/version\necho 'clone failed' >&2\nexit 3")
+    write_get_libs(scaffolded_project, "mkdir depA && echo v2 > depA/version\necho 'clone failed' >&2\nexit 3")
     run = run_build(scaffolded_project, expect_ok=False, progress=progress)
 
     assert run.proc.returncode != 0
-    assert "scripts/deps.sh failed (exit 3); libs/ was not changed." in run.proc.stderr
+    assert "scripts/get_libs.sh failed (exit 3); libs/ was not changed." in run.proc.stderr
     assert (scaffolded_project / "libs" / "depA" / "version").read_text() == "v1\n"
     assert stamp(scaffolded_project) == before
-    assert not list((scaffolded_project / ".ngargparser").glob("deps-fetch.*"))
+    assert not list((scaffolded_project / ".ngargparser").glob("libs-fetch.*"))
     if progress:
         assert "clone failed" in run.proc.stderr, "progress mode shows the end of the deps log"
 
@@ -110,12 +110,12 @@ def test_unowned_entry_is_never_replaced(scaffolded_project, run_build):
     hand_made = scaffolded_project / "libs" / "depA"
     hand_made.mkdir(parents=True)
     (hand_made / "notes.txt").write_text("mine\n")
-    write_deps(scaffolded_project, "mkdir depA")
+    write_get_libs(scaffolded_project, "mkdir depA")
 
     run = run_build(scaffolded_project, expect_ok=False)
 
     assert run.proc.returncode != 0
-    assert "libs/depA already exists and was not fetched by scripts/deps.sh" in run.proc.stderr
+    assert "libs/depA already exists and was not fetched by scripts/get_libs.sh" in run.proc.stderr
     assert (hand_made / "notes.txt").read_text() == "mine\n"
 
 
@@ -124,25 +124,25 @@ def test_project_owned_libs_gitignore_is_left_alone(scaffolded_project, run_buil
     libs = scaffolded_project / "libs"
     libs.mkdir()
     (libs / ".gitignore").write_text("/depB\n")
-    write_deps(scaffolded_project, "mkdir depA depB")
+    write_get_libs(scaffolded_project, "mkdir depA depB")
 
     run = run_build(scaffolded_project)
 
     assert (libs / ".gitignore").read_text() == "/depB\n"
-    assert "libs/depA was fetched by scripts/deps.sh but git does not ignore it" in run.proc.stdout
+    assert "libs/depA was fetched by scripts/get_libs.sh but git does not ignore it" in run.proc.stdout
     assert "libs/depB was fetched" not in run.proc.stdout
 
 
-def test_template_deps_sh_fetches_nothing(scaffolded_project, run_build):
+def test_template_get_libs_sh_fetches_nothing(scaffolded_project, run_build):
     run = run_build(scaffolded_project)
 
     assert not (scaffolded_project / "libs").exists()
     assert stamp(scaffolded_project)[2:] == []
-    assert "Fetching dependencies with scripts/deps.sh" in run.proc.stdout
+    assert "Getting libs with scripts/get_libs.sh" in run.proc.stdout
 
 
-def test_deps_sh_gets_its_env_and_an_empty_cwd(scaffolded_project, run_build):
-    write_deps(
+def test_get_libs_sh_gets_its_env_and_an_empty_cwd(scaffolded_project, run_build):
+    write_get_libs(
         scaffolded_project,
         '[ -z "$(ls -A)" ] || { echo "cwd is not empty" >&2; exit 1; }\n'
         'printf "%s\\n" "$PWD" "$PROJECT_ROOT" "$APP_NAME" "$TOOL_NAME" "$TOOL_VERSION" "$SRC_DIR" "$LIBS_DIR" > env.txt',
@@ -152,7 +152,7 @@ def test_deps_sh_gets_its_env_and_an_empty_cwd(scaffolded_project, run_build):
 
     libs = scaffolded_project / "libs"
     cwd, root, app, tool, version, src_dir, libs_dir = (libs / "env.txt").read_text().splitlines()
-    assert cwd.startswith(str(scaffolded_project / ".ngargparser" / "deps-fetch."))
+    assert cwd.startswith(str(scaffolded_project / ".ngargparser" / "libs-fetch."))
     assert root == str(scaffolded_project)
     assert (app, tool, version) == ("demo", "ng_demo", "tver")
     assert src_dir == str(scaffolded_project / "scripts")
@@ -162,7 +162,7 @@ def test_deps_sh_gets_its_env_and_an_empty_cwd(scaffolded_project, run_build):
 def test_fetched_entries_ship_as_left(scaffolded_project, run_build):
     # .distignore and the hidden-file rule apply to project files only; a
     # dependency's hidden data and shell scripts are part of the dependency.
-    write_deps(
+    write_get_libs(
         scaffolded_project,
         "mkdir -p dep/data dep/bin dep/pkg/__pycache__ dep/.git\n"
         "echo thr > dep/data/.thr\n"
@@ -181,7 +181,7 @@ def test_fetched_entries_ship_as_left(scaffolded_project, run_build):
 
 @pytest.mark.parametrize("name", [".gitignore"])
 def test_reserved_top_level_name_is_rejected(scaffolded_project, run_build, name):
-    write_deps(scaffolded_project, f"touch {name}")
+    write_get_libs(scaffolded_project, f"touch {name}")
 
     run = run_build(scaffolded_project, expect_ok=False)
 
@@ -191,10 +191,10 @@ def test_reserved_top_level_name_is_rejected(scaffolded_project, run_build, name
 
 
 def test_interrupted_move_is_redone(scaffolded_project, run_build):
-    write_deps(scaffolded_project, "mkdir depA && echo v1 > depA/version")
+    write_get_libs(scaffolded_project, "mkdir depA && echo v1 > depA/version")
     run_build(scaffolded_project)
     # What an interrupted run leaves: a pending stamp and a half-moved entry.
-    stamp_file = scaffolded_project / ".ngargparser" / "deps-stamp"
+    stamp_file = scaffolded_project / ".ngargparser" / "libs-stamp"
     lines = stamp(scaffolded_project)
     stamp_file.write_text("\n".join([lines[0], "hash pending", *lines[2:]]) + "\n")
     shutil.rmtree(scaffolded_project / "libs" / "depA")
@@ -207,10 +207,10 @@ def test_interrupted_move_is_redone(scaffolded_project, run_build):
 
 
 def test_read_only_fetched_dirs_are_handled(scaffolded_project, run_build):
-    write_deps(scaffolded_project, "mkdir -p dep/sub && touch dep/sub/f && chmod a-w dep/sub")
+    write_get_libs(scaffolded_project, "mkdir -p dep/sub && touch dep/sub/f && chmod a-w dep/sub")
     run_build(scaffolded_project)
 
-    write_deps(scaffolded_project, "mkdir -p dep/sub && touch dep/sub/g && chmod a-w dep/sub")
+    write_get_libs(scaffolded_project, "mkdir -p dep/sub && touch dep/sub/g && chmod a-w dep/sub")
     run_build(scaffolded_project)
 
     assert sorted(os.listdir(scaffolded_project / "libs" / "dep" / "sub")) == ["__init__.py", "g"]

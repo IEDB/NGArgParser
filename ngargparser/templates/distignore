@@ -2,7 +2,7 @@
 # (Lives at the project root, next to .gitignore.)
 #
 # The rules apply to the project's own files. Dependencies fetched by
-# scripts/deps.sh into libs/ ship as deps.sh left them; trim those in deps.sh.
+# scripts/get_libs.sh into libs/ ship as get_libs.sh left them; trim those in get_libs.sh.
 #
 # Syntax: EXACT .gitignore semantics (evaluated with `git check-ignore`).
 # Paste .gitignore content verbatim: wildcards, dir-only `name/`, `!` negation,

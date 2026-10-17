@@ -2,13 +2,16 @@
 
 # Dependency fetch for ngargparser apps.
 #
-# Put every download your tool needs at run time here: git clones, archives,
-# data files. This script is USER-OWNED; `cli sync` never touches it.
+# Put all outside code your tool needs at run time here: git clones, archives,
+# data files, and third-party tools you download by hand (licensed software).
+# This script is USER-OWNED; `cli sync` never touches it.
 #
 # When it runs: at the start of `make build`, before the project is copied into
 # build/. It is skipped while this file is unchanged and everything it fetched
-# last time is still in libs/. To force a fresh fetch, delete
-# .ngargparser/deps-stamp and build again.
+# last time is still in libs/. To force a fresh fetch, delete the folders this
+# script fetched into libs/ (listed in libs/.gitignore) and build again. Don't
+# delete .ngargparser/libs-stamp: it records which libs/ folders the build
+# owns, and without it the build refuses to replace them.
 #
 # Working directory: an empty temp dir. When the script succeeds, each
 # top-level entry it leaves there replaces libs/<entry> in the project, gets
@@ -65,6 +68,24 @@ set -euo pipefail
 # curl -fsSL -o tool.tar.gz https://example.com/tool-1.0.tar.gz
 # tar xzf tool.tar.gz
 # rm tool.tar.gz
+
+# Example 3: A tool you download by hand (e.g. behind a license form). Each
+# developer points an environment variable at their unpacked copy. CI has no
+# copy, so CI builds go without it. A local build stops instead of skipping:
+# a skipped fetch is remembered as done, and setting the variable later would
+# be ignored until this file changes.
+# if [ -n "${MYTOOL_DIR:-}" ]; then
+#     if [ ! -f "$MYTOOL_DIR/mytool.py" ]; then
+#         echo "ERROR: MYTOOL_DIR=$MYTOOL_DIR has no mytool.py." >&2
+#         exit 1
+#     fi
+#     cp -R "$MYTOOL_DIR" mytool
+# elif [ -n "${CI:-}" ]; then
+#     echo "MYTOOL_DIR is not set in CI; building without mytool."
+# else
+#     echo "ERROR: download mytool from <url> and set MYTOOL_DIR to its folder." >&2
+#     exit 1
+# fi
 
 # =====================================================================
 # END OF DEPENDENCY DOWNLOADS

@@ -47,6 +47,20 @@ def test_broken_launcher_is_repaired_by_sync(scaffolded_project, sync_args):
     assert '"$@"' in fixed
 
 
+def test_legacy_build_conf_is_moved_into_core(scaffolded_project, sync_args):
+    core_conf = scaffolded_project / "scripts/core/build.conf"
+    legacy = scaffolded_project / "scripts/build.conf"
+    content = 'TOOL_NAME="ng_custom"\nTARBALL_PREFIX="LJI_"\n'
+    core_conf.unlink()
+    legacy.write_text(content)
+
+    rc = cli.sync_command(sync_args())
+
+    assert rc == 0
+    assert not legacy.exists()
+    assert core_conf.read_text() == content
+
+
 def test_stale_stamp_is_restamped(scaffolded_project, sync_args):
     pyproject = scaffolded_project / "pyproject.toml"
     cli.write_scaffold_version(str(pyproject), "0.0.1")
@@ -118,9 +132,9 @@ def test_sync_gitignore_idempotent_on_fresh_project(scaffolded_project, sync_arg
     assert gitignore.read_text() == before
 
 
-def test_sync_does_not_create_deps_sh(scaffolded_project, sync_args):
-    # scripts/deps.sh is user-owned and new projects get it from `cli generate`;
+def test_sync_does_not_create_get_libs_sh(scaffolded_project, sync_args):
+    # scripts/get_libs.sh is user-owned and new projects get it from `cli generate`;
     # existing projects add it themselves when they migrate.
-    (scaffolded_project / "scripts" / "deps.sh").unlink()
+    (scaffolded_project / "scripts" / "get_libs.sh").unlink()
     cli.sync_command(sync_args())
-    assert not (scaffolded_project / "scripts" / "deps.sh").exists()
+    assert not (scaffolded_project / "scripts" / "get_libs.sh").exists()

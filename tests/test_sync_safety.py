@@ -219,8 +219,9 @@ def test_rollback_restores_a_legacy_layout(runnable_project, sync_args, capsys):
     # Rebuild the pre-scripts/core layout sync migrates, plus state sync creates or edits.
     project = runnable_project
     (project / "scripts/core/build.sh").rename(project / "scripts/build.sh")
+    (project / "scripts/core/build.conf").rename(project / "scripts/build.conf")
     (project / "scripts/core").rmdir()
-    (project / "scripts/hooks.sh").rename(project / "scripts/dependencies.sh")
+    (project / "scripts/dependencies.sh").write_text("#!/bin/bash\n")
     (project / "deploy/install.sh").unlink()
     (project / "deploy").rmdir()
     (project / ".gitignore").unlink()
@@ -235,6 +236,7 @@ def test_rollback_restores_a_legacy_layout(runnable_project, sync_args, capsys):
     files, dirs = tree_state(project)
     assert (files, dirs) == before
     assert "scripts/build.sh" in files and "scripts/dependencies.sh" in files
+    assert "scripts/build.conf" in files
     assert not {"scripts/core", "deploy", ".ngargparser"} & dirs
     assert ".gitignore" not in files and "scripts/hooks.sh" not in files
 

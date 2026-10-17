@@ -7,8 +7,8 @@
 # Build script for the IEDB project
 #
 # Developers edit and run the tool in the project folder. This script:
-#   1. fetches dependencies into the project's libs/ with scripts/deps.sh
-#      (skipped while scripts/deps.sh is unchanged),
+#   1. fetches dependencies into the project's libs/ with scripts/get_libs.sh
+#      (skipped while scripts/get_libs.sh is unchanged),
 #   2. copies the project into build/<TOOL>-<VERSION>/ (symlinks are kept as
 #      links, never followed),
 #   3. runs scripts/hooks.sh against that copy,
@@ -96,8 +96,9 @@ fi
 shopt -s dotglob
 
 # Resolve paths.
-# This script lives in scripts/core/ (framework-owned, sync-managed).
-# build.conf, hooks.sh and deps.sh live one level up in scripts/ (user-owned).
+# This script lives in scripts/core/ (framework-owned, sync-managed). build.conf
+# sits next to it in scripts/core/ (user-owned; sync never overwrites it).
+# hooks.sh and get_libs.sh live one level up in scripts/ (user-owned).
 # SRC_DIR keeps its established meaning: the user-owned scripts/ dir, which is
 # what the hooks see via the exports below. The exclusion file is .distignore
 # at PROJECT_ROOT (see setup_exclusions).
@@ -107,7 +108,7 @@ PROJECT_ROOT="$(cd "$SRC_DIR/.." && pwd)"
 APP_NAME=$(basename "$PROJECT_ROOT")
 
 # git is a hard dependency: the .distignore exclusion file is evaluated with
-# `git check-ignore`, and scripts/deps.sh is fingerprinted with `git hash-object`.
+# `git check-ignore`, and scripts/get_libs.sh is fingerprinted with `git hash-object`.
 if ! command -v git >/dev/null 2>&1; then
     echo "ERROR: 'git' is required to build (distignore matching uses 'git check-ignore'). Install git and retry." >&2
     exit 1
@@ -122,9 +123,9 @@ TOOL_NAME=""
 TARBALL_PREFIX=""
 # No longer read. Initialized only so a leftover setting in build.conf can be reported.
 EXCLUDE_FROM_BUILD_SYMLINK=""
-if [ -f "$SRC_DIR/build.conf" ]; then
+if [ -f "$BUILD_SH_DIR/build.conf" ]; then
     # shellcheck source=build.conf
-    source "$SRC_DIR/build.conf"
+    source "$BUILD_SH_DIR/build.conf"
 fi
 
 # Apply defaults when not set by build.conf
@@ -149,13 +150,13 @@ fi
 # scaffold's .gitignore keeps it out of git and the '.*' rule keeps it out of
 # the tarball.
 STATE_DIR="$PROJECT_ROOT/.ngargparser"
-DEPS_SCRIPT="$SRC_DIR/deps.sh"
-DEPS_STAMP="$STATE_DIR/deps-stamp"
-DEPS_LOG="$STATE_DIR/deps.log"
+GET_LIBS_SCRIPT="$SRC_DIR/get_libs.sh"
+LIBS_STAMP="$STATE_DIR/libs-stamp"
+GET_LIBS_LOG="$STATE_DIR/get_libs.log"
 LIBS_DIR="$PROJECT_ROOT/libs"
-STAMP_FORMAT="ngargparser-deps-stamp 1"
+STAMP_FORMAT="ngargparser-libs-stamp 1"
 NL=$'\n'
-LIBS_GITIGNORE_MARKER="# Managed by scripts/core/build.sh: entries fetched by scripts/deps.sh. Do not edit."
+LIBS_GITIGNORE_MARKER="# Managed by scripts/core/build.sh: entries fetched by scripts/get_libs.sh. Do not edit."
 
 # Function to ensure __init__.py files exist in a directory tree
 ensure_init_files() {
@@ -195,7 +196,7 @@ rm_tree() {
 #                                (highest precedence — not overridable)
 # The project-root build/ and .git/ dirs are hard-pruned from the candidate
 # list, so no rule (not even '!') can bring them back. Entries fetched by
-# scripts/deps.sh are not filtered: they ship as deps.sh left them.
+# scripts/get_libs.sh are not filtered: they ship as get_libs.sh left them.
 # ---------------------------------------------------------------------------
 setup_exclusions() {
     TMPWORK="$(mktemp -d "${TMPDIR:-/tmp}/ngbuild-exclude.XXXXXX")"
@@ -301,11 +302,11 @@ stage_entry() {
 
 # ---------------------------------------------------------------------------
 # Dependency fetch.
-# scripts/deps.sh runs in an empty temp dir; each top-level entry it leaves
+# scripts/get_libs.sh runs in an empty temp dir; each top-level entry it leaves
 # there replaces libs/<entry> in the project. The stamp file records the hash
-# of scripts/deps.sh and the names it produced:
+# of scripts/get_libs.sh and the names it produced:
 #   line 1  format marker
-#   line 2  hash <git hash-object of scripts/deps.sh>   ('pending' mid-move)
+#   line 2  hash <git hash-object of scripts/get_libs.sh>   ('pending' mid-move)
 #   line 3+ one fetched name per line
 # The fetch is skipped while the hash matches and every name is still there.
 # ---------------------------------------------------------------------------
@@ -316,8 +317,8 @@ in_list() {
 }
 
 stamp_names() {
-    if [ -f "$DEPS_STAMP" ]; then
-        sed -n '3,$p' "$DEPS_STAMP"
+    if [ -f "$LIBS_STAMP" ]; then
+        sed -n '3,$p' "$LIBS_STAMP"
     fi
     return 0
 }
@@ -329,15 +330,15 @@ write_stamp() {
         if [ -n "$2" ]; then
             printf '%s\n' "$2"
         fi
-    } > "$DEPS_STAMP.tmp"
-    mv -f "$DEPS_STAMP.tmp" "$DEPS_STAMP"
+    } > "$LIBS_STAMP.tmp"
+    mv -f "$LIBS_STAMP.tmp" "$LIBS_STAMP"
 }
 
 # Explicit returns only: this runs as an `if` condition, where set -e is off.
-deps_up_to_date() {
-    [ -f "$DEPS_STAMP" ] || return 1
-    [ "$(sed -n 1p "$DEPS_STAMP")" = "$STAMP_FORMAT" ] || return 1
-    [ "$(sed -n 2p "$DEPS_STAMP")" = "hash $1" ] || return 1
+libs_up_to_date() {
+    [ -f "$LIBS_STAMP" ] || return 1
+    [ "$(sed -n 1p "$LIBS_STAMP")" = "$STAMP_FORMAT" ] || return 1
+    [ "$(sed -n 2p "$LIBS_STAMP")" = "hash $1" ] || return 1
     local name
     while IFS= read -r name; do
         [ -n "$name" ] || continue
@@ -363,7 +364,7 @@ write_libs_gitignore() {
             while IFS= read -r name; do
                 [ -n "$name" ] || continue
                 if ! git -C "$PROJECT_ROOT" check-ignore -q "libs/$name"; then
-                    notice "Warning: libs/$name was fetched by scripts/deps.sh but git does not ignore it (libs/.gitignore is yours, so it was left alone)."
+                    notice "Warning: libs/$name was fetched by scripts/get_libs.sh but git does not ignore it (libs/.gitignore is yours, so it was left alone)."
                 fi
             done <<< "$names"
         fi
@@ -384,79 +385,79 @@ write_libs_gitignore() {
     } > "$gitignore"
 }
 
-# Call at top level only (never as `fetch_deps || ...`), so set -e stays active.
-fetch_deps() {
-    if [ ! -f "$DEPS_SCRIPT" ]; then
-        show_progress "No scripts/deps.sh; nothing to fetch"
-        log_verbose "No scripts/deps.sh; nothing to fetch."
+# Call at top level only (never as `fetch_libs || ...`), so set -e stays active.
+fetch_libs() {
+    if [ ! -f "$GET_LIBS_SCRIPT" ]; then
+        show_progress "No scripts/get_libs.sh; nothing to fetch"
+        log_verbose "No scripts/get_libs.sh; nothing to fetch."
         return 0
     fi
 
     local hash
-    hash=$(git hash-object --no-filters "$DEPS_SCRIPT")
-    if deps_up_to_date "$hash"; then
-        show_progress "Dependencies up to date"
-        log_verbose "Dependencies up to date (scripts/deps.sh unchanged); skipping the fetch."
+    hash=$(git hash-object --no-filters "$GET_LIBS_SCRIPT")
+    if libs_up_to_date "$hash"; then
+        show_progress "Libs up to date"
+        log_verbose "Libs up to date (scripts/get_libs.sh unchanged); skipping the fetch."
         return 0
     fi
 
-    show_progress "Fetching dependencies (log: .ngargparser/deps.log)"
-    log_verbose "Fetching dependencies with scripts/deps.sh..."
+    show_progress "Getting libs (log: .ngargparser/get_libs.log)"
+    log_verbose "Getting libs with scripts/get_libs.sh..."
     mkdir -p "$STATE_DIR"
     local leftover
-    for leftover in "$STATE_DIR"/deps-fetch.*; do  # from a build that was killed
+    for leftover in "$STATE_DIR"/libs-fetch.*; do  # from a build that was killed
         rm_tree "$leftover"
     done
-    DEPS_TMP=$(mktemp -d "$STATE_DIR/deps-fetch.XXXXXX")
+    LIBS_TMP=$(mktemp -d "$STATE_DIR/libs-fetch.XXXXXX")
     export PROJECT_ROOT APP_NAME TOOL_NAME TOOL_VERSION SRC_DIR LIBS_DIR
 
     # stdin from /dev/null and no git prompts: a credential prompt fails the
     # fetch instead of hanging the build.
     local rc=0
     if [ "$PROGRESS_MODE" = true ]; then
-        (cd "$DEPS_TMP" && GIT_TERMINAL_PROMPT=0 bash "$DEPS_SCRIPT") </dev/null >"$DEPS_LOG" 2>&1 || rc=$?
+        (cd "$LIBS_TMP" && GIT_TERMINAL_PROMPT=0 bash "$GET_LIBS_SCRIPT") </dev/null >"$GET_LIBS_LOG" 2>&1 || rc=$?
     else
-        (cd "$DEPS_TMP" && GIT_TERMINAL_PROMPT=0 bash "$DEPS_SCRIPT") </dev/null || rc=$?
+        (cd "$LIBS_TMP" && GIT_TERMINAL_PROMPT=0 bash "$GET_LIBS_SCRIPT") </dev/null || rc=$?
     fi
     if [ "$rc" -ne 0 ]; then
-        error "scripts/deps.sh failed (exit $rc); libs/ was not changed."
+        error "scripts/get_libs.sh failed (exit $rc); libs/ was not changed."
         if [ "$PROGRESS_MODE" = true ]; then
-            echo "--- last lines of .ngargparser/deps.log ---" >&2
-            tail -n 20 "$DEPS_LOG" >&2
+            echo "--- last lines of .ngargparser/get_libs.log ---" >&2
+            tail -n 20 "$GET_LIBS_LOG" >&2
         fi
         exit 1
     fi
 
     local produced="" entry name
-    for entry in "$DEPS_TMP"/*; do
+    for entry in "$LIBS_TMP"/*; do
         { [ -e "$entry" ] || [ -L "$entry" ]; } || continue
         name=${entry##*/}
         case "$name" in
             .gitignore|*$'\n'*)
-                error "scripts/deps.sh may not create '$name' at the top level of its working directory."
+                error "scripts/get_libs.sh may not create '$name' at the top level of its working directory."
                 exit 1
                 ;;
         esac
         produced="${produced:+$produced$NL}$name"
     done
 
-    # Never replace something in libs/ that deps.sh does not own.
+    # Never replace something in libs/ that get_libs.sh does not own.
     local old
     old=$(stamp_names)
     while IFS= read -r name; do
         [ -n "$name" ] || continue
         if { [ -e "$LIBS_DIR/$name" ] || [ -L "$LIBS_DIR/$name" ]; } && ! in_list "$name" "$old"; then
-            error "libs/$name already exists and was not fetched by scripts/deps.sh. Remove or rename it, then build again."
+            error "libs/$name already exists and was not fetched by scripts/get_libs.sh. Remove or rename it, then build again."
             exit 1
         fi
     done <<< "$produced"
 
     # Project-folder runs need the same package layout the build gives libs/.
-    find "$DEPS_TMP" -type d -exec chmod u+w {} +
+    find "$LIBS_TMP" -type d -exec chmod u+w {} +
     while IFS= read -r name; do
         [ -n "$name" ] || continue
-        if [ -d "$DEPS_TMP/$name" ] && [ ! -L "$DEPS_TMP/$name" ]; then
-            ensure_init_files "$DEPS_TMP/$name"
+        if [ -d "$LIBS_TMP/$name" ] && [ ! -L "$LIBS_TMP/$name" ]; then
+            ensure_init_files "$LIBS_TMP/$name"
         fi
     done <<< "$produced"
 
@@ -473,13 +474,13 @@ fetch_deps() {
     while IFS= read -r name; do
         [ -n "$name" ] || continue
         rm_tree "$LIBS_DIR/$name"
-        mv "$DEPS_TMP/$name" "$LIBS_DIR/$name"
+        mv "$LIBS_TMP/$name" "$LIBS_DIR/$name"
     done <<< "$produced"
     write_libs_gitignore "$produced"
     write_stamp "$hash" "$produced"
 
-    rm_tree "$DEPS_TMP"
-    DEPS_TMP=""
+    rm_tree "$LIBS_TMP"
+    LIBS_TMP=""
     return 0
 }
 
@@ -508,7 +509,7 @@ handle_item() {
     if [ "$item_name" = "libs" ] && [ -d "$item" ]; then
         # Merge project libs/* into build/libs (it already exists, so copying
         # the whole dir would nest build/libs/libs). Entries fetched by
-        # scripts/deps.sh ship as deps.sh left them; everything else in libs/
+        # scripts/get_libs.sh ship as get_libs.sh left them; everything else in libs/
         # follows .distignore like any project file.
         local fetched libentry name
         fetched=$(stamp_names)
@@ -567,7 +568,7 @@ check_links() {
     done < <(find "$BUILD_DIR" -type l -print0)
 
     if [ -n "$bad" ]; then
-        error "Symlinks in the build must be relative and stay inside it. Fix these in the project, scripts/deps.sh or scripts/hooks.sh, or keep project paths out with .distignore:"
+        error "Symlinks in the build must be relative and stay inside it. Fix these in the project, scripts/get_libs.sh or scripts/hooks.sh, or keep project paths out with .distignore:"
         printf '%s' "$bad" | head -n 20 >&2
         exit 1
     fi
@@ -654,6 +655,14 @@ if [ ! -f "$SRC_DIR/hooks.sh" ]; then
         fi
     done
 fi
+if [ -f "$SRC_DIR/build.conf" ]; then
+    error "scripts/build.conf is no longer read. Move it to scripts/core/build.conf (cli sync does this for you)."
+    exit 1
+fi
+if [ -f "$SRC_DIR/deps.sh" ]; then
+    error "scripts/deps.sh is no longer run. Rename it to scripts/get_libs.sh."
+    exit 1
+fi
 if [ -L "$LIBS_DIR" ]; then
     error "libs/ is a symlink (-> $(readlink "$LIBS_DIR")). Replace it with a real directory: the build copies libs/, and fetched dependencies are written into it."
     exit 1
@@ -663,18 +672,18 @@ if [ -e "$LIBS_DIR" ] && [ ! -d "$LIBS_DIR" ]; then
     exit 1
 fi
 if [ -n "$EXCLUDE_FROM_BUILD_SYMLINK" ]; then
-    notice "Note: EXCLUDE_FROM_BUILD_SYMLINK in scripts/build.conf no longer has any effect (the build copies everything); you can delete it."
+    notice "Note: EXCLUDE_FROM_BUILD_SYMLINK in scripts/core/build.conf no longer has any effect (the build copies everything); you can delete it."
 fi
 
 # Clean up temp state always, and the build directory on failure
 TMPWORK=""
-DEPS_TMP=""
+LIBS_TMP=""
 TAR_TMP=""
 on_exit() {
     local status=$?
     set +e
     [ -n "$TMPWORK" ] && rm -rf "$TMPWORK"
-    [ -n "$DEPS_TMP" ] && rm_tree "$DEPS_TMP"
+    [ -n "$LIBS_TMP" ] && rm_tree "$LIBS_TMP"
     [ -n "$TAR_TMP" ] && rm -f "$TAR_TMP"
     if [ $status -ne 0 ]; then
         echo "Build failed; removing $BUILD_DIR" >&2
@@ -699,7 +708,7 @@ mkdir -p "$BUILD_DIR"
 mkdir -p "$BUILD_DIR/libs"
 
 # Fetch dependencies into the project's libs/ (skipped when up to date)
-fetch_deps
+fetch_libs
 
 # Evaluate the .distignore exclusion file (exact .gitignore semantics) up front
 show_progress "Evaluating distignore rules"

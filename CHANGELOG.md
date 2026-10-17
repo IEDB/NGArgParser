@@ -28,11 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     sync left crashing on every command, are now stopped untouched; the 3 on 0.3.0 or newer
     sync and verify.
 
-- `scripts/deps.sh`, a new user-owned hook for every download a tool needs at run time (git
-  clones, archives, data). `make build` runs it at the start, in an empty temp dir, and moves each
-  top-level entry it leaves into the project's `libs/`. The fetch is skipped while deps.sh is
-  unchanged and its entries are still in `libs/` (state in `.ngargparser/deps-stamp`; delete it to
-  force a fetch). A failed fetch leaves `libs/` as it was and stops the build. Fetched directories
+- `scripts/get_libs.sh`, a new user-owned hook for all outside code a tool needs at run time (git
+  clones, archives, data, and third-party tools you download by hand; the template's Example 3
+  shows the pattern for those). `make build` runs it at the start, in an empty temp dir, and moves each
+  top-level entry it leaves into the project's `libs/`. The fetch is skipped while get_libs.sh is
+  unchanged and its entries are still in `libs/` (state in `.ngargparser/libs-stamp`; to force a
+  fetch, delete the fetched folders in `libs/`). A failed fetch leaves `libs/` as it was and stops the build. Fetched directories
   get `__init__.py` files, and a managed `libs/.gitignore` keeps them out of git. `cli generate`
   creates the template; `cli sync` does not add it to existing projects.
 - `make build` checks that the tool starts: it runs the entry script's `--help`, `predict --help`,
@@ -75,12 +76,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a fix typed there fails to save instead of vanishing on the next build. Hooks now patch the copy
   only, so nothing a hook writes reaches the project.
 - **Breaking:** `scripts/hooks.sh` is for patching the build copy. Downloads in it still work but
-  run on every build; move them to `scripts/deps.sh`.
+  run on every build; move them to `scripts/get_libs.sh`.
 - **Breaking:** old layouts stop the build with a message naming the fix, instead of being read or
   silently ignored: `scripts/do-not-distribute.txt`, a root `do-not-distribute.txt`, or
   `scripts/.distignore` without a root `.distignore`; `scripts/build_hooks.sh` or
-  `scripts/dependencies.sh` without `scripts/hooks.sh`; a symlinked `libs/`. `cli sync` still
+  `scripts/dependencies.sh` without `scripts/hooks.sh`; `scripts/deps.sh` (the pre-release name
+  of `scripts/get_libs.sh`); a symlinked `libs/`. `cli sync` still
   renames the old hook names. The README has a migration checklist for existing tools.
+- `cli generate` no longer creates `scripts/hooks.sh`. The build skips the hook step when the file
+  is missing, so most tools need only `scripts/get_libs.sh` and `.distignore`. To add a hook, copy
+  `templates/hooks.sh`. The template no longer suggests copying local dependencies; those belong
+  in get_libs.sh. Existing tools keep their hooks.sh.
+- **Breaking:** `scripts/build.conf` moved to `scripts/core/build.conf`, next to `build.sh`. It
+  stays user-owned: `cli sync` never overwrites it. `cli sync` moves an existing
+  `scripts/build.conf`, and the build stops while `scripts/build.conf` is still there. In the
+  tarball the file now ships at `scripts/core/build.conf`.
 - A failed build now also removes the previous tarball, so an old one never looks fresh.
 
 ### Fixed
@@ -93,7 +103,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** `EXCLUDE_FROM_BUILD_SYMLINK` in `scripts/build.conf`. Everything is copied; a
   leftover setting prints a notice and has no effect.
 - **Breaking:** cloning git URLs listed in `requirements.txt` at build time. `requirements.txt`
-  now ships as an ordinary file. No current tool used this; put such clones in `scripts/deps.sh`.
+  now ships as an ordinary file. No current tool used this; put such clones in `scripts/get_libs.sh`.
 
 ## [0.4.1] — 2026-08-31
 

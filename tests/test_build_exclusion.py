@@ -53,10 +53,9 @@ def test_default_template_exclusions(scaffolded_project, run_build):
     for absent in (
         "Makefile",
         "scripts/hooks.sh",
-        "scripts/deps.sh",
+        "scripts/get_libs.sh",
         ".distignore",  # dotfile at root — auto-excluded by the '.*' baseline
         "scripts/core/build.sh",
-        "scripts/core",
     ):
         assert absent not in members, f"{absent} must not ship"
 
@@ -65,7 +64,7 @@ def test_default_template_exclusions(scaffolded_project, run_build):
 
     for present in (
         "deploy/install.sh",
-        "scripts/build.conf",
+        "scripts/core/build.conf",
         "configure",
         "VERSION",
         "README.md",
@@ -214,11 +213,13 @@ def test_staged_dir_mirrors_tarball(scaffolded_project, run_build):
 
 def test_empty_dir_semantics(scaffolded_project, run_build):
     (scaffolded_project / "outputs").mkdir()
+    (scaffolded_project / "tools").mkdir()
+    (scaffolded_project / "tools" / "run.sh").write_text("#!/bin/sh\n")
 
     members = run_build(scaffolded_project).members
 
     # A genuinely empty source dir ships ...
     assert "outputs" in members and members["outputs"].isdir()
-    # ... but a dir emptied by exclusion (scripts/core, whose only content is
-    # the excluded build.sh) is dropped entirely.
-    assert not any(m == "scripts/core" or m.startswith("scripts/core/") for m in members)
+    # ... but a dir emptied by exclusion (tools/, whose only content is a *.sh
+    # file the template excludes) is dropped entirely.
+    assert not any(m == "tools" or m.startswith("tools/") for m in members)

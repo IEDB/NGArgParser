@@ -27,7 +27,13 @@ def write_hook(project_dir, body):
 def test_project_files_are_copies(scaffolded_project, run_build):
     run = run_build(scaffolded_project)
 
-    for rel in ("configure", "pyproject.toml", "src/run_demo.py", "src/core/set_pythonpath.py", "scripts/build.conf"):
+    for rel in (
+        "configure",
+        "pyproject.toml",
+        "src/run_demo.py",
+        "src/core/set_pythonpath.py",
+        "scripts/core/build.conf",
+    ):
         path = run.staged / rel
         assert path.is_file() and not path.is_symlink(), f"{rel} must be a copy"
     assert not any(info.issym() for info in run.members.values())
@@ -160,13 +166,49 @@ def test_requirements_txt_is_an_ordinary_file(scaffolded_project, run_build):
 def test_legacy_hook_name_fails_build(scaffolded_project, run_build, legacy):
     scripts = scaffolded_project / "scripts"
     marker = scaffolded_project.parent / "legacy-hook-ran"
-    (scripts / "hooks.sh").unlink()
     (scripts / legacy).write_text(f"touch {marker}\n")
 
     run = run_build(scaffolded_project, expect_ok=False)
 
     assert run.proc.returncode != 0
     assert f"scripts/{legacy} is no longer run" in run.proc.stderr
+    assert not marker.exists()
+
+
+def test_leftover_deps_sh_fails_build(scaffolded_project, run_build):
+    marker = scaffolded_project.parent / "deps-sh-ran"
+    (scaffolded_project / "scripts" / "deps.sh").write_text(f"touch {marker}\n")
+
+    run = run_build(scaffolded_project, expect_ok=False)
+
+    assert run.proc.returncode != 0
+    assert "scripts/deps.sh is no longer run. Rename it to scripts/get_libs.sh." in run.proc.stderr
+    assert not marker.exists()
+
+
+def test_build_conf_is_read_from_core(scaffolded_project, run_build):
+    conf = scaffolded_project / "scripts" / "core" / "build.conf"
+    conf.write_text(conf.read_text().replace('TARBALL_PREFIX="IEDB_"', 'TARBALL_PREFIX="LJI_"'))
+
+    run = run_build(scaffolded_project, expect_ok=False)
+
+    assert run.proc.returncode == 0, run.proc.stderr
+    assert (scaffolded_project / "build" / "LJI_NG_DEMO-tver.tar.gz").exists()
+    assert not run.tarball.exists()
+
+
+@pytest.mark.parametrize("keep_core_conf", [False, True])
+def test_legacy_build_conf_fails_build(scaffolded_project, run_build, keep_core_conf):
+    core_conf = scaffolded_project / "scripts" / "core" / "build.conf"
+    marker = scaffolded_project.parent / "legacy-build-conf-read"
+    if not keep_core_conf:
+        core_conf.unlink()
+    (scaffolded_project / "scripts" / "build.conf").write_text(f"touch {marker}\n")
+
+    run = run_build(scaffolded_project, expect_ok=False)
+
+    assert run.proc.returncode != 0
+    assert "scripts/build.conf is no longer read" in run.proc.stderr
     assert not marker.exists()
 
 
@@ -186,12 +228,12 @@ def test_symlinked_libs_fails_before_anything_is_removed(scaffolded_project, run
 
 
 def test_leftover_symlink_setting_is_reported(scaffolded_project, run_build):
-    conf = scaffolded_project / "scripts" / "build.conf"
+    conf = scaffolded_project / "scripts" / "core" / "build.conf"
     conf.write_text(conf.read_text() + 'EXCLUDE_FROM_BUILD_SYMLINK="libs run_*.py"\n')
 
     run = run_build(scaffolded_project)
 
-    assert "EXCLUDE_FROM_BUILD_SYMLINK in scripts/build.conf no longer has any effect" in run.proc.stdout
+    assert "EXCLUDE_FROM_BUILD_SYMLINK in scripts/core/build.conf no longer has any effect" in run.proc.stdout
 
 
 def test_build_output_is_read_only(scaffolded_project, run_build):
@@ -224,11 +266,11 @@ def test_failed_build_removes_the_previous_tarball(scaffolded_project, run_build
 
 @pytest.mark.parametrize("deps", ["none", "fetch", "skip"])
 def test_progress_bar_reaches_exactly_100(scaffolded_project, run_build, deps):
-    deps_sh = scaffolded_project / "scripts" / "deps.sh"
+    get_libs_sh = scaffolded_project / "scripts" / "get_libs.sh"
     if deps == "none":
-        deps_sh.unlink()
+        get_libs_sh.unlink()
     else:
-        deps_sh.write_text("set -e\nmkdir depA && echo 'x = 1' > depA/mod.py\n")
+        get_libs_sh.write_text("set -e\nmkdir depA && echo 'x = 1' > depA/mod.py\n")
     if deps == "skip":
         run_build(scaffolded_project, progress=True)
 
@@ -237,6 +279,6 @@ def test_progress_bar_reaches_exactly_100(scaffolded_project, run_build, deps):
     percents = [int(p) for p in re.findall(r"(\d+)%", run.proc.stdout)]
     assert max(percents) == 100
     assert percents.count(100) == 1
-    expected = {"none": "No scripts/deps.sh", "fetch": "Fetching dependencies", "skip": "Dependencies up to date"}
+    expected = {"none": "No scripts/get_libs.sh", "fetch": "Getting libs", "skip": "Libs up to date"}
     assert expected[deps] in run.proc.stdout
     assert run.proc.stdout.rstrip().endswith(f"Build completed: build/{run.tarball.name}")

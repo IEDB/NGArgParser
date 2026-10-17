@@ -26,9 +26,8 @@ def test_create_project_structure_builds_expected_tree(in_tmp_dir):
         "src/preprocess.py",
         "src/postprocess.py",
         "scripts/core/build.sh",
-        "scripts/build.conf",
-        "scripts/hooks.sh",
-        "scripts/deps.sh",
+        "scripts/core/build.conf",
+        "scripts/get_libs.sh",
         ".distignore",
         "Makefile",
         "configure",
@@ -38,15 +37,22 @@ def test_create_project_structure_builds_expected_tree(in_tmp_dir):
     ]
     for rel in expected:
         assert (root / rel).exists(), f"missing scaffolded file: {rel}"
+    # The build hook is optional: generate leaves it out.
+    assert not (root / "scripts" / "hooks.sh").exists()
 
 
-@pytest.mark.parametrize("script", ["scripts/hooks.sh", "scripts/deps.sh"])
-def test_user_hooks_are_executable_bash(in_tmp_dir, script):
+def test_deps_script_is_executable_bash(in_tmp_dir):
     cli.create_project_structure("demo")
-    path = in_tmp_dir / "demo" / script
+    path = in_tmp_dir / "demo" / "scripts" / "get_libs.sh"
     assert stat.S_IMODE(path.stat().st_mode) == 0o755
     if shutil.which("bash"):
         subprocess.run(["bash", "-n", str(path)], check=True, timeout=30)
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+def test_hooks_template_is_valid_bash():
+    # The README tells developers to copy this template when they need a hook.
+    subprocess.run(["bash", "-n", f"{cli.TEMPLATE_DIR}/hooks.sh"], check=True, timeout=30)
 
 
 def test_placeholders_are_substituted(in_tmp_dir):
