@@ -66,11 +66,23 @@ def _backup_file(path):
 
 
 GITIGNORE_MANAGED_MARKER = "# --- ngargparser (managed) ---"
-GITIGNORE_MANAGED_BLOCK = f"""{GITIGNORE_MANAGED_MARKER}
-# Runtime artifacts written by `cli sync` / `cli deps` — keep out of git.
-.ngargparser/
-*.bak
-"""
+# Each group is a comment and the rules it explains. A group's comment is
+# written only together with at least one of its rules.
+GITIGNORE_MANAGED_RULES = (
+    (
+        "# Runtime artifacts written by `cli sync` / `cli deps` — keep out of git.",
+        (".ngargparser/", "*.bak"),
+    ),
+    (
+        "# Written by ./configure with this machine's paths; rebuilt on each host.",
+        (".env", "setup_*_env.sh"),
+    ),
+)
+GITIGNORE_MANAGED_BLOCK = "".join(
+    f"{line}\n"
+    for line in [GITIGNORE_MANAGED_MARKER]
+    + [line for comment, rules in GITIGNORE_MANAGED_RULES for line in (comment, *rules)]
+)
 GITIGNORE_BASE = """# Python
 __pycache__/
 *.py[cod]
@@ -88,13 +100,34 @@ venv/
 """
 
 
-def ensure_gitignore(path=".gitignore", *, dry_run=False):
-    """Ensure `path` exists and contains the ngargparser-managed ignore block.
+def _gitignore_has_rule(lines, rule):
+    """True when `lines` already ignore `rule` (as `rule`, `/rule` or `**/rule`),
+    or re-include it with `!`, which means the project chose to track it."""
+    forms = {rule, f"/{rule}", f"**/{rule}"}
+    return any(line in forms or (line.startswith("!") and line[1:] in forms) for line in lines)
 
-    Append-only and idempotent: creates the file (base ignores + managed block)
-    when missing, appends only the managed block when the file exists without
-    it, and never rewrites a user's own entries. Returns 'created' | 'updated'
-    | 'unchanged'. With `dry_run`, reports the action without writing.
+
+def _missing_managed_lines(content):
+    """The managed rules `content` doesn't cover yet, each group under its comment."""
+    lines = [line.strip() for line in content.splitlines()]
+    missing = []
+    for comment, rules in GITIGNORE_MANAGED_RULES:
+        absent = [rule for rule in rules if not _gitignore_has_rule(lines, rule)]
+        if absent:
+            missing += [comment, *absent]
+    return missing
+
+
+def ensure_gitignore(path=".gitignore", *, dry_run=False):
+    """Ensure `path` exists and covers every ngargparser-managed ignore rule.
+
+    Adds only, and is idempotent: creates the file (base ignores + managed
+    block) when missing, appends the managed block when the file exists
+    without it, and adds rules a newer release introduced to the end of an
+    existing managed section. A rule the file already covers, or re-includes
+    with `!`, is never added, and a user's own entries are never rewritten.
+    Returns 'created' | 'updated' | 'unchanged'. With `dry_run`, reports the
+    action without writing.
     """
     if not os.path.exists(path):
         if not dry_run:
@@ -104,12 +137,31 @@ def ensure_gitignore(path=".gitignore", *, dry_run=False):
 
     with open(path, encoding="utf-8") as f:
         content = f.read()
-    if GITIGNORE_MANAGED_MARKER in content:
+    missing = _missing_managed_lines(content)
+    if not missing:
         return "unchanged"
+
+    if GITIGNORE_MANAGED_MARKER not in content:
+        if not dry_run:
+            separator = "" if content.endswith("\n") else "\n"
+            block = "".join(f"{line}\n" for line in [GITIGNORE_MANAGED_MARKER, *missing])
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(f"{separator}\n{block}")
+        return "updated"
+
+    # The managed section runs from the marker to the first blank line.
+    parts = content.splitlines(keepends=True)
+    start = next((i for i, line in enumerate(parts) if line.strip() == GITIGNORE_MANAGED_MARKER), len(parts))
+    end = start + 1
+    while end < len(parts) and parts[end].strip():
+        end += 1
+    end = min(end, len(parts))
+    if end and not parts[end - 1].endswith("\n"):
+        parts[end - 1] += "\n"
+    parts[end:end] = [f"{line}\n" for line in missing]
     if not dry_run:
-        separator = "" if content.endswith("\n") else "\n"
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(f"{separator}\n{GITIGNORE_MANAGED_BLOCK}")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("".join(parts))
     return "updated"
 
 
@@ -659,39 +711,115 @@ def create_paths_file(project_name_or_path):
         print(f"\n\033[91m✗\033[0m Error creating paths.py: \033[91m{e}\033[0m")
 
 
+# What makes a dependency is ./configure's rule (templates/configure.py,
+# detect_dependency_tools): a top-level `<name>_path = ...` whose <name> doesn't
+# end in one of these. The ''' [ Title ] ''' line above a block is only a label.
+DEP_NAME_FIELD_SUFFIXES = ("_lib", "_venv", "_module")
+# The settings of one dependency, by variable suffix.
+DEP_FIELDS = ("_path", "_venv", "_module", "_lib_path")
+_DEP_TITLE_RE = re.compile(r"\s*\[\s*([^\]]+?)\s*\]\s*")
+
+
+class PathsFileError(Exception):
+    """paths.py can't be read or doesn't parse; nothing may be written to it."""
+
+
+def _paths_dependencies(content):
+    """Return the dependencies declared in paths.py `content`, in file order.
+
+    {name: {"display", "path", "start", "end"}}: `display` is the title right
+    above the block, or the name when there is none; `path` is the source text
+    of `<name>_path`; `start`/`end` are the block's 1-based first and last lines
+    (from the title, or the first setting, through the last setting).
+    """
+    import ast
+
+    try:
+        tree = ast.parse(content)
+    except SyntaxError as e:
+        raise PathsFileError(f"paths.py doesn't parse (line {e.lineno}): {e.msg}") from e
+
+    assigns = {}  # variable -> (index in the module body, node)
+    for i, node in enumerate(tree.body):
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            assigns[node.targets[0].id] = (i, node)
+
+    deps = {}
+    for var, (_, path_node) in assigns.items():
+        if not var.endswith("_path"):
+            continue
+        name = var[: -len("_path")]
+        if not name or name.endswith(DEP_NAME_FIELD_SUFFIXES):
+            continue
+        fields = [assigns[name + suffix] for suffix in DEP_FIELDS if name + suffix in assigns]
+        first = min(i for i, _ in fields)
+        start = min(node.lineno for _, node in fields)
+        end = max(node.end_lineno for _, node in fields)
+        display = name
+        if first > 0:
+            above = tree.body[first - 1]
+            if (
+                isinstance(above, ast.Expr)
+                and isinstance(above.value, ast.Constant)
+                and isinstance(above.value.value, str)
+            ):
+                match = _DEP_TITLE_RE.fullmatch(above.value.value)
+                if match:
+                    display = match.group(1)
+                    start = above.lineno
+        deps[name] = {
+            "display": display,
+            "path": ast.get_source_segment(content, path_node.value) or "None",
+            "start": start,
+            "end": end,
+        }
+    return deps
+
+
+def _read_paths(file_path):
+    """Return (content, dependencies) of an existing paths.py; raise PathsFileError."""
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            content = f.read()
+    except OSError as e:
+        raise PathsFileError(f"can't read '{file_path}': {e}") from e
+    return content, _paths_dependencies(content)
+
+
+def _invalid_dep_name(name):
+    """Why `name` can't be a dependency name, or None when it can."""
+    var = normalize_name(name)
+    if not var:
+        return f"'{name}' has no letters or digits"
+    for suffix in (*DEP_NAME_FIELD_SUFFIXES, "_path"):
+        if var.endswith(suffix):
+            return (
+                f"'{name}' becomes '{var}', which ends in '{suffix}': ./configure would read "
+                f"{var}_path as a setting of another tool, not as a tool. Pick a name that doesn't "
+                f"end in _lib, _venv, _module or _path."
+            )
+    return None
+
+
 def parse_existing_paths_file(file_path):
     """
     Parse an existing paths.py file to extract current dependencies.
+
+    Uses ./configure's rule (see _paths_dependencies), so both see the same tools.
 
     Args:
         file_path (str): Path to the existing paths file
 
     Returns:
-        tuple: (file_content, existing_dependencies_dict)
+        tuple: (file_content, {name: display_name}), or (None, {}) when the file
+        can't be read or doesn't parse (the reason is printed).
     """
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
-
-        # Extract existing dependencies by looking for the ''' [ Name ] ''' pattern
-        import re
-
-        existing_deps = {}
-
-        # Find all dependency sections
-        pattern = r"'''\s*\[\s*([^\]]+)\s*\]\s*'''"
-        matches = re.findall(pattern, content)
-
-        for match in matches:
-            display_name = match.strip()
-            var_name = normalize_name(display_name)
-            existing_deps[var_name] = display_name
-
-        return content, existing_deps
-
-    except Exception as e:
-        print(f"\n\033[91m✗\033[0m Error reading existing file: \033[91m{e}\033[0m")
+        content, deps = _read_paths(file_path)
+    except PathsFileError as e:
+        print(f"\n\033[91m✗\033[0m {e}")
         return None, {}
+    return content, {name: dep["display"] for name, dep in deps.items()}
 
 
 def update_paths_file(file_path, existing_content, existing_deps):
@@ -724,7 +852,10 @@ def update_paths_file(file_path, existing_content, existing_deps):
 
     for dep in new_dependencies:
         var_name = normalize_name(dep)
-        if var_name in existing_deps:
+        reason = _invalid_dep_name(dep)
+        if reason:
+            print(f"\033[91m✗\033[0m Not added: {reason}")
+        elif var_name in existing_deps:
             skipped.append(dep)
         else:
             new_sections.append(generate_dependency_section(dep))
@@ -853,71 +984,55 @@ def remove_dependencies_from_file(file_path, existing_content, existing_deps):
         else:
             print("Please enter 'y' for yes or 'n' for no.")
 
-    # Back up the file before the regex rewrite, in case a hand-edited block
-    # doesn't match the expected pattern and too much/little is removed.
-    backup_path = _backup_file(file_path)
-
-    # Remove dependencies from content
-    updated_content = existing_content
-
-    for var_name, display_name in deps_to_remove:
-        # Create pattern to match the entire dependency section
-        # This matches from ''' [ Name ] ''' to the end of the last variable
-        pattern = rf"'''\s*\[\s*{re.escape(display_name)}\s*\]\s*'''.*?{re.escape(var_name)}_lib_path\s*=\s*[^\n]*"
-        updated_content = re.sub(pattern, "", updated_content, flags=re.DOTALL)
-
-    # Normalize content ending to ensure exactly one newline
-    updated_content = normalize_content_ending(updated_content)
-
-    # Write updated content
-    try:
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(updated_content)
-
-        print(
-            f"\n\033[92m✓\033[0m Removed \033[92m{len(deps_to_remove)}\033[0m dependencies from '\033[92m{file_path}\033[0m'."
-        )
-        if backup_path:
-            print(f"  └ Backup saved to '{backup_path}'.")
-
-    except Exception as e:
-        print(f"\n\033[91m✗\033[0m Error updating file: \033[91m{e}\033[0m")
+    # Same removal as `cli deps remove`: exact block lines, a backup first, and
+    # a re-read afterwards so only what is really gone is reported.
+    _remove_deps(file_path, [var_name for var_name, _ in deps_to_remove])
 
 
-def add_deps_to_paths(file_path, names):
-    """Non-interactive equivalent of `setup_paths_file`'s "add" path.
-    Appends a stub block for each name in `names` to `file_path`, skipping
-    any whose normalized var name already exists. Creates the file if
-    missing. Returns the count of blocks added."""
-    if not names:
-        return 0
+def _add_deps(file_path, names):
+    """Append a stub block per name to `file_path` (created if missing).
+
+    Returns {"added", "skipped", "rejected", "error"}. A name that ./configure
+    couldn't see as a tool is rejected; one already declared is skipped; a
+    paths.py that can't be read or doesn't parse is left untouched (`error`).
+    """
+    result = {"added": [], "skipped": [], "rejected": [], "error": None}
+    for name in names:
+        reason = _invalid_dep_name(name)
+        if reason:
+            result["rejected"].append(name)
+            print(f"\033[91m✗\033[0m Not added: {reason}")
+    wanted = [n for n in names if n not in result["rejected"]]
+    if not wanted:
+        return result
 
     target = Path(file_path)
+    existing_content, existing_names = "", set()
     if target.exists():
-        existing_content, existing_deps = parse_existing_paths_file(file_path)
-        if existing_content is None:
-            existing_content = ""
-            existing_deps = {}
-    else:
-        existing_content = ""
-        existing_deps = {}
+        try:
+            existing_content, deps = _read_paths(file_path)
+        except PathsFileError as e:
+            result["error"] = str(e)
+            print(f"\033[91m✗\033[0m {e} Fix it, then run cli deps again; nothing was changed.")
+            return result
+        existing_names = set(deps)
 
-    had_existing_deps = bool(existing_deps)
+    had_existing_deps = bool(existing_names)
     new_sections = []
-    skipped = []
-    for name in names:
+    for name in wanted:
         var_name = normalize_name(name)
-        if var_name in existing_deps:
-            skipped.append(name)
+        if var_name in existing_names:
+            result["skipped"].append(name)
         else:
             new_sections.append(generate_dependency_section(name))
-            existing_deps[var_name] = format_display_name(name)
+            existing_names.add(var_name)
+            result["added"].append(name)
 
-    if skipped:
-        print(f"\033[93m⚠\033[0m  Skipped (already declared): {', '.join(skipped)}")
+    if result["skipped"]:
+        print(f"\033[93m⚠\033[0m  Skipped (already declared): {', '.join(result['skipped'])}")
 
     if not new_sections:
-        return 0
+        return result
 
     existing_content = existing_content.rstrip()
     if not had_existing_deps:
@@ -935,95 +1050,141 @@ def add_deps_to_paths(file_path, names):
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(updated_content)
 
-    added_names = [n for n in names if n not in skipped]
-    print(f"\033[92m✓\033[0m Added {len(new_sections)} dependency stub(s) to '{file_path}': {', '.join(added_names)}")
+    print(
+        f"\033[92m✓\033[0m Added {len(new_sections)} dependency stub(s) to '{file_path}': {', '.join(result['added'])}"
+    )
     print(f"   Edit '{file_path}' to fill in the actual paths.")
-    return len(new_sections)
+    return result
+
+
+def add_deps_to_paths(file_path, names):
+    """Non-interactive equivalent of `setup_paths_file`'s "add" path.
+    Appends a stub block for each name in `names` to `file_path`, skipping
+    any already declared and rejecting any ./configure couldn't see as a
+    tool. Creates the file if missing. Returns the count of blocks added."""
+    if not names:
+        return 0
+    return len(_add_deps(file_path, names)["added"])
+
+
+def _remove_deps(file_path, names):
+    """Delete the block of each named dependency (by name or by title).
+
+    Returns {"removed", "not_found", "refused", "error"}. A block whose lines
+    overlap another dependency's is refused rather than cut apart. The file is
+    backed up first, and re-read afterwards: only what is really gone counts.
+    """
+    result = {"removed": [], "not_found": [], "refused": [], "error": None}
+    if not Path(file_path).exists():
+        result["error"] = f"'{file_path}' not found"
+        print(f"\033[91m✗\033[0m '{file_path}' not found. Nothing to remove.")
+        return result
+    try:
+        content, deps = _read_paths(file_path)
+    except PathsFileError as e:
+        result["error"] = str(e)
+        print(f"\033[91m✗\033[0m {e} Fix it, then run cli deps again; nothing was changed.")
+        return result
+
+    targets = []
+    for n in names:
+        match = next(
+            (
+                name
+                for name, dep in deps.items()
+                if normalize_name(n) in (name, normalize_name(dep["display"])) or n == dep["display"]
+            ),
+            None,
+        )
+        if match is None:
+            result["not_found"].append(n)
+        elif match not in targets:
+            targets.append(match)
+
+    for name in list(targets):
+        dep = deps[name]
+        others = [
+            other
+            for other, o in deps.items()
+            if other not in targets and o["start"] <= dep["end"] and dep["start"] <= o["end"]
+        ]
+        if others:
+            targets.remove(name)
+            result["refused"].append(name)
+            print(
+                f"\033[91m✗\033[0m Not removed: the lines of '{name}' are mixed with those of "
+                f"{', '.join(others)}. Edit '{file_path}' by hand."
+            )
+
+    if result["not_found"]:
+        print(f"\033[93m⚠\033[0m  Not in '{file_path}' (skipped): {', '.join(result['not_found'])}")
+    if not targets:
+        return result
+
+    drop = set()
+    for name in targets:
+        drop.update(range(deps[name]["start"], deps[name]["end"] + 1))
+    lines = content.splitlines(keepends=True)
+    updated = "".join(line for number, line in enumerate(lines, 1) if number not in drop)
+    updated = normalize_content_ending(re.sub(r"\n{3,}", "\n\n", updated).lstrip("\n"))
+
+    try:
+        remaining = _paths_dependencies(updated)
+    except PathsFileError as e:
+        result["error"] = str(e)
+        print(f"\033[91m✗\033[0m Removing would break '{file_path}' ({e}); nothing was changed.")
+        return result
+
+    backup_path = _backup_file(file_path)
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(updated)
+
+    result["removed"] = [name for name in targets if name not in remaining]
+    print(
+        f"\033[92m✓\033[0m Removed {len(result['removed'])} dependency block(s) from '{file_path}': "
+        f"{', '.join(deps[n]['display'] for n in result['removed'])}"
+    )
+    if backup_path:
+        print(f"  └ Backup saved to '{backup_path}'.")
+    return result
 
 
 def remove_deps_from_paths(file_path, names):
     """Non-interactive equivalent of `setup_paths_file`'s "remove" path.
-    Deletes blocks whose display name OR var name matches any entry in `names`.
-    Returns the count of blocks removed."""
+    Deletes the block of each dependency whose name or title matches an entry
+    in `names`. Returns the count of blocks removed."""
     if not names:
         return 0
+    return len(_remove_deps(file_path, names)["removed"])
 
+
+def _list_deps(file_path):
+    """Print the dependencies declared in `file_path`. Returns (count, error)."""
     if not Path(file_path).exists():
-        print(f"\033[91m✗\033[0m '{file_path}' not found. Nothing to remove.")
-        return 0
+        print(f"\033[93m⚠\033[0m  '{file_path}' not found — no dependencies declared.")
+        return 0, None
+    try:
+        _content, deps = _read_paths(file_path)
+    except PathsFileError as e:
+        print(f"\033[91m✗\033[0m {e}")
+        return 0, str(e)
+    if not deps:
+        print(f"No dependencies declared in '{file_path}'.")
+        return 0, None
 
-    existing_content, existing_deps = parse_existing_paths_file(file_path)
-    if existing_content is None:
-        return 0
-
-    # Map display_name → var_name and var_name → var_name so users can pass either
-    name_to_var = {}
-    for var_name, display_name in existing_deps.items():
-        name_to_var[var_name] = (var_name, display_name)
-        name_to_var[display_name] = (var_name, display_name)
-        name_to_var[normalize_name(display_name)] = (var_name, display_name)
-
-    not_found = []
-    to_remove = []  # list of (var_name, display_name)
-    seen_vars = set()
-    for n in names:
-        match = name_to_var.get(n) or name_to_var.get(normalize_name(n))
-        if match is None:
-            not_found.append(n)
-            continue
-        var_name, display_name = match
-        if var_name in seen_vars:
-            continue
-        seen_vars.add(var_name)
-        to_remove.append((var_name, display_name))
-
-    if not_found:
-        print(f"\033[93m⚠\033[0m  Not in '{file_path}' (skipped): {', '.join(not_found)}")
-
-    if not to_remove:
-        return 0
-
-    # Back up before the regex rewrite so a mismatched hand-edited block is recoverable.
-    backup_path = _backup_file(file_path)
-
-    updated_content = existing_content
-    for var_name, display_name in to_remove:
-        pattern = rf"'''\s*\[\s*{re.escape(display_name)}\s*\]\s*'''.*?{re.escape(var_name)}_lib_path\s*=\s*[^\n]*"
-        updated_content = re.sub(pattern, "", updated_content, flags=re.DOTALL)
-
-    updated_content = normalize_content_ending(updated_content)
-
-    with open(file_path, "w", encoding="utf-8") as f:
-        f.write(updated_content)
-
-    print(
-        f"\033[92m✓\033[0m Removed {len(to_remove)} dependency block(s) from '{file_path}': {', '.join(d for _, d in to_remove)}"
-    )
-    if backup_path:
-        print(f"  └ Backup saved to '{backup_path}'.")
-    return len(to_remove)
+    print(f"Dependencies declared in '{file_path}':")
+    for name, dep in deps.items():
+        label = dep["display"] if dep["display"] == name else f"{dep['display']} ({name})"
+        path_value = dep["path"]
+        status = "\033[92m●\033[0m" if path_value not in ("None", "''", '""') else "\033[93m○\033[0m"
+        print(f"  {status} {label:<30} _path = {path_value}")
+    print("\n\033[92m●\033[0m = path filled in   \033[93m○\033[0m = stub (still None)")
+    return len(deps), None
 
 
 def list_deps_in_paths(file_path):
     """Print the dependency blocks declared in `file_path`. Returns the count."""
-    if not Path(file_path).exists():
-        print(f"\033[93m⚠\033[0m  '{file_path}' not found — no dependencies declared.")
-        return 0
-
-    existing_content, existing_deps = parse_existing_paths_file(file_path)
-    if not existing_deps:
-        print(f"No dependencies declared in '{file_path}'.")
-        return 0
-
-    print(f"Dependencies declared in '{file_path}':")
-    for var_name, display_name in existing_deps.items():
-        # Try to surface whether _path has been filled in or is still None
-        m = re.search(rf"^{re.escape(var_name)}_path\s*=\s*(.+?)$", existing_content, re.MULTILINE)
-        path_value = m.group(1).strip() if m else "None"
-        status = "\033[92m●\033[0m" if path_value not in ("None", "''", '""') else "\033[93m○\033[0m"
-        print(f"  {status} {display_name:<30} _path = {path_value}")
-    print("\n\033[92m●\033[0m = path filled in   \033[93m○\033[0m = stub (still None)")
-    return len(existing_deps)
+    return _list_deps(file_path)[0]
 
 
 def setup_paths_file(file_path):
@@ -1042,8 +1203,8 @@ def setup_paths_file(file_path):
         existing_content, existing_deps = parse_existing_paths_file(file_path)
 
         if existing_content is None:
-            print("Could not read existing file. Creating new file instead.")
-            create_paths_file(file_path)
+            # Never overwrite a paths.py that can't be read or doesn't parse.
+            print(f"Fix '{file_path}' first; nothing was changed.")
             return
 
         print(f"=== Paths file exists at {file_path} ===")
@@ -1127,22 +1288,23 @@ def startapp_command(args):
 
 def deps_command(args):
     action = getattr(args, "deps_action", None)
+    # Exit 1 when something asked for didn't happen, so scripts and CI can tell.
     if action == "add":
         if args.names:
-            add_deps_to_paths("paths.py", args.names)
-        else:
-            # No names given → fall through to interactive add menu via setup_paths_file
-            setup_paths_file("paths.py")
+            result = _add_deps("paths.py", args.names)
+            return 1 if result["rejected"] or result["error"] else 0
+        # No names given → fall through to interactive add menu via setup_paths_file
+        setup_paths_file("paths.py")
         return 0
     if action == "remove":
         if args.names:
-            remove_deps_from_paths("paths.py", args.names)
-        else:
-            setup_paths_file("paths.py")
+            result = _remove_deps("paths.py", args.names)
+            return 1 if result["not_found"] or result["refused"] or result["error"] else 0
+        setup_paths_file("paths.py")
         return 0
     if action == "list":
-        list_deps_in_paths("paths.py")
-        return 0
+        _count, error = _list_deps("paths.py")
+        return 1 if error else 0
     # Bare `cli deps` → today's interactive flow
     setup_paths_file("paths.py")
     return 0

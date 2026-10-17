@@ -128,6 +128,20 @@ def test_sync_appends_ignore_rules_preserving_user_entries(scaffolded_project, s
     assert ".ngargparser/" in content  # appended
 
 
+def test_sync_adds_configure_rules_to_an_older_managed_block(scaffolded_project, sync_args):
+    gitignore = scaffolded_project / ".gitignore"
+    old_block = cli.GITIGNORE_MANAGED_BLOCK.split("# Written by ./configure")[0]
+    gitignore.write_text("secrets.txt\n\n" + old_block)
+
+    cli.sync_command(sync_args())
+    after = gitignore.read_text()
+    assert after.startswith("secrets.txt\n\n" + old_block)
+    assert ".env\n" in after and "setup_*_env.sh\n" in after
+
+    cli.sync_command(sync_args())
+    assert gitignore.read_text() == after
+
+
 def test_sync_gitignore_idempotent_on_fresh_project(scaffolded_project, sync_args):
     gitignore = scaffolded_project / ".gitignore"
     before = gitignore.read_text()  # fresh scaffold already has the managed block

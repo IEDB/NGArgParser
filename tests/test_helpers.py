@@ -1,4 +1,21 @@
+import subprocess
+
 from ngargparser import cli
+
+# The managed block as releases before the ./configure rules wrote it.
+OLD_MANAGED_BLOCK = (
+    "# --- ngargparser (managed) ---\n"
+    "# Runtime artifacts written by `cli sync` / `cli deps` — keep out of git.\n"
+    ".ngargparser/\n"
+    "*.bak\n"
+)
+CONFIGURE_COMMENT = cli.GITIGNORE_MANAGED_RULES[1][0]
+
+
+def git_ignores(repo, name):
+    if not (repo / ".git").exists():
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    return subprocess.run(["git", "check-ignore", "-q", name], cwd=repo).returncode == 0
 
 
 class TestFormatProjectName:
@@ -144,3 +161,71 @@ class TestEnsureGitignore:
         gi = tmp_path / ".gitignore"
         assert cli.ensure_gitignore(str(gi), dry_run=True) == "created"
         assert not gi.exists()
+
+    def test_created_file_keeps_configure_output_out_of_git(self, tmp_path):
+        cli.ensure_gitignore(str(tmp_path / ".gitignore"))
+        assert git_ignores(tmp_path, ".env")
+        assert git_ignores(tmp_path, "setup_tc1_env.sh")
+        assert not git_ignores(tmp_path, "paths.py")  # control
+
+    def test_old_block_gets_only_the_new_rules(self, tmp_path):
+        gi = tmp_path / ".gitignore"
+        before = "build/\n\n" + OLD_MANAGED_BLOCK + "\n# mine, after the block\nnotes.txt\n"
+        gi.write_text(before)
+
+        assert cli.ensure_gitignore(str(gi)) == "updated"
+        added = f"{CONFIGURE_COMMENT}\n.env\nsetup_*_env.sh\n"
+        assert gi.read_text() == before.replace(OLD_MANAGED_BLOCK, OLD_MANAGED_BLOCK + added)
+        assert cli.ensure_gitignore(str(gi)) == "unchanged"
+        assert git_ignores(tmp_path, ".env") and git_ignores(tmp_path, "setup_tc1_env.sh")
+
+    def test_old_block_at_end_of_file_without_newline(self, tmp_path):
+        gi = tmp_path / ".gitignore"
+        gi.write_text(OLD_MANAGED_BLOCK.rstrip("\n"))
+
+        assert cli.ensure_gitignore(str(gi)) == "updated"
+        assert gi.read_text() == cli.GITIGNORE_MANAGED_BLOCK
+
+    def test_rules_the_user_already_has_are_not_repeated(self, tmp_path):
+        # axelf: its own .env and setup_*_env.sh lines above the old block.
+        gi = tmp_path / ".gitignore"
+        before = "__pycache__/\n.env\nsetup_*_env.sh\n\n" + OLD_MANAGED_BLOCK
+        gi.write_text(before)
+
+        assert cli.ensure_gitignore(str(gi)) == "unchanged"
+        assert gi.read_text() == before
+
+    def test_block_appended_without_rules_the_user_already_has(self, tmp_path):
+        # pepsysco: its own .env and setup_*_env.sh lines, no managed block.
+        gi = tmp_path / ".gitignore"
+        gi.write_text(".env\nsetup_*_env.sh\n")
+
+        assert cli.ensure_gitignore(str(gi)) == "updated"
+        content = gi.read_text()
+        assert content.startswith(".env\nsetup_*_env.sh\n\n" + OLD_MANAGED_BLOCK)
+        assert content.count(".env\n") == 1 and content.count("setup_*_env.sh") == 1
+        assert CONFIGURE_COMMENT not in content
+
+    def test_anchored_or_any_depth_rule_counts_as_present(self, tmp_path):
+        # bcell-sequence-input: **/.env above the old block.
+        gi = tmp_path / ".gitignore"
+        before = "**/.env\n\n" + OLD_MANAGED_BLOCK
+        gi.write_text(before)
+
+        assert cli.ensure_gitignore(str(gi)) == "updated"
+        assert gi.read_text() == before + f"{CONFIGURE_COMMENT}\nsetup_*_env.sh\n"
+
+    def test_rule_the_user_re_includes_is_not_added(self, tmp_path):
+        gi = tmp_path / ".gitignore"
+        gi.write_text(OLD_MANAGED_BLOCK + "\n!.env\n")
+
+        assert cli.ensure_gitignore(str(gi)) == "updated"
+        assert "\n.env\n" not in gi.read_text()
+        assert not git_ignores(tmp_path, ".env")
+
+    def test_dry_run_on_old_block_writes_nothing(self, tmp_path):
+        gi = tmp_path / ".gitignore"
+        gi.write_text(OLD_MANAGED_BLOCK)
+
+        assert cli.ensure_gitignore(str(gi), dry_run=True) == "updated"
+        assert gi.read_text() == OLD_MANAGED_BLOCK

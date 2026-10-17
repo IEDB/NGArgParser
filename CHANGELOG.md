@@ -105,6 +105,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed build now also removes the previous tarball, so an old one never looks fresh.
 
 ### Fixed
+- `.gitignore` keeps `./configure`'s output out of git. `.env` and `setup_<name>_env.sh` hold the
+  paths of the machine that ran `./configure`, but the managed section only listed `.ngargparser/`
+  and `*.bak`, so `git add .` committed them (9 of 12 tools didn't ignore the setup scripts, 3 didn't
+  ignore `.env`). New projects get both rules. `cli sync` adds them to an existing project, including
+  one whose managed section already exists, which sync used to leave alone. A rule the file already
+  has (`.env`, `/.env` or `**/.env`), or re-includes with `!`, is not added again.
+- `cli deps` and `./configure` agree on what a dependency is: a `<name>_path` variable whose
+  `<name>` doesn't end in `_lib`/`_venv`/`_module`. `cli deps` used to key on the `''' [ Title ] '''`
+  line, so on hand-edited files `list` showed filled paths as `None` (phbr, axelf), found no tools at
+  all (peptide-variant-comparison, bcell-structure-input), `remove tcell_class_i` found nothing, and
+  `remove "T Cell Class I"` reported "Removed 1" while changing nothing. Titles are now labels;
+  `remove` deletes the block's exact lines and reports only what is gone; `add` refuses names
+  `./configure` can't see as a tool (`netmhc_lib`) and never overwrites a `paths.py` that doesn't
+  parse; `cli deps` exits 1 when something asked for didn't happen. `./configure` copies only plain
+  values from `paths.py` into `.env`, so `from pathlib import Path` no longer writes
+  `PATH=<class 'pathlib.Path'>` (loaded with override, that line emptied the program search path).
 - `preprocess` no longer creates folders while it is still reading the command line. The `-o`
   check built the folder layout as soon as argparse read it, so a command that then failed (a
   missing `-j`) left the folders behind; `--params-dir`/`--inputs-dir` under `-o` worked only when

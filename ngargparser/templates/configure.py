@@ -31,9 +31,13 @@ def load_config(path):
     config = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(config)
 
+    # Plain values only: everything returned here is written to .env, so an
+    # import such as `from pathlib import Path` must not become PATH=<class ...>.
+    # Path objects (APP_ROOT = Path(__file__).parent) are kept as text.
     return {
-        k: v for k, v in config.__dict__.items()
-        if not k.startswith("__")
+        k: os.fspath(v) if isinstance(v, os.PathLike) else v
+        for k, v in config.__dict__.items()
+        if not k.startswith("__") and (v is None or isinstance(v, (str, int, float, os.PathLike)))
     }
 
 def detect_dependency_tools(config):

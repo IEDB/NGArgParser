@@ -628,3 +628,20 @@ def test_without_app_name_in_env_the_folder_name_is_used(scaffolded_project):
 
     assert result.returncode == 0, result.stderr
     assert "APP_NAME=demo" in env_lines(scaffolded_project)
+
+
+def test_imported_names_in_paths_py_never_reach_env(scaffolded_project):
+    # phbr's paths.py does `from pathlib import Path`; .env used to get PATH=<class 'pathlib.Path'>.
+    (scaffolded_project / "paths.py").write_text(
+        "from pathlib import Path\n"
+        "APP_ROOT = Path(__file__).parent.absolute()\n\n"
+        "''' [ Tcell Class I ] '''\n"
+        f"tcell_class_i_path='{scaffolded_project}'\n"
+    )
+
+    run_configure(scaffolded_project)
+
+    lines = env_lines(scaffolded_project)
+    assert not any(line.startswith("PATH=") for line in lines)
+    assert f"APP_ROOT={scaffolded_project}" in lines
+    assert f"TCELL_CLASS_I_PATH={scaffolded_project}" in lines

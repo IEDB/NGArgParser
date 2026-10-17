@@ -93,6 +93,25 @@ def test_generated_project_has_gitignore(in_tmp_dir):
     assert "*.bak" in content
 
 
+def test_generated_project_keeps_configure_output_out_of_git(in_tmp_dir):
+    # ./configure writes .env and setup_<dep>_env.sh with this machine's paths.
+    cli.startapp_command(Namespace(project_name="demo"))
+    project = in_tmp_dir / "demo"
+    (project / "setup_tc1_env.sh").write_text("export TC1_PATH=/here\n")
+    subprocess.run(["git", "init", "-q"], cwd=project, check=True)
+
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=project,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert ".env" not in status
+    assert "setup_tc1_env.sh" not in status
+    assert "README.md" in status  # control: the project's own files still show
+
+
 def test_startapp_writes_env_but_not_paths(in_tmp_dir):
     rc = cli.startapp_command(Namespace(project_name="demo")) or 0
     assert rc == 0

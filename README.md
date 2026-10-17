@@ -206,9 +206,11 @@ cli deps                                # bare → interactive add/remove menu
 
 `cli deps remove` accepts the original name (`mhci-predictor`), the display form (`Mhci Predictor`), or the var-name form (`mhci_predictor`).
 
+**What counts as a dependency.** `cli deps` and `./configure` use one rule: a dependency is a top-level `<name>_path` variable whose `<name>` doesn't end in `_lib`, `_venv` or `_module` (those are its settings). The `''' [ Title ] '''` line above a block is only a label, so a hand-edited `paths.py` whose title doesn't match its variables (`T Cell Class I` above `tcell_class_i_path`), or one with no titles at all, still lists and removes correctly. `cli deps add` refuses a name ending in `_lib`, `_venv`, `_module` or `_path`, because `./configure` couldn't tell it from a setting. `remove` deletes the block's exact lines, refuses a block mixed with another tool's lines, and reports only what it really removed. `cli deps` exits 1 when a name was refused or not found, or when `paths.py` doesn't parse (it never overwrites such a file). `./configure` copies only plain values from `paths.py` into `.env` (text, numbers, `None`, paths), so an import like `from pathlib import Path` no longer appears there.
+
 ### Configuring tool paths (`./configure`)
 
-Run from the project root. It reads `paths.py` and regenerates two things: the project's `.env`, and one `setup_<name>_env.sh` per declared dependency. The launcher uses `.venv/bin/python` when the project has one, so the venv doesn't need to be active; without python-dotenv available it says to run `uv sync` first. `APP_NAME` is read from the project's own `.env` file, so a value passed down by a calling tool is ignored.
+Run from the project root. It reads `paths.py` and regenerates two things: the project's `.env`, and one `setup_<name>_env.sh` per declared dependency. Both hold this machine's paths, so the project's `.gitignore` keeps them out of git and each machine runs `./configure` itself. The launcher uses `.venv/bin/python` when the project has one, so the venv doesn't need to be active; without python-dotenv available it says to run `uv sync` first. `APP_NAME` is read from the project's own `.env` file, so a value passed down by a calling tool is ignored.
 
 `./configure -h` lists a flag for every field of every dependency you've declared, along with what each is currently set to:
 
@@ -795,6 +797,7 @@ self.parser_predict.add_argument(
 | `scripts/get_libs.sh` | You (created by `cli generate`; sync never creates or overwrites it) |
 | `scripts/core/build.conf` | You (the one user-owned file in `scripts/core/`; sync never overwrites it) |
 | `.distignore` | You (`.gitignore` syntax) |
+| `.gitignore` | You, except the section under `# --- ngargparser (managed) ---`. `cli sync` only adds the rules missing from the file to that section and never removes or rewrites a line |
 | `libs/` | You, except entries fetched by `scripts/get_libs.sh` |
 | `libs/.gitignore` | Framework while its first line is the build's marker; yours otherwise (the build then leaves it alone) |
 | `deploy/install.sh` | You — sync creates from template if missing, never overwrites |
