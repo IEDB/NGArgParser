@@ -44,12 +44,12 @@ class ChildArgumentParser(NGArgumentParser):
         inputs.add_argument("--input-tsv", "-t",
                                 dest="input_tsv",
                                 type=validators.validate_file,
-                                help="Perform counting given a TSV file.",
+                                help="Input file in TSV format.",
                                 )
         inputs.add_argument("--input-json", "-j",
                                 dest="input_json",
                                 type=validators.validate_file,
-                                help="Perform counting given a JSON file.",
+                                help="Input file in JSON format.",
                                 )
         # NOTE: --output-prefix/-o and --output-format/-f are provided by the
         # framework base class (see core.NGArgumentParser.add_predict_subparser).

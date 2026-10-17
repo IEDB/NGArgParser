@@ -105,6 +105,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed build now also removes the previous tarball, so an old one never looks fresh.
 
 ### Fixed
+- `cli sync` no longer replaces a local checkout with the latest release. With ngargparser installed
+  from a working copy (an editable install), a plain sync installed the latest tag over it and then
+  copied that release's older framework files into the project, which passed the help-screen check,
+  so newer fixes were reverted without an error. A plain sync from a checkout now skips the
+  self-upgrade, says so, and syncs from the checkout. `--ref <version>`, `--dev`,
+  `NGARGPARSER_UPGRADE_URL` and `cli upgrade` still install what they name, and released installs
+  upgrade as before.
+- Help screens no longer show sample or placeholder text. A new tool's starter parser described
+  `--input-tsv`/`--input-json` as "Perform counting given a TSV/JSON file.", the letter-counter
+  sample's wording (phbr-legacy shipped it); they now read "Input file in TSV/JSON format.". The
+  base class printed "Here are list of valid subcommands." and "additional help" on every tool's
+  top-level `-h`, and its default description was "Text to display before the argument help (by
+  default, no text)"; all three are gone. The README a new tool gets shows the real `predict --help`
+  output. The example app keeps its counting text.
 - `.gitignore` keeps `./configure`'s output out of git. `.env` and `setup_<name>_env.sh` hold the
   paths of the machine that ran `./configure`, but the managed section only listed `.ngargparser/`
   and `*.bak`, so `git add .` committed them (9 of 12 tools didn't ignore the setup scripts, 3 didn't

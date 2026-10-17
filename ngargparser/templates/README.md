@@ -83,22 +83,26 @@ self.parser_predict.add_argument("--fasta", "-fa",
 
 Now, the `--help` should be updated to include the new description text and parameter to accept FASTA file:
 ```bash
-usage: run_{TOOL_EXEC_NAME}.py predict [-h] [--input-tsv INPUT_TSV] [--input-json INPUT_JSON] [--output-prefix OUTPUT_PREFIX] [--output-format OUTPUT_FORMAT] [--fasta FASTA_FILE]
+usage: run_{TOOL_EXEC_NAME}.py predict [-h] [--output-prefix OUTPUT_PREFIX] [--output-format {tsv,json}] [--input-tsv INPUT_TSV | --input-json INPUT_JSON] [--fasta FASTA_FILE]
 
 This is an example Argument Parser
 
 options:
   -h, --help            show this help message and exit
-  --input-tsv INPUT_TSV, -t INPUT_TSV
-                        Perform counting given a TSV file.
-  --input-json INPUT_JSON, -j INPUT_JSON
-                        Perform counting given a JSON file.
-  --output-prefix OUTPUT_PREFIX, -o OUTPUT_PREFIX
-                        prediction result output prefix.
-  --output-format OUTPUT_FORMAT, -f OUTPUT_FORMAT
-                        prediction result output format (Default=tsv)
   --fasta FASTA_FILE, -fa FASTA_FILE
                         FASTA file containing protein sequence.
+
+input options:
+  --input-tsv INPUT_TSV, -t INPUT_TSV
+                        Input file in TSV format.
+  --input-json INPUT_JSON, -j INPUT_JSON
+                        Input file in JSON format.
+
+output options:
+  --output-prefix OUTPUT_PREFIX, -o OUTPUT_PREFIX
+                        prediction result output prefix.
+  --output-format {tsv,json}, -f {tsv,json}
+                        prediction result output format (choices: tsv, json; default: tsv).
 ```
 
 #### **validators.py**

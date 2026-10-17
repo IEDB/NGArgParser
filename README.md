@@ -517,10 +517,13 @@ After a successful `cli upgrade`, it reminds you to run `cli sync` — because `
   ```
 
 - **`cli sync`** — refreshes the **framework-owned files inside a project** to match the installed
-  version (and self-upgrades first, unless `--no-upgrade`). `cli sync --dry-run` installs nothing, so
-  its preview uses the installed version's files; it prints which ngargparser a real run would install
-  first, and warns when that would replace your local checkout (use `--no-upgrade` to sync from the
-  checkout). Run it from inside an existing project:
+  version (and self-upgrades first, unless `--no-upgrade`). When ngargparser is installed from a local
+  checkout (an editable install), a plain `cli sync` skips the self-upgrade and syncs from the checkout,
+  because the latest release would replace your working copy and copy older framework files into the
+  project; `cli upgrade` installs a release on purpose, and `--ref <version>` or `--dev` still upgrades.
+  `cli sync --dry-run` installs nothing, so its preview uses the installed version's files; it prints
+  which ngargparser a real run would install first, and warns when a named version would replace your
+  local checkout. Run it from inside an existing project:
 
 ```bash
 cd path/to/your-app

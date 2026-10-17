@@ -192,13 +192,25 @@ def test_dry_run_with_no_upgrade_does_not_look_up_a_version(
     assert "A real run first installs" not in strip_ansi(capsys.readouterr().out)
 
 
-def test_dry_run_warns_before_replacing_a_local_checkout(
+def test_dry_run_from_a_local_checkout_says_a_real_run_keeps_it(
     scaffolded_project, sync_args, strip_ansi, capsys, monkeypatch, no_install
 ):
-    monkeypatch.setattr(cli, "_latest_release_tag", lambda *a, **k: "v9.9.9")
+    monkeypatch.setattr(cli, "_latest_release_tag", lambda *a, **k: pytest.fail("must not contact the remote"))
     monkeypatch.setattr(cli, "_local_checkout", lambda: "/src/ngargparser")
 
     cli.sync_command(sync_args(dry_run=True, upgrade=True))
+
+    out = strip_ansi(capsys.readouterr().out)
+    assert "A real run syncs from your local checkout at /src/ngargparser (no upgrade)" in out
+    assert "a real run replaces it" not in out
+
+
+def test_dry_run_warns_before_a_named_version_replaces_a_local_checkout(
+    scaffolded_project, sync_args, strip_ansi, capsys, monkeypatch, no_install
+):
+    monkeypatch.setattr(cli, "_local_checkout", lambda: "/src/ngargparser")
+
+    cli.sync_command(sync_args(dry_run=True, upgrade=True, ref="v9.9.9"))
 
     out = strip_ansi(capsys.readouterr().out)
     assert "The installed ngargparser is your local checkout at /src/ngargparser" in out
@@ -235,3 +247,65 @@ def test_dry_run_reports_an_unreachable_remote(
     assert rc == 0
     assert "Couldn't check which ngargparser a real run would install (GitLab unreachable)." in out
     assert "DRY RUN" in out
+
+
+# A real sync from a local checkout syncs from it; the latest release would
+# replace the working copy and copy older framework files into the project.
+
+
+@pytest.fixture
+def upgrade_spy(monkeypatch):
+    monkeypatch.delenv("NGARGPARSER_UPGRADE_URL", raising=False)
+    monkeypatch.delenv("NGARGPARSER_NO_SELF_UPGRADE", raising=False)
+    seen = {"installed": [], "re_exec": False}
+
+    def fake_install(url):
+        seen["installed"].append(url)
+        return 0
+
+    def fake_exec(*a, **k):
+        seen["re_exec"] = True
+        raise SystemExit(0)
+
+    monkeypatch.setattr(cli, "_run_self_upgrade", fake_install)
+    monkeypatch.setattr(cli.os, "execvpe", fake_exec)
+    monkeypatch.setattr(cli, "_latest_release_tag", lambda *a, **k: "v9.9.9")
+    return seen
+
+
+def test_real_sync_from_a_local_checkout_does_not_upgrade(
+    scaffolded_project, sync_args, strip_ansi, capsys, monkeypatch, upgrade_spy
+):
+    monkeypatch.setattr(cli, "_local_checkout", lambda: "/src/ngargparser")
+
+    rc = cli.sync_command(sync_args(upgrade=True))
+
+    out = strip_ansi(capsys.readouterr().out)
+    assert rc == 0
+    assert upgrade_spy == {"installed": [], "re_exec": False}
+    assert "Using your local checkout at /src/ngargparser (no upgrade)." in out
+    assert "Synchronizing framework files" in out
+
+
+def test_real_sync_from_a_released_install_still_upgrades(scaffolded_project, sync_args, monkeypatch, upgrade_spy):
+    # Control: an install in site-packages is not a checkout.
+    monkeypatch.setattr(cli, "_local_checkout", lambda: None)
+
+    with pytest.raises(SystemExit):
+        cli.sync_command(sync_args(upgrade=True))
+
+    assert upgrade_spy["installed"] == [f"{cli.BASE_REPO_URL}@v9.9.9"]
+    assert upgrade_spy["re_exec"]
+
+
+@pytest.mark.parametrize("named, expected", [({"ref": "v1.2.3"}, "@v1.2.3"), ({"dev": True}, "@master")])
+def test_real_sync_from_a_local_checkout_still_installs_a_named_version(
+    scaffolded_project, sync_args, monkeypatch, upgrade_spy, named, expected
+):
+    monkeypatch.setattr(cli, "_local_checkout", lambda: "/src/ngargparser")
+
+    with pytest.raises(SystemExit):
+        cli.sync_command(sync_args(upgrade=True, **named))
+
+    assert upgrade_spy["installed"] == [f"{cli.BASE_REPO_URL}{expected}"]
+    assert upgrade_spy["re_exec"]

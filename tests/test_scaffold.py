@@ -1,6 +1,7 @@
 import shutil
 import stat
 import subprocess
+import sys
 from argparse import Namespace
 
 import pytest
@@ -188,3 +189,43 @@ def test_failed_scaffold_cleans_up_partial_dir(in_tmp_dir, monkeypatch):
     rc = cli.startapp_command(Namespace(project_name="demo"))
     assert rc == 1
     assert not (in_tmp_dir / "demo").exists()
+
+
+def _help(project, script, *args):
+    result = subprocess.run(
+        [sys.executable, f"src/{script}", *args, "-h"],
+        cwd=project,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def test_blank_tool_predict_help_has_no_sample_app_text(in_tmp_dir):
+    # The starter parser used to describe its inputs with the letter-counter
+    # sample's "Perform counting given a TSV file."
+    cli.startapp_command(Namespace(project_name="demo"))
+
+    out = _help(in_tmp_dir / "demo", "run_demo.py", "predict")
+    assert "counting" not in out.lower()
+    assert "--input-tsv" in out and "--input-json" in out  # control: the inputs are still there
+
+
+def test_blank_tool_top_level_help_has_no_placeholders(in_tmp_dir):
+    cli.startapp_command(Namespace(project_name="demo"))
+
+    out = _help(in_tmp_dir / "demo", "run_demo.py")
+    assert "Here are list" not in out
+    assert "additional help" not in out
+    assert "Text to display before" not in out
+    for sub in ("predict", "preprocess", "postprocess"):  # control
+        assert sub in out
+
+
+def test_example_app_keeps_its_own_counting_text(in_tmp_dir):
+    # Control: the letter-counter sample really counts, so it keeps its wording.
+    cli.startapp_command(Namespace(project_name="example"))
+
+    out = _help(in_tmp_dir / "aa-counter", "run_aa_counter.py", "predict")
+    assert "Perform counting given a TSV file." in out

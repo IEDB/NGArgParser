@@ -171,7 +171,7 @@ class NGArgumentParser(argparse.ArgumentParser):
         # self.prog='The name of the program (default: os.path.basename(sys.argv[0]))'
         # self.usage='The string describing the program usage (default: generated from arguments added to parser)'
         self.formatter_class=argparse.RawDescriptionHelpFormatter
-        self.description='Text to display before the argument help (by default, no text)'
+        self.description=None
         self.epilog=textwrap.dedent('''
         Please contact us with any issues encountered or questions about the software
         through the channel listed below.
@@ -181,8 +181,6 @@ class NGArgumentParser(argparse.ArgumentParser):
         
         self.subparser = self.add_subparsers(
             title='subcommands',
-            description='Here are list of valid subcommands.',
-            help='additional help',
             dest='subcommand',
             # Explicitly set this to prevent the following error.
             # TypeError: __init__() got an unexpected keyword argument 'prog'

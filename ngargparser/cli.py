@@ -2193,12 +2193,31 @@ def _smoke_check():
     return {"runnable": True, "reason": "", "results": results}
 
 
+def _checkout_skips_upgrade(ref, dev):
+    """The local checkout a plain `cli sync` syncs from instead of replacing it
+    with the latest release, else None. Naming a version (--ref, --dev or
+    NGARGPARSER_UPGRADE_URL) still upgrades, as does any released install."""
+    import os
+
+    plain_latest = (
+        ref == "latest" and not dev and _local_source(ref) is None and not os.environ.get("NGARGPARSER_UPGRADE_URL")
+    )
+    return _local_checkout() if plain_latest else None
+
+
 def _report_dry_run_upgrade(ref, dev):
     """--dry-run skips the self-upgrade a real sync starts with, so its preview
     shows the installed version's files. Say what a real run would install
     first, and warn when that replaces a local checkout. Reads the remote's
     tags (no install), resolving the target the way `upgrade_command` does."""
     import os
+
+    checkout = _checkout_skips_upgrade(ref, dev)
+    if checkout:
+        print(
+            f"ℹ A real run syncs from your local checkout at {checkout} (no upgrade), the same files as this preview."
+        )
+        return
 
     latest_tag = _UNSET
     plain_latest = (
@@ -2251,7 +2270,23 @@ def sync_command(args):
         # effect for the rest of this sync. The env-var sentinel breaks recursion.
         # --dry-run must be side-effect-free, and the re-exec drops flags, so it
         # implies --no-upgrade.
-        if getattr(args, "upgrade", True) and not dry_run and not os.environ.get("NGARGPARSER_NO_SELF_UPGRADE"):
+        self_upgrade = (
+            getattr(args, "upgrade", True) and not dry_run and not os.environ.get("NGARGPARSER_NO_SELF_UPGRADE")
+        )
+        # A plain sync from a local checkout syncs from it: the latest release
+        # would replace the working copy and copy older framework files in.
+        checkout = (
+            _checkout_skips_upgrade(getattr(args, "ref", "latest"), getattr(args, "dev", False))
+            if self_upgrade
+            else None
+        )
+        if checkout:
+            self_upgrade = False
+            print(
+                f"ℹ Using your local checkout at {checkout} (no upgrade). "
+                "To install the latest release first: cli upgrade, then cli sync."
+            )
+        if self_upgrade:
             import sys
 
             if getattr(args, "dev", False):
@@ -2543,7 +2578,8 @@ def main():
         dest="upgrade",
         action="store_false",
         default=True,
-        help="Skip the self-upgrade step; only sync templates from the currently-installed ngargparser.",
+        help="Skip the self-upgrade step; only sync templates from the currently-installed ngargparser. "
+        "A local checkout skips it already.",
     )
     sync_parser.add_argument(
         "-n",

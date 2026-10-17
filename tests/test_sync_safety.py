@@ -356,6 +356,7 @@ def test_self_upgrade_re_exec_carries_no_verify(scaffolded_project, sync_args, m
 
     monkeypatch.delenv("NGARGPARSER_NO_SELF_UPGRADE", raising=False)
     monkeypatch.delenv("NGARGPARSER_SYNC_NO_VERIFY", raising=False)
+    monkeypatch.setattr(cli, "_local_checkout", lambda: None)  # a released install; a checkout skips the upgrade
     monkeypatch.setattr(
         cli, "_resolve_upgrade_url", lambda *a, **k: ("https://example.invalid/repo.git@v9.9.9", "v9.9.9")
     )
