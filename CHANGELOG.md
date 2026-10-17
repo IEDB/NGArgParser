@@ -105,6 +105,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed build now also removes the previous tarball, so an old one never looks fresh.
 
 ### Fixed
+- The example app (`cli generate example`) gets the same base class as a blank tool. It shipped its
+  own old copy of `NGArgumentParser.py`, without this release's fixes (a failed `preprocess` left
+  its folders behind), and its `preprocess` called `create_job_descriptions_file`, a method only that
+  copy had, so after `cli sync` replaced the copy it failed with `AttributeError`. The example's
+  `src/preprocess.py` now writes `job_descriptions.json` itself, with the same content, as tools do.
+- README: postprocess `-p` is optional, not "(required)"; `validate_file` checks the file exists, not
+  that it is readable; `validate_directory` requires an existing directory and never creates one.
 - `cli sync` no longer replaces a local checkout with the latest release. With ngargparser installed
   from a working copy (an editable install), a plain sync installed the latest tag over it and then
   copied that release's older framework files into the project, which passed the help-screen check,

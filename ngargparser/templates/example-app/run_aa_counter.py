@@ -179,11 +179,8 @@ def main():
         write_results(result_json, args.output_prefix, args.output_format)
 
     if args.subcommand == 'preprocess':        
-        # Run preprocess logic
+        # Run preprocess logic (it also writes job_descriptions.json)
         preprocess.run(**vars(args))
-        
-        # Create job description file
-        parser.create_job_descriptions_file(args)
 
     if args.subcommand == 'postprocess':
         # Run postprocess logic

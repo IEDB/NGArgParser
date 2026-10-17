@@ -656,7 +656,7 @@ Predict output is serialized by `core.result_writer.write_results` (see **Result
 ```
 --job-desc-file / -j     JSON   ─┐ pick exactly one
 --input-results-dir / -i DIR    ─┘
---postprocessed-results-dir / -p DIR    (required)
+--postprocessed-results-dir / -p DIR
 --output-prefix / -o  STR
 --output-format / -f  {tsv,json}    (default: json)
 ```
@@ -751,8 +751,8 @@ stderr for tsv so stdout stays a clean data stream.
 <!-- example: imports -->
 ```python
 from core.core_validators import (
-    validate_file,                     # file exists + readable
-    validate_directory,                # directory exists or can be created
+    validate_file,                     # path is an existing file (its folder too); returns a Path
+    validate_directory,                # path is an existing directory; returns a Path
     validate_directory_given_filename, # parent dir of a path
     validate_preprocess_dir,           # special preprocessing dir setup
 )

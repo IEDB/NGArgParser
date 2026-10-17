@@ -6,6 +6,7 @@ still rejects a missing file with argparse's exit 2. Callers open the file
 themselves after parsing.
 """
 
+import json
 import subprocess
 import sys
 from argparse import Namespace
@@ -103,3 +104,33 @@ def test_example_app_predict_reads_path_inputs(example_project):
         result = run_script(example_project, "run_aa_counter.py", "predict", flag, value, *extra)
         assert result.returncode == 0, f"{flag}: {result.stderr}"
         assert "AAcount" in result.stdout
+
+
+# The example app gets the same base class as a blank tool. It used to ship an
+# old copy that `cli sync` then replaced, after which its preprocess failed.
+
+
+def test_example_app_core_parser_is_the_real_base_class(example_project):
+    installed = example_project / "src" / "core" / "NGArgumentParser.py"
+    assert installed.read_bytes() == (PAYLOAD_DIR / "NGArgumentParser.py").read_bytes()
+
+
+def test_example_app_preprocess_writes_job_descriptions(example_project):
+    result = run_script(example_project, "run_aa_counter.py", "preprocess", "-j", "src/example.json", "-o", "out")
+    assert result.returncode == 0, result.stderr
+
+    jobs = json.loads((example_project / "out" / "job_descriptions.json").read_text())
+    params = sorted((example_project / "out" / "predict-inputs" / "params").iterdir())
+    predict, final = jobs[:-1], jobs[-1]
+    assert len(predict) == len(params) > 0
+    assert all(j["job_type"] == "prediction" and " predict -j " in j["shell_cmd"] for j in predict)
+    assert final["job_type"] == "postprocess"
+    assert final["depends_on_job_ids"] == [j["job_id"] for j in predict]
+    run_path = str(example_project / "src" / "run_aa_counter.py")
+    assert all(Path(j["shell_cmd"].split()[0]).resolve() == Path(run_path).resolve() for j in jobs)
+
+
+def test_example_app_failed_preprocess_leaves_no_folders(example_project):
+    result = run_script(example_project, "run_aa_counter.py", "preprocess", "-o", "out", "-j", "nonexist.json")
+    assert result.returncode == 2
+    assert not (example_project / "out").exists()
