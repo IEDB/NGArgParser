@@ -226,30 +226,43 @@ setup_exclusions() {
         printf '!README\n!deploy/\n!deploy/install.sh\n'
     } > "$IGNORE_REPO/.gitignore"
 
-    # Candidate paths: everything in the project, PROJECT_ROOT-relative,
-    # directories suffixed with '/' (required for dir-only patterns to match
-    # paths that do not exist inside the throwaway repo). Nested .git dirs are
-    # listed but not descended into, so the '.*' baseline excludes them whole.
+    # Candidate paths: everything in the project, PROJECT_ROOT-relative. Nested
+    # .git dirs are listed but not descended into, so the '.*' baseline
+    # excludes them whole.
+    local dirs="$TMPWORK/dirs"
     (
         cd "$PROJECT_ROOT" && {
             find . -mindepth 1 \( -path ./build -o -path ./.git \) -prune -o \
                 -type d -name .git -prune -print -o -type d -print \
-                | sed -e 's|^\./||' -e 's|$|/|'
+                | sed 's|^\./||' > "$dirs"
+            cat "$dirs"
             find . -mindepth 1 \( -path ./build -o -path ./.git \) -prune -o \
                 -type d -name .git -prune -o ! -type d -print \
                 | sed 's|^\./||'
         }
     ) > "$candidates"
 
+    # The project's dirs also exist (empty) inside the throwaway repo, so git
+    # judges a dir as a dir, as in a real repo: dir-only patterns ('name/')
+    # match it, and 'name/*' matches only what is inside it, not the dir
+    # itself. Nested .git dirs are not created; '.*' excludes them by name.
+    grep -v '\(^\|/\)\.git$' "$dirs" > "$TMPWORK/mkdirs" || true
+    if [ -s "$TMPWORK/mkdirs" ]; then
+        tr '\n' '\0' < "$TMPWORK/mkdirs" | (cd "$IGNORE_REPO" && xargs -0 mkdir -p)
+    fi
+
     # Batch evaluation. Exit 0 = some paths ignored, 1 = none ignored (not an
-    # error), >1 = fatal.
+    # error), >1 = fatal. Excluded dirs get their trailing '/' back, the form
+    # is_excluded expects.
     local status=0
     git -C "$IGNORE_REPO" -c core.quotePath=off -c core.excludesFile=/dev/null \
-        check-ignore --stdin < "$candidates" > "$EXCLUDED_LIST" || status=$?
+        check-ignore --stdin < "$candidates" > "$TMPWORK/ignored" || status=$?
     if [ "$status" -gt 1 ]; then
         echo "ERROR: git check-ignore failed (exit $status) while evaluating distignore rules" >&2
         exit 1
     fi
+    awk 'NR == FNR { dir[$0] = 1; next } { print (($0 in dir) ? $0 "/" : $0) }' \
+        "$dirs" "$TMPWORK/ignored" > "$EXCLUDED_LIST"
 }
 
 # $1 = PROJECT_ROOT-relative path; directories MUST carry a trailing '/'.

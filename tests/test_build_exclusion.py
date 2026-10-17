@@ -223,3 +223,45 @@ def test_empty_dir_semantics(scaffolded_project, run_build):
     # ... but a dir emptied by exclusion (tools/, whose only content is a *.sh
     # file the template excludes) is dropped entirely.
     assert not any(m == "tools" or m.startswith("tools/") for m in members)
+
+
+# 'folder/*' excludes what is inside the folder, not the folder itself, as in git,
+# so a '!' rule can still bring one file back.
+
+
+def test_one_file_from_a_hidden_folder(scaffolded_project, run_build):
+    streamlit = scaffolded_project / ".streamlit"
+    streamlit.mkdir()
+    (streamlit / "config.toml").write_text("[server]\n")
+    (streamlit / "secrets.toml").write_text("token = 'x'\n")
+    append_rules(scaffolded_project, "!.streamlit/", ".streamlit/*", "!.streamlit/config.toml")
+
+    members = run_build(scaffolded_project).members
+
+    assert ".streamlit/config.toml" in members
+    assert ".streamlit/secrets.toml" not in members
+
+
+def test_one_file_from_a_folder(scaffolded_project, run_build):
+    data = scaffolded_project / "data"
+    data.mkdir()
+    (data / "keep.txt").write_text("keep\n")
+    (data / "other.txt").write_text("other\n")
+    append_rules(scaffolded_project, "data/*", "!data/keep.txt")
+
+    members = run_build(scaffolded_project).members
+
+    assert "data/keep.txt" in members
+    assert "data/other.txt" not in members
+
+
+def test_folder_contents_rule_alone_ships_nothing_from_it(scaffolded_project, run_build):
+    # Control: with nothing re-included, the emptied folder is dropped, as before.
+    data = scaffolded_project / "data"
+    data.mkdir()
+    (data / "other.txt").write_text("other\n")
+    append_rules(scaffolded_project, "data/*")
+
+    members = run_build(scaffolded_project).members
+
+    assert not any(name == "data" or name.startswith("data/") for name in members)

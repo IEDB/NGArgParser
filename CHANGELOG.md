@@ -105,6 +105,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed build now also removes the previous tarball, so an old one never looks fresh.
 
 ### Fixed
+- `.distignore` judges folders the way git does. The build asked git about each folder with a
+  trailing slash in an empty scratch repo, so a `folder/*` rule also matched the folder itself and
+  the whole folder was dropped: the README's own recipe (`!.streamlit/`, `.streamlit/*`,
+  `!.streamlit/config.toml`) shipped nothing from `.streamlit/`, and `data/*` with `!data/keep.txt`
+  dropped `keep.txt`. The project's folders now exist in the scratch repo and are asked about
+  without the slash, so `folder/*` matches only what is inside. Dir-only rules (`__pycache__/`)
+  match as before. No current tool's tarball changes (bcell-sequence-input built with both versions:
+  identical; `libs/` is staged entry by entry, so `/libs/*` with `!/libs/__init__.py` already worked).
+- Docs: the README says the `cli deps` / `./configure` dependency rule covers plain
+  `<name>_path = value` lines, the form `cli deps add` writes; `./configure` also sees annotated,
+  `if`-nested and chained assignments that `cli deps` doesn't list or remove. The `build.conf`
+  template no longer claims an empty `TARBALL_PREFIX` means no prefix: the build falls back to
+  `IEDB_`, which the deploy orchestrator expects.
 - A `preprocess` that fails because `--params-dir` or `--inputs-dir` names a missing folder no longer
   leaves the `-o` folders behind. The named folders were checked only after the layout was created,
   so `-o out --params-dir ../typo-dir` and `-o out --params-dir out/custom-params` left `out/`. They
