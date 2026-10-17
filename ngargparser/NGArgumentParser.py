@@ -491,6 +491,16 @@ class NGArgumentParser(argparse.ArgumentParser):
         if hasattr(args, 'subcommand') and args.subcommand == 'preprocess':
             if hasattr(args, 'output_dir') and args.output_dir:
                 from pathlib import Path
+                # A named folder must exist already or be one the layout creates;
+                # check that before creating anything, so a failed command leaves
+                # nothing behind.
+                named = (("--params-dir", args.preprocess_parameters_dir),
+                         ("--inputs-dir", args.preprocess_inputs_dir))
+                if any(value and not Path(value).is_dir() for _, value in named):
+                    layout = self._preprocess_layout(args.output_dir)
+                    for flag, value in named:
+                        if value and not Path(value).is_dir() and Path(value).resolve() not in layout:
+                            self.parser_preprocess.error(f"argument {flag}: '{value}' is not a valid directory.")
                 # The whole command line is valid now, so create the folders. Then
                 # check the folders the user named (they may live under -o), so the
                 # order of -o, --params-dir and --inputs-dir doesn't matter.
@@ -690,6 +700,25 @@ class NGArgumentParser(argparse.ArgumentParser):
             # Add the argument to p1
             p1.add_argument(*action.option_strings, **kwargs)
 
+
+    def _preprocess_layout(self, output_dir):
+        """The folders _create_preprocess_dirs would create under `output_dir`, resolved.
+
+        Builds the same layout in a temporary folder and maps it back, so the
+        layout rule lives only in core_validators. Creates nothing under
+        `output_dir` and prints nothing.
+        """
+        import contextlib
+        import io
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()):
+            planned = validators.create_directory_structure_for_dependencies(tmp, errors=[])
+        return {
+            (Path(output_dir) / Path(d).relative_to(tmp)).resolve()
+            for dirs in planned.values()
+            for d in dirs
+        }
 
     def _create_preprocess_dirs(self, output_dir):
         """Create the preprocess folder layout under `output_dir` (the layout depends

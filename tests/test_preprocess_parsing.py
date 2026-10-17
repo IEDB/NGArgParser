@@ -139,3 +139,32 @@ def test_dependency_layout_and_defaults_are_unchanged(project):
     assert (project / "out" / "tcell_class_i" / "predict-inputs" / "data").is_dir()
     assert (project / "out" / "demo" / "results").is_dir()
     assert out["args"]["preprocess_inputs_dir"] == ["str", "out/predict-inputs/data"]
+
+
+@pytest.mark.parametrize(
+    "flag, value",
+    [
+        ("--params-dir", "../typo-dir"),  # outside -o, missing
+        ("--inputs-dir", "../typo-dir"),
+        ("--params-dir", "out/custom-params"),  # inside -o, but not a folder the layout creates
+    ],
+)
+def test_missing_named_folder_leaves_no_folders(project, flag, value):
+    out = preprocess(project, "-j", "in.json", "-o", "out", flag, value)
+
+    assert out["code"] == 2
+    assert f"argument {flag}: '{value}' is not a valid directory." in out["stderr"]
+    assert not (project / "out").exists()
+    assert "Creating directory" not in out["stdout"]
+
+
+def test_layout_folder_of_a_dependency_is_accepted(project):
+    # The layout list must follow the dependency layout too, not only the default one.
+    cli.add_deps_to_paths(str(project / "paths.py"), ["tcell-class-i"])
+    paths = project / "paths.py"
+    paths.write_text(paths.read_text().replace("tcell_class_i_path=None", f"tcell_class_i_path='{project}'"))
+
+    out = preprocess(project, "-j", "in.json", "-o", "out", "--params-dir", "out/tcell_class_i/predict-inputs/params")
+
+    assert out["code"] == 0, out["stderr"]
+    assert out["args"]["preprocess_parameters_dir"][1] == "out/tcell_class_i/predict-inputs/params"

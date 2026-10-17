@@ -640,7 +640,8 @@ Run from inside a project (not a `cli` subcommand — it's a script in the proje
 `preprocess` reads and checks the whole command line before it creates the folder layout under
 `-o`, so a command that fails leaves nothing behind and the order of `-o`, `--params-dir` and
 `--inputs-dir` doesn't matter. A `-o` that is an existing file, or a folder that can't be created,
-stops with an error. A `--params-dir`/`--inputs-dir` outside `-o` must already exist.
+stops with an error. A `--params-dir`/`--inputs-dir` must be an existing folder or one of the
+folders `preprocess` creates under `-o`.
 
 #### Built-in `predict` arguments
 

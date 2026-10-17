@@ -105,6 +105,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed build now also removes the previous tarball, so an old one never looks fresh.
 
 ### Fixed
+- A `preprocess` that fails because `--params-dir` or `--inputs-dir` names a missing folder no longer
+  leaves the `-o` folders behind. The named folders were checked only after the layout was created,
+  so `-o out --params-dir ../typo-dir` and `-o out --params-dir out/custom-params` left `out/`. They
+  are now checked first: a named folder must exist or be one the layout creates.
 - The example app (`cli generate example`) gets the same base class as a blank tool. It shipped its
   own old copy of `NGArgumentParser.py`, without this release's fixes (a failed `preprocess` left
   its folders behind), and its `preprocess` called `create_job_descriptions_file`, a method only that
