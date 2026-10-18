@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from core.app_env import load_app_env
 
-# This tool's .env; APP_ROOT and APP_NAME always come from its own file, even
+# This tool's .env; every key it defines comes from that file, even
 # when another tool started this one and passed its values down.
 load_app_env()
 

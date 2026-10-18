@@ -191,3 +191,18 @@ def test_postprocess_check_still_runs_for_an_argument_list(project):
         "print(json.dumps(result))",
     )
     assert out["code"] == 2
+
+
+def test_removing_both_template_inputs_leaves_a_working_parser(project):
+    # The template's input group is required; once both of its inputs are removed,
+    # the empty group must go too, or every parse fails with "empty group".
+    out = probe(
+        project,
+        'p.remove_argument("--input-tsv", "predict")\n'
+        'p.remove_argument("--input-json", "predict")\n'
+        'p.parser_predict.add_argument("--fasta", dest="fasta")\n'
+        'print(json.dumps({"fasta": parse(p, input_args=("--fasta", "x.fa")),\n'
+        '                  "help": error_of(p.parser_predict.format_help)}))',
+    )
+    assert out["fasta"]["ok"] is True
+    assert out["help"] is None

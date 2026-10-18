@@ -36,11 +36,12 @@ class ChildArgumentParser(NGArgumentParser):
 
         # ADD tool-specific params 
         # -----------------------------------------------------
-        # Inputs are mutually exclusive: argparse rejects passing both with
-        # exit 2, rather than silently using one and ignoring the other.
+        # predict takes exactly one input: argparse rejects passing neither or
+        # both with exit 2, rather than running without input or silently
+        # using one and ignoring the other.
         # predict_input_group comes from the framework base class so it renders
         # above 'output options'; rename it by setting its .title.
-        inputs = self.predict_input_group.add_mutually_exclusive_group()
+        inputs = self.predict_input_group.add_mutually_exclusive_group(required=True)
         inputs.add_argument("--input-tsv", "-t",
                                 dest="input_tsv",
                                 type=validators.validate_file,

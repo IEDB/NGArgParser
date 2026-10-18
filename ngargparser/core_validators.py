@@ -10,7 +10,7 @@ from pathlib import Path
 # Relative: core.app_env in a tool, ngargparser.app_env in the package's own tests.
 from .app_env import load_app_env
 
-# Load this tool's .env (APP_ROOT and APP_NAME always from its own file)
+# Load this tool's .env (its own values win over inherited ones; see app_env)
 load_app_env()
 
 # Get the project root directory and app name from environment variables

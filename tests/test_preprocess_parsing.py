@@ -109,7 +109,43 @@ def test_existing_params_dir_outside_output_is_accepted(project):
     out = preprocess(project, "-j", "in.json", "-o", "out", "--params-dir", "elsewhere")
 
     assert out["code"] == 0, out["stderr"]
-    assert out["args"]["preprocess_parameters_dir"] == ["PosixPath", "elsewhere"]
+    assert out["args"]["preprocess_parameters_dir"] == ["str", "elsewhere"]
+
+
+# A folder named with --params-dir/--inputs-dir used to reach run() as a Path,
+# while the default for the same flag reached it as a str.
+
+RUN_PROBE = """\
+import json
+def run(**kwargs):
+    print(json.dumps({k: type(kwargs[k]).__name__ for k in ("preprocess_parameters_dir", "preprocess_inputs_dir")}))
+"""
+
+
+@pytest.mark.parametrize(
+    "named",
+    [
+        [],  # control: both defaulted
+        ["--params-dir", "elsewhere"],
+        ["--inputs-dir", "elsewhere"],
+        ["--params-dir", "out/predict-inputs/params", "--inputs-dir", "out/predict-inputs/data"],
+    ],
+)
+def test_run_gets_str_folders_whether_named_or_defaulted(project, named):
+    (project / "elsewhere").mkdir()
+    (project / "src" / "preprocess.py").write_text(RUN_PROBE)
+
+    proc = subprocess.run(
+        [sys.executable, "src/run_demo.py", "preprocess", "-j", "in.json", "-o", "out", *named],
+        cwd=project,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    types = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert types == {"preprocess_parameters_dir": "str", "preprocess_inputs_dir": "str"}
 
 
 @pytest.mark.skipif(os.name != "posix" or os.geteuid() == 0, reason="needs a non-root POSIX user")
@@ -126,8 +162,10 @@ def test_folder_that_cannot_be_created_stops_the_command(project):
     assert "could not create the folders under 'locked/out'" in out["stderr"]
 
 
-def test_dependency_layout_and_defaults_are_unchanged(project):
-    # Control: with a dependency in paths.py the folders and the args are as before.
+def test_dependency_defaults_follow_the_dependency_layout(project):
+    # With a dependency in paths.py the layout is as before (<out>/<dep>/ and
+    # <out>/<APP_NAME>/), and the defaults point at the tool's own tree, which exists.
+    # They used to point at out/predict-inputs/, which this layout never creates.
     cli.add_deps_to_paths(str(project / "paths.py"), ["tcell-class-i"])
     paths = project / "paths.py"
     paths.write_text(paths.read_text().replace("tcell_class_i_path=None", f"tcell_class_i_path='{project}'"))
@@ -138,7 +176,11 @@ def test_dependency_layout_and_defaults_are_unchanged(project):
     # `cli deps add tcell-class-i` writes the header "Tcell Class I", so its folder is tcell_class_i.
     assert (project / "out" / "tcell_class_i" / "predict-inputs" / "data").is_dir()
     assert (project / "out" / "demo" / "results").is_dir()
-    assert out["args"]["preprocess_inputs_dir"] == ["str", "out/predict-inputs/data"]
+    assert not (project / "out" / "predict-inputs").exists()
+    assert out["args"]["preprocess_inputs_dir"] == ["str", "out/demo/predict-inputs/data"]
+    assert out["args"]["preprocess_parameters_dir"] == ["str", "out/demo/predict-inputs/params"]
+    assert (project / "out" / "demo" / "predict-inputs" / "data").is_dir()
+    assert (project / "out" / "demo" / "predict-inputs" / "params").is_dir()
 
 
 @pytest.mark.parametrize(

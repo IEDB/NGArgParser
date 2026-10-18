@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TypedDict, List
 from core.app_env import load_app_env
 
-# Load this tool's .env (APP_ROOT and APP_NAME always from its own file)
+# Load this tool's .env (its own values win over inherited ones; see app_env)
 load_app_env()
 
 # Get the project root directory from environment variable
@@ -23,6 +23,20 @@ def _not_a_file(value):
     if path.exists() and not path.is_dir():
         raise argparse.ArgumentTypeError(f"'{value}' exists and is not a directory.")
     return path
+
+
+def _output_prefix(value):
+    """argparse check for -o, a prefix the output file names start with. A folder
+    is refused: 'out/' would write the hidden file out/.tsv."""
+    if value.endswith(("/", os.sep)) or os.path.isdir(value):
+        example = value.rstrip("/" + os.sep) + "/result"
+        raise argparse.ArgumentTypeError(f"'{value}' is a folder; -o takes an output prefix such as '{example}'")
+    return value
+
+
+def _postprocess_output_prefix(value):
+    """The -o check above, then the parent-folder check postprocess always had."""
+    return validators.validate_directory_given_filename(_output_prefix(value))
 
 
 def _unknown_option(name, parser, where):
@@ -279,7 +293,9 @@ class NGArgumentParser(argparse.ArgumentParser):
                                         type=_not_a_file,
                                         help="""
                                         a directory to store preprocessed JSON input files
-                                        (default: $OUTPUT_DIR/predict-inputs/params)
+                                        (default: $OUTPUT_DIR/predict-inputs/params, or
+                                        $OUTPUT_DIR/$APP_NAME/predict-inputs/params when
+                                        paths.py declares dependencies)
                                         """)
 
         # defaults will be set dynamically based on output-dir
@@ -288,7 +304,9 @@ class NGArgumentParser(argparse.ArgumentParser):
                                         type=_not_a_file,
                                         help="""
                                         a directory to store other, non-JSON inputs (e.g., fasta files)
-                                        (default: $OUTPUT_DIR/predict-inputs/data)
+                                        (default: $OUTPUT_DIR/predict-inputs/data, or
+                                        $OUTPUT_DIR/$APP_NAME/predict-inputs/data when
+                                        paths.py declares dependencies)
                                         """)
 
         self.preprocess_optional_group.add_argument("--assume-valid",
@@ -334,7 +352,7 @@ class NGArgumentParser(argparse.ArgumentParser):
 
         self.postprocess_optional_group.add_argument("--output-prefix", "-o",
                                 dest="output_prefix",
-                                type=validators.validate_directory_given_filename,
+                                type=_postprocess_output_prefix,
                                 help="prediction result output prefix.",
                                 metavar="OUTPUT_PREFIX")
 
@@ -392,6 +410,7 @@ class NGArgumentParser(argparse.ArgumentParser):
         # default (to stdout when no -o, else <prefix>.tsv), or json via -f.
         self.parser_predict.add_argument("--output-prefix", "-o",
                                 dest="output_prefix",
+                                type=_output_prefix,
                                 help="prediction result output prefix.",
                                 metavar="OUTPUT_PREFIX",
                                 group="output options")
@@ -504,15 +523,20 @@ class NGArgumentParser(argparse.ArgumentParser):
                 # The whole command line is valid now, so create the folders. Then
                 # check the folders the user named (they may live under -o), so the
                 # order of -o, --params-dir and --inputs-dir doesn't matter.
-                self._create_preprocess_dirs(args.output_dir)
+                created = self._create_preprocess_dirs(args.output_dir)
                 for flag, value in (("--params-dir", args.preprocess_parameters_dir),
                                     ("--inputs-dir", args.preprocess_inputs_dir)):
                     if value and not Path(value).is_dir():
                         self.parser_preprocess.error(f"argument {flag}: '{value}' is not a valid directory.")
-                if not args.preprocess_inputs_dir:
-                    args.preprocess_inputs_dir = str(Path(args.output_dir) / "predict-inputs" / "data")
-                if not args.preprocess_parameters_dir:
-                    args.preprocess_parameters_dir = str(Path(args.output_dir) / "predict-inputs" / "params")
+                # The defaults sit in the tool's own tree, the one holding results/:
+                # $OUTPUT_DIR without dependencies, $OUTPUT_DIR/<APP_NAME> with them.
+                own_tree = next((Path(d).parent for dirs in created.values() for d in dirs
+                                 if Path(d).name == "results"), Path(args.output_dir))
+                # A str whether named or defaulted (the type check returns a Path).
+                args.preprocess_inputs_dir = str(args.preprocess_inputs_dir
+                                                 or own_tree / "predict-inputs" / "data")
+                args.preprocess_parameters_dir = str(args.preprocess_parameters_dir
+                                                     or own_tree / "predict-inputs" / "params")
             
         # If postprocess command is used, validate mutual exclusion
         if hasattr(args, 'subcommand') and args.subcommand == 'postprocess':
@@ -606,6 +630,12 @@ class NGArgumentParser(argparse.ArgumentParser):
         for group in [*subparser._action_groups, *subparser._mutually_exclusive_groups]:
             if action in group._group_actions:
                 group._group_actions.remove(action)
+        # A mutually exclusive group left empty (both template inputs removed)
+        # would make argparse fail every parse with "empty group", even when
+        # it isn't required.
+        subparser._mutually_exclusive_groups[:] = [
+            group for group in subparser._mutually_exclusive_groups if group._group_actions
+        ]
         for option_string in action.option_strings:
             subparser._option_string_actions.pop(option_string, None)
 
@@ -728,6 +758,8 @@ class NGArgumentParser(argparse.ArgumentParser):
         Called by parse_args() only after the whole command line is valid, so a
         command that fails leaves nothing behind. A folder that can't be created
         stops the command with a usage error instead of printing and carrying on.
+
+        Returns the folders created, as {tool name: [folder, ...]}.
         """
         print(f"Creating directory structure under: {output_dir}")
         errors = []
@@ -742,6 +774,7 @@ class NGArgumentParser(argparse.ArgumentParser):
             print(f"\n{tool_name}:")
             for dir_path in dirs:
                 print(f"  - {dir_path}")
+        return created
 
 
 class JobDescriptionParams(TypedDict):

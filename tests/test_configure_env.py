@@ -1,3 +1,4 @@
+import ast
 import os
 import subprocess
 import sys
@@ -79,6 +80,93 @@ def test_flag_rerun_with_same_value_is_unchanged(scaffolded_project):
 
     assert "Set tcell_class_i_path" not in output
     assert "* .env file unchanged" in output
+
+
+# A flag rewrites exactly its variable's assignment in paths.py. A one-line
+# regex used to break a multi-line one, skip an annotated one, and print "Set"
+# either way.
+
+
+def test_flag_replaces_a_multi_line_assignment(scaffolded_project):
+    paths = scaffolded_project / "paths.py"
+    paths.write_text("multi_path = (\n    None\n)\nother_path = None\n")
+
+    output = run_configure(scaffolded_project, "--multi-path=/opt/multi", "--other-path=/opt/other").stdout
+
+    assert paths.read_text() == "multi_path='/opt/multi'\nother_path='/opt/other'\n"
+    ast.parse(paths.read_text())
+    assert "* Set multi_path = '/opt/multi' in paths.py" in output.splitlines()
+    assert "MULTI_PATH=/opt/multi" in env_lines(scaffolded_project)
+
+
+def test_flag_replaces_an_annotated_assignment(scaffolded_project):
+    paths = scaffolded_project / "paths.py"
+    paths.write_text("annot_path: str = None\n")
+
+    output = run_configure(scaffolded_project, "--annot-path=/opt/annot").stdout
+
+    assert paths.read_text() == "annot_path='/opt/annot'\n"
+    assert "* Set annot_path = '/opt/annot' in paths.py" in output.splitlines()
+    assert "ANNOT_PATH=/opt/annot" in env_lines(scaffolded_project)
+
+
+@pytest.mark.parametrize(
+    "content, flag, var, reason",
+    [
+        ("a_path = b_path = None\n", "--a-path=/opt/a", "a_path", "assigns it together with other names"),
+        ("if True:\n    a_path = None\n", "--a-path=/opt/a", "a_path", "assigns it inside a block"),
+    ],
+    ids=["chained", "inside-if"],
+)
+def test_flag_refuses_an_assignment_it_cannot_rewrite(scaffolded_project, strip_ansi, content, flag, var, reason):
+    paths = scaffolded_project / "paths.py"
+    paths.write_text(content)
+    env_before = (scaffolded_project / ".env").read_text()
+
+    result = run_configure(scaffolded_project, flag, expect_success=False)
+    output = strip_ansi(result.stdout)
+
+    assert result.returncode == 1
+    assert f"Can't set {var}: paths.py {reason}" in output
+    assert "Edit paths.py by hand" in output
+    assert not any(line.startswith("* Set ") for line in output.splitlines())
+    assert paths.read_text() == content
+    assert not (scaffolded_project / "paths.py.bak").exists()
+    assert (scaffolded_project / ".env").read_text() == env_before
+
+
+def test_flag_adds_a_field_paths_py_leaves_out(scaffolded_project, strip_ansi):
+    # A hand-written block may hold only <tool>_path; the flag for another field
+    # adds that field right after it instead of being refused.
+    paths = scaffolded_project / "paths.py"
+    paths.write_text("a_path = None\nother = 1\n")
+
+    output = strip_ansi(run_configure(scaffolded_project, "--a-path=/opt/a", "--a-venv=/opt/venv").stdout)
+
+    assert paths.read_text() == "a_path='/opt/a'\na_venv='/opt/venv'\nother = 1\n"
+    assert "* Set a_venv = '/opt/venv' in paths.py" in output.splitlines()
+
+
+def test_flag_backs_up_paths_py_before_rewriting_it(scaffolded_project):
+    cli.add_deps_to_paths("paths.py", ["tcell-class-i"])
+    before = (scaffolded_project / "paths.py").read_text()
+
+    output = run_configure(scaffolded_project, "--tcell-class-i-path=/opt/tools/tc1").stdout
+
+    assert (scaffolded_project / "paths.py.bak").read_text() == before
+    assert "Backup saved to 'paths.py.bak'" in output
+
+
+def test_control_one_line_assignment_changes_only_that_line(scaffolded_project):
+    # The shape `cli deps add` writes: same "* Set" line and value as before.
+    cli.add_deps_to_paths("paths.py", ["tcell-class-i"])
+    before = (scaffolded_project / "paths.py").read_text()
+
+    output = run_configure(scaffolded_project, "--tcell-class-i-path=/opt/tools/tc1").stdout
+
+    assert "* Set tcell_class_i_path = '/opt/tools/tc1' in paths.py" in output.splitlines()
+    after = (scaffolded_project / "paths.py").read_text()
+    assert after == before.replace("tcell_class_i_path=None", "tcell_class_i_path='/opt/tools/tc1'")
 
 
 def test_flag_for_undeclared_tool_is_rejected(scaffolded_project):
@@ -192,10 +280,20 @@ def make_venv(path, with_marker=True):
     virtualenv from any directory that happens to hold an activate script.
     """
     (path / "bin").mkdir(parents=True, exist_ok=True)
-    (path / "bin" / "activate").write_text("# fake activate\n")
+    (path / "bin" / "activate").write_text(f'export VIRTUAL_ENV="{path}"\n')
     if with_marker:
         (path / "pyvenv.cfg").write_text("home = /usr/bin\nversion = 3.9.25\n")
     return path
+
+
+def sourced(project, script, *names):
+    """Source `script` in bash from `project` and return the named variables as a dict."""
+    echo = "; ".join(f'echo "{name}=${{{name}}}"' for name in names)
+    proc = subprocess.run(
+        ["bash", "-c", f"source ./{script}; {echo}"], cwd=project, capture_output=True, text=True, timeout=30
+    )
+    assert proc.returncode == 0, proc.stderr
+    return dict(line.split("=", 1) for line in proc.stdout.splitlines())
 
 
 def make_tool_dir(tmp_path, name="faketool", with_venv=True, venv_usable=True, venv_name=".venv"):
@@ -351,8 +449,7 @@ def test_venv_declared_in_the_tools_own_env_is_used(scaffolded_project, tmp_path
     assert f"using virtualenv declared in its .env: {elsewhere}" in result.stdout
     env = (scaffolded_project / ".env").read_text()
     assert f"TCELL_CLASS_I_VENV={elsewhere}" in env
-    script = (scaffolded_project / "setup_tcell_class_i_env.sh").read_text()
-    assert f"source {elsewhere}/bin/activate" in script
+    assert sourced(scaffolded_project, "setup_tcell_class_i_env.sh", "VIRTUAL_ENV")["VIRTUAL_ENV"] == str(elsewhere)
 
 
 def test_declared_venv_beats_a_bundled_one(scaffolded_project, tmp_path):
@@ -365,8 +462,7 @@ def test_declared_venv_beats_a_bundled_one(scaffolded_project, tmp_path):
 
     assert result.returncode == 0
     assert "using virtualenv found at" not in result.stdout
-    script = (scaffolded_project / "setup_tcell_class_i_env.sh").read_text()
-    assert f"source {elsewhere}/bin/activate" in script
+    assert sourced(scaffolded_project, "setup_tcell_class_i_env.sh", "VIRTUAL_ENV")["VIRTUAL_ENV"] == str(elsewhere)
 
 
 def test_explicit_setting_beats_a_declared_venv(scaffolded_project, tmp_path):
@@ -402,8 +498,7 @@ def test_declared_venv_that_is_not_a_virtualenv_warns_but_is_used(scaffolded_pro
 
     assert result.returncode == 0
     assert "has no pyvenv.cfg. Using it anyway." in output
-    script = (scaffolded_project / "setup_tcell_class_i_env.sh").read_text()
-    assert f"source {stale}/bin/activate" in script
+    assert sourced(scaffolded_project, "setup_tcell_class_i_env.sh", "VIRTUAL_ENV")["VIRTUAL_ENV"] == str(stale)
 
 
 def test_tool_env_without_app_venv_falls_through_to_the_bundled_one(scaffolded_project, tmp_path):
@@ -522,8 +617,9 @@ def test_dependency_entry_is_exported(scaffolded_project, tmp_path):
     entry = tool_dir / "src" / "run_faketool.py"
     assert f"start-up script declared in its .env: {entry}" in result.stdout
     assert f"TCELL_CLASS_I_ENTRY={entry}" in env_lines(scaffolded_project)
-    script = (scaffolded_project / "setup_tcell_class_i_env.sh").read_text()
-    assert f"export TCELL_CLASS_I_ENTRY={entry}" in script
+    assert sourced(scaffolded_project, "setup_tcell_class_i_env.sh", "TCELL_CLASS_I_ENTRY") == {
+        "TCELL_CLASS_I_ENTRY": str(entry)
+    }
     assert "tcell_class_i_entry" not in (scaffolded_project / "paths.py").read_text()
 
 
@@ -649,12 +745,84 @@ def test_imported_names_in_paths_py_never_reach_env(scaffolded_project):
 
 @pytest.mark.parametrize("folder, app_name", [("ng_my-app-local", "my-app"), ("ng_myapp-local", "myapp")])
 def test_app_name_from_a_build_folder_name(scaffolded_project, folder, app_name):
-    # Without a .env, a folder named ng_<name>-local (a build copy) names the tool <name>,
-    # hyphens included.
+    # Without a .env or [tool.ngargparser] app_name, a folder named ng_<name>-local (a
+    # build copy) names the tool <name>, hyphens included.
     renamed = scaffolded_project.parent / folder
     scaffolded_project.rename(renamed)
     (renamed / ".env").unlink()
+    pyproject = renamed / "pyproject.toml"
+    pyproject.write_text(pyproject.read_text().replace('app_name = "demo"\n', ""))
 
     run_configure(renamed)
 
     assert f"APP_NAME={app_name}" in (renamed / ".env").read_text().splitlines()
+
+
+def test_a_deployed_tool_keeps_its_name(scaffolded_project):
+    # A tarball ships pyproject.toml but no .env, and the orchestrator installs it to
+    # <name>/<version>/. The name comes from [tool.ngargparser] app_name, not the folder.
+    deployed = scaffolded_project.parent / "apps" / "demo" / "1.0.0"
+    deployed.parent.mkdir(parents=True)
+    scaffolded_project.rename(deployed)
+    (deployed / ".env").unlink()
+
+    run_configure(deployed)
+
+    assert "APP_NAME=demo" in (deployed / ".env").read_text().splitlines()
+
+
+def test_app_name_in_env_still_wins_over_pyproject(scaffolded_project):
+    (scaffolded_project / ".env").write_text("APP_NAME=from-env\n")
+
+    run_configure(scaffolded_project)
+
+    assert "APP_NAME=from-env" in (scaffolded_project / ".env").read_text().splitlines()
+
+
+# The orchestrator puts a new version of a dependency behind the same <dep>_path (a
+# `current` link) and never re-runs the caller's ./configure. The setup script reads
+# what the dependency publishes in its .env when it is sourced, so it follows.
+
+
+def deploy_version(apps, version, entry):
+    version_dir = apps / "callee" / version
+    venv = make_venv(version_dir / ".venv")
+    (version_dir / "src").mkdir(parents=True)
+    (version_dir / "src" / entry).write_text("")
+    (version_dir / ".env").write_text(
+        f"APP_ROOT={version_dir}\nAPP_NAME=callee\nAPP_VENV={venv}\nAPP_ENTRY=src/{entry}\n"
+    )
+    current = apps / "callee" / "current"
+    if current.is_symlink():
+        current.unlink()
+    current.symlink_to(version)
+    return venv
+
+
+@pytest.mark.skipif(os.name != "posix", reason="needs symlinks and bash")
+def test_setup_script_follows_a_redeployed_dependency(scaffolded_project, tmp_path):
+    apps = tmp_path / "apps"
+    deploy_version(apps, "1.0", "run_callee.py")
+    cli.add_deps_to_paths("paths.py", ["callee"])
+    run_configure(scaffolded_project, f"--callee-path={apps / 'callee' / 'current'}")
+
+    new_venv = deploy_version(apps, "1.1", "run_callee_v2.py")  # the entry script is renamed
+
+    seen = sourced(scaffolded_project, "setup_callee_env.sh", "VIRTUAL_ENV", "CALLEE_ENTRY")
+    assert seen["VIRTUAL_ENV"] == str(new_venv)
+    assert seen["CALLEE_ENTRY"] == str(apps / "callee" / "current" / "src" / "run_callee_v2.py")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="needs symlinks and bash")
+def test_setup_script_falls_back_to_what_configure_saw(scaffolded_project, tmp_path):
+    # Control: with the dependency's .env gone when the script is sourced, the
+    # values ./configure resolved are used.
+    apps = tmp_path / "apps"
+    venv = deploy_version(apps, "1.0", "run_callee.py")
+    cli.add_deps_to_paths("paths.py", ["callee"])
+    run_configure(scaffolded_project, f"--callee-path={apps / 'callee' / 'current'}")
+    (apps / "callee" / "1.0" / ".env").unlink()
+
+    seen = sourced(scaffolded_project, "setup_callee_env.sh", "VIRTUAL_ENV", "CALLEE_ENTRY")
+    assert seen["VIRTUAL_ENV"] == str(venv)
+    assert seen["CALLEE_ENTRY"] == str(apps / "callee" / "current" / "src" / "run_callee.py")

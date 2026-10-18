@@ -188,6 +188,38 @@ def test_add_refuses_names_configure_cannot_see_as_a_tool(in_tmp_dir, name):
     assert not (in_tmp_dir / "paths.py").exists()
 
 
+# A name is written as the Python variable <name>_path, so it can't start with a digit.
+
+
+def test_add_refuses_a_name_that_starts_with_a_digit(in_tmp_dir, capsys):
+    assert deps("add", "2fold") == 1
+    assert not (in_tmp_dir / "paths.py").exists()
+    assert (
+        "Not added: '2fold' becomes '2fold', which starts with a digit, so '2fold_path' is not a valid Python name. "
+        "Pick a name that starts with a letter."
+    ) in capsys.readouterr().out
+
+
+def test_add_of_a_digit_name_leaves_an_existing_paths_file_alone(in_tmp_dir):
+    cli.add_deps_to_paths("paths.py", ["peer"])
+    before = (in_tmp_dir / "paths.py").read_text()
+
+    assert deps("add", "2fold", "3d-tool") == 1
+    assert (in_tmp_dir / "paths.py").read_text() == before
+
+
+def test_add_of_a_name_with_a_digit_after_the_first_letter_works(in_tmp_dir):
+    assert deps("add", "fold2") == 0  # control
+    assert "fold2_path=None" in (in_tmp_dir / "paths.py").read_text()
+
+
+def test_first_run_menu_refuses_a_name_that_starts_with_a_digit(in_tmp_dir, terminal):
+    terminal("2fold", "")
+
+    assert deps(None) == 1
+    assert "2fold" not in (in_tmp_dir / "paths.py").read_text()
+
+
 def test_add_never_overwrites_a_paths_file_that_does_not_parse(in_tmp_dir):
     broken = "tcell_class_i_path = '/opt/tc1\n"  # unterminated string
     paths = write_paths(in_tmp_dir, broken)

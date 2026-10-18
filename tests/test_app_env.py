@@ -1,10 +1,11 @@
-"""A tool started by another tool must use its own .env for APP_ROOT and APP_NAME.
+"""A tool started by another tool must use its own .env, not the caller's values.
 
-phbr starts tc1 as a child process, and the child inherits phbr's APP_ROOT and
-APP_NAME. Before core/app_env.py, every core module loaded .env without
-overriding them, so tc1 imported phbr's libs/. These tests scaffold a caller
-('demo') and a callee ('peer') and run a probe inside the callee with the
-caller's values in its environment.
+phbr starts tc1 as a child process, and the child inherits phbr's environment.
+Before core/app_env.py, every core module loaded .env without overriding it, so
+tc1 imported phbr's libs/. Later only APP_ROOT and APP_NAME were overridden, so
+tc1 still saw phbr's APP_VENV, APP_ENTRY and dependency paths. These tests
+scaffold a caller ('demo') and a callee ('peer') and run a probe inside the
+callee with the caller's values in its environment.
 """
 
 import json
@@ -29,7 +30,7 @@ print(json.dumps({
     "app_name": cv.APP_NAME,
     "ngargparser": ng.APP_ROOT,
     "libs": sorted(p for p in sys.path if p.endswith(os.sep + "libs")),
-    "foo": os.environ.get("FOO"),
+    "env": {k: os.environ.get(k) for k in ("X_PATH", "APP_VENV", "APP_ENTRY", "FOO", "PATH")},
 }))
 """
 
@@ -43,8 +44,11 @@ def caller_and_callee(in_tmp_dir):
     return in_tmp_dir / "demo", peer
 
 
+PROBED_KEYS = ("APP_ROOT", "APP_NAME", "APP_VENV", "APP_ENTRY", "X_PATH", "FOO")
+
+
 def run_probe(peer, **env):
-    base = {k: v for k, v in os.environ.items() if k not in ("APP_ROOT", "APP_NAME", "FOO")}
+    base = {k: v for k, v in os.environ.items() if k not in PROBED_KEYS}
     return subprocess.run(
         [sys.executable, str(peer / "src" / "probe_env.py")],
         env={**base, **env},
@@ -99,10 +103,38 @@ def test_without_env_an_app_root_pointing_at_itself_is_kept(caller_and_callee):
     assert out["libs"] == [str(peer / "libs")]
 
 
-def test_other_keys_keep_the_inherited_value(caller_and_callee):
-    _demo, peer = caller_and_callee
-    env_file = peer / ".env"
-    env_file.write_text(env_file.read_text() + "FOO=from_env_file\n")
+def add_to_env_file(project, text):
+    env_file = project / ".env"
+    env_file.write_text(env_file.read_text() + text)
 
-    assert seen(run_probe(peer, FOO="inherited"))["foo"] == "inherited"
-    assert seen(run_probe(peer))["foo"] == "from_env_file"
+
+def test_callers_other_keys_are_replaced_by_the_callees_own_env(caller_and_callee):
+    _demo, peer = caller_and_callee
+    add_to_env_file(peer, "X_PATH=x-for-peer\nAPP_VENV=/venvs/peer\n")
+
+    out = seen(run_probe(peer, X_PATH="x-for-demo", APP_VENV="/venvs/demo", APP_ENTRY="src/run_demo.py"))
+
+    assert out["env"]["X_PATH"] == "x-for-peer"
+    assert out["env"]["APP_VENV"] == "/venvs/peer"
+    assert out["env"]["APP_ENTRY"] == "src/run_peer.py"
+
+
+def test_control_a_key_the_callees_env_does_not_define_is_inherited(caller_and_callee):
+    _demo, peer = caller_and_callee
+    add_to_env_file(peer, "X_PATH=x-for-peer\n")
+
+    out = seen(run_probe(peer, FOO="inherited"))
+
+    assert out["env"]["FOO"] == "inherited"
+    assert out["env"]["X_PATH"] == "x-for-peer"
+
+
+def test_a_stale_path_in_the_env_file_does_not_replace_the_process_path(caller_and_callee):
+    # phbr's .env still holds PATH=<class 'pathlib.Path'> from an old ./configure;
+    # taking it would break every command the tool runs.
+    _demo, peer = caller_and_callee
+    add_to_env_file(peer, "PATH=<class 'pathlib.Path'>\n")
+
+    out = seen(run_probe(peer))
+
+    assert out["env"]["PATH"] == os.environ["PATH"]

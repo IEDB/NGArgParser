@@ -14,6 +14,7 @@
 #     * Each description will contain a command that runs single prediction (utilizes 'predict' subcommand).
 #     * Note that the last command in the description file will use 'postprocess' subcommand.
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -89,6 +90,14 @@ def write_job_descriptions(**kwargs):
     # job description file path - use the output directory
     JD_PATH = Path(OUTPUT_DIR_PATH) / 'job_descriptions.json'
 
+    # predict and postprocess write into this tool's own folders: under the output
+    # directory, or under <output dir>/<APP_NAME> when paths.py declares dependencies
+    # (preprocess creates that layout).
+    TOOL_DIR_PATH = OUTPUT_DIR_PATH
+    app_name = os.getenv('APP_NAME')
+    if app_name and (Path(OUTPUT_DIR_PATH) / app_name / 'predict-outputs').is_dir():
+        TOOL_DIR_PATH = f'{OUTPUT_DIR_PATH}/{app_name}'
+
     # exec file path - the run script next to this file
     EXEC_FILE_PATH = str(Path(__file__).parent) + '/run_aa_counter.py'
     files_with_ctime = []
@@ -138,11 +147,11 @@ def write_job_descriptions(**kwargs):
         for i, job in enumerate(job_files):
             param_file_path = str(job)
 
-            shell_cmd = f'{EXEC_FILE_PATH} predict -j {param_file_path} -o {OUTPUT_DIR_PATH}/predict-outputs/result.{i} -f json'
+            shell_cmd = f'{EXEC_FILE_PATH} predict -j {param_file_path} -o {TOOL_DIR_PATH}/predict-outputs/result.{i} -f json'
             job_id = i
             job_type = 'prediction'
             expected_outputs = [
-                f'{OUTPUT_DIR_PATH}/predict-outputs/result.{i}.json'
+                f'{TOOL_DIR_PATH}/predict-outputs/result.{i}.json'
             ]
 
             jd: JobDescriptionParams = {
@@ -157,12 +166,12 @@ def write_job_descriptions(**kwargs):
 
         # Add command for postprocessing
         i += 1
-        shell_cmd = f'{EXEC_FILE_PATH} postprocess --job-desc-file={JD_PATH} -o {OUTPUT_DIR_PATH}/aggregate/final-result -f json'
+        shell_cmd = f'{EXEC_FILE_PATH} postprocess --job-desc-file={JD_PATH} -o {TOOL_DIR_PATH}/aggregate/final-result -f json'
         job_id = i
         job_type = 'postprocess'
         depends_on_job_ids = list(range(i))
         expected_outputs = [
-            f'{OUTPUT_DIR_PATH}/aggregate/final-result.json'
+            f'{TOOL_DIR_PATH}/aggregate/final-result.json'
         ]
 
         jd: JobDescriptionParams = {

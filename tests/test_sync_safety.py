@@ -183,7 +183,7 @@ def test_known_clash_stops_sync_and_writes_nothing(runnable_project, sync_args, 
     assert f"{PARSER_FILE}:" in out and "declares --output-prefix on predict" in out
     assert "Nothing was changed" in out and "--no-verify" in out
     assert tree_state(runnable_project) == before
-    assert not (runnable_project / ".ngargparser").exists()
+    assert not (runnable_project / ".ngargparser" / "sync-backups").exists()
 
 
 def test_known_clash_is_reported_in_dry_run(runnable_project, sync_args, strip_ansi, capsys):
@@ -236,6 +236,8 @@ def test_rollback_restores_a_legacy_layout(runnable_project, sync_args, capsys):
     (project / "scripts/core/build.conf").rename(project / "scripts/build.conf")
     (project / "scripts/core").rmdir()
     (project / "scripts/dependencies.sh").write_text("#!/bin/bash\n")
+    (project / ".distignore").rename(project / "scripts/do-not-distribute.txt")
+    shutil.rmtree(project / ".ngargparser", ignore_errors=True)  # an older tool has no framework hash record
     (project / "deploy/install.sh").unlink()
     (project / "deploy").rmdir()
     (project / ".gitignore").unlink()
@@ -251,6 +253,7 @@ def test_rollback_restores_a_legacy_layout(runnable_project, sync_args, capsys):
     assert (files, dirs) == before
     assert "scripts/build.sh" in files and "scripts/dependencies.sh" in files
     assert "scripts/build.conf" in files
+    assert "scripts/do-not-distribute.txt" in files and ".distignore" not in files
     assert not {"scripts/core", "deploy", ".ngargparser"} & dirs
     assert ".gitignore" not in files and "scripts/hooks.sh" not in files
 
@@ -297,6 +300,14 @@ def test_error_midway_is_rolled_back(runnable_project, sync_args, strip_ansi, ca
     assert "Error during synchronization: disk full" in out
     assert "Every file was restored" in out
     assert tree_state(runnable_project) == before
+
+
+def test_a_pending_exclusion_file_move_is_test_driven(scaffolded_project):
+    # Like the other legacy moves, moving an old exclusion file to .distignore counts as a change.
+    framework_files = cli._sync_framework_files()
+    assert not cli._framework_changes_pending(framework_files)  # control: a fresh scaffold
+    (scaffolded_project / ".distignore").rename(scaffolded_project / "scripts/do-not-distribute.txt")
+    assert cli._framework_changes_pending(framework_files)
 
 
 def test_nothing_to_change_skips_the_test_drive(runnable_project, sync_args, monkeypatch):

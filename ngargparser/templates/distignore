@@ -33,3 +33,4 @@ build.sh
 build.md
 Makefile
 *.sh
+*.bak

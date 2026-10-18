@@ -99,6 +99,71 @@ class TestWriteScaffoldVersion:
         assert cli.write_scaffold_version(str(target), "1.0.0") == "1.0.0"
         assert target.read_text() == original
 
+    # A "[" between the header and the stamp (a comment) used to hide the stamp, so a
+    # second [tool.ngargparser] table was appended and uv refused the file.
+
+    def test_bracket_in_a_comment_before_the_stamp(self, tmp_path):
+        target = tmp_path / "pyproject.toml"
+        target.write_text(
+            '[project]\nname = "demo"\n\n[tool.ngargparser]\n# see [release notes]\nscaffold_version = "0.3.0"\n'
+        )
+
+        assert cli.write_scaffold_version(str(target), "1.0.0") == "0.3.0"
+        assert target.read_text() == (
+            '[project]\nname = "demo"\n\n[tool.ngargparser]\n# see [release notes]\nscaffold_version = "1.0.0"\n'
+        )
+
+    def test_table_without_a_stamp_gets_it_inside_not_a_second_table(self, tmp_path):
+        target = tmp_path / "pyproject.toml"
+        target.write_text('[tool.ngargparser]\nnote = "kept"\n\n[tool.other]\nx = 1\n')
+
+        assert cli.write_scaffold_version(str(target), "1.0.0") is None
+        content = target.read_text()
+        assert content.count("[tool.ngargparser]") == 1
+        assert content == '[tool.ngargparser]\nscaffold_version = "1.0.0"\nnote = "kept"\n\n[tool.other]\nx = 1\n'
+
+    def test_header_with_a_trailing_comment_is_found(self, tmp_path):
+        target = tmp_path / "pyproject.toml"
+        target.write_text('[tool.ngargparser]  # stamped by cli sync\nscaffold_version = "0.9.0"\n')
+
+        assert cli.write_scaffold_version(str(target), "1.0.0") == "0.9.0"
+        assert target.read_text().count("[tool.ngargparser]") == 1
+
+    def test_stamp_in_another_table_is_not_read_as_ours(self, tmp_path):
+        target = tmp_path / "pyproject.toml"
+        target.write_text('[tool.other]\nscaffold_version = "9.9.9"\n')
+
+        assert cli.write_scaffold_version(str(target), "1.0.0") is None
+        assert '[tool.ngargparser]\nscaffold_version = "1.0.0"' in target.read_text()
+        assert 'scaffold_version = "9.9.9"' in target.read_text()  # control: theirs untouched
+
+    def test_project_stamp_is_read_past_a_bracket_comment(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "pyproject.toml").write_text('[tool.ngargparser]\n# see [notes]\nscaffold_version = "0.3.0"\n')
+
+        assert cli._project_scaffold_version() == "0.3.0"
+
+    # The same writer stamps app_name, and each key leaves the other alone.
+
+    def test_app_name_goes_into_the_table_and_keeps_the_version(self, tmp_path):
+        target = tmp_path / "pyproject.toml"
+        target.write_text('[tool.ngargparser]\n# see [notes]\nscaffold_version = "1.0.0"\n\n[tool.other]\nx = 1\n')
+
+        assert cli.write_ngargparser_key(str(target), "app_name", "demo") is None
+        assert target.read_text() == (
+            '[tool.ngargparser]\napp_name = "demo"\n# see [notes]\nscaffold_version = "1.0.0"\n\n[tool.other]\nx = 1\n'
+        )
+        assert cli.write_scaffold_version(str(target), "2.0.0") == "1.0.0"
+        assert 'app_name = "demo"\n' in target.read_text()
+
+    def test_project_app_name_is_read_from_our_table_only(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "pyproject.toml").write_text('[tool.other]\napp_name = "theirs"\n')
+        assert cli._project_ngargparser_key("app_name") is None
+
+        (tmp_path / "pyproject.toml").write_text('[tool.ngargparser]\napp_name = "ours"\n')
+        assert cli._project_ngargparser_key("app_name") == "ours"
+
 
 class TestUpsertReadmeBadge:
     def test_missing_file_returns_false(self, tmp_path):

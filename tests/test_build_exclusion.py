@@ -179,6 +179,26 @@ def test_exclusion_file_without_trailing_newline(scaffolded_project, run_build):
     assert "README.md" in members
 
 
+@pytest.mark.skipif(os.name != "posix", reason="these names are not valid on Windows")
+def test_names_git_would_quote_are_excluded(scaffolded_project, run_build):
+    # Regression: git check-ignore printed names holding '"', '\' or a tab in
+    # C-quoted form, which never matched the real path, so they shipped.
+    quoted = ['a"b.key', "back\\slash.key", "tab\tthere.key"]
+    weird = scaffolded_project / "weird"
+    weird.mkdir()
+    for name in quoted + ["plain.key", "keep.txt"]:
+        (weird / name).write_text("x\n")
+    (weird / 'quo"te.d').mkdir()
+    (weird / 'quo"te.d' / "inner.txt").write_text("x\n")
+    append_rules(scaffolded_project, "*.key", "*.d/")
+
+    members = run_build(scaffolded_project).members
+
+    for name in quoted + ["plain.key", 'quo"te.d', 'quo"te.d/inner.txt']:
+        assert f"weird/{name}" not in members, f"weird/{name} must not ship"
+    assert "weird/keep.txt" in members
+
+
 def test_git_dir_never_ships(scaffolded_project, run_build):
     subprocess.run(["git", "init", "-q", "."], cwd=scaffolded_project, check=True, timeout=60)
     append_rules(scaffolded_project, "!.git/")

@@ -57,6 +57,15 @@ def test_hooks_template_is_valid_bash():
     subprocess.run(["bash", "-n", f"{cli.TEMPLATE_DIR}/hooks.sh"], check=True, timeout=30)
 
 
+def test_pyproject_records_the_tool_name(in_tmp_dir):
+    # A deployed copy has no .env; ./configure reads the name from here instead of
+    # the install folder (<name>/<version>/).
+    cli.create_project_structure("demo")
+    content = (in_tmp_dir / "demo" / "pyproject.toml").read_text()
+    table = content.split("[tool.ngargparser]\n", 1)[1]
+    assert 'app_name = "demo"\n' in table
+
+
 def test_placeholders_are_substituted(in_tmp_dir):
     cli.create_project_structure("demo")
     root = in_tmp_dir / "demo"
@@ -229,3 +238,82 @@ def test_example_app_keeps_its_own_counting_text(in_tmp_dir):
 
     out = _help(in_tmp_dir / "aa-counter", "run_aa_counter.py", "predict")
     assert "Perform counting given a TSV file." in out
+
+
+def _run(project, script, *args):
+    return subprocess.run([sys.executable, f"src/{script}", *args], cwd=project, capture_output=True, text=True)
+
+
+# predict with no input used to reach the predict branch, where the Quickstart
+# code crashed with TypeError on open(None).
+
+TOOLS = [("demo", "demo", "run_demo.py"), ("example", "aa-counter", "run_aa_counter.py")]
+ONE_INPUT = {
+    "demo": [("-j", "in.json"), ("-t", "in.tsv")],
+    "example": [("-j", "src/example.json"), ("-t", "src/example.tsv", "-a", "L")],
+}
+
+
+@pytest.mark.parametrize("name, folder, script", TOOLS, ids=["blank", "example"])
+def test_predict_without_input_is_a_usage_error(in_tmp_dir, name, folder, script):
+    cli.startapp_command(Namespace(project_name=name))
+
+    result = _run(in_tmp_dir / folder, script, "predict")
+    assert result.returncode == 2
+    assert "predict: error: one of the arguments --input-tsv/-t --input-json/-j is required" in result.stderr
+
+
+@pytest.mark.parametrize("name, folder, script", TOOLS, ids=["blank", "example"])
+def test_predict_with_one_input_still_runs(in_tmp_dir, name, folder, script):
+    # Control: either input alone still runs.
+    cli.startapp_command(Namespace(project_name=name))
+    project = in_tmp_dir / folder
+    (project / "in.json").write_text("{}\n")
+    (project / "in.tsv").write_text("peptide\nAAK\n")
+
+    for args in ONE_INPUT[name]:
+        result = _run(project, script, "predict", *args)
+        assert result.returncode == 0, f"{args}: {result.stderr}"
+
+
+# -o is a prefix. 'out/' used to write the hidden file out/.tsv, and an existing
+# folder 'out' wrote out.tsv beside it.
+
+
+@pytest.fixture
+def demo(in_tmp_dir):
+    cli.startapp_command(Namespace(project_name="demo"))
+    project = in_tmp_dir / "demo"
+    (project / "in.json").write_text("{}\n")
+    (project / "jd.json").write_text("[]\n")
+    (project / "existing").mkdir()
+    return project
+
+
+INPUT = {"predict": "in.json", "postprocess": "jd.json"}
+
+
+@pytest.mark.parametrize("subcommand", ["predict", "postprocess"])
+@pytest.mark.parametrize("value, example", [("out/", "out/result"), ("existing", "existing/result")])
+def test_output_prefix_that_is_a_folder_is_rejected(demo, subcommand, value, example):
+    result = _run(demo, "run_demo.py", subcommand, "-j", INPUT[subcommand], "-o", value)
+
+    assert result.returncode == 2
+    assert (
+        f"{subcommand}: error: argument --output-prefix/-o: '{value}' is a folder; "
+        f"-o takes an output prefix such as '{example}'"
+    ) in result.stderr
+
+
+@pytest.mark.parametrize("subcommand", ["predict", "postprocess"])
+@pytest.mark.parametrize("value", ["result", "existing/result", "out/result"])
+def test_output_prefix_that_is_a_file_name_is_accepted(demo, subcommand, value):
+    # Control: a prefix, even one inside a folder, still parses. 'out/result' is
+    # fine for predict, which creates out/, but postprocess still wants out/ to exist.
+    result = _run(demo, "run_demo.py", subcommand, "-j", INPUT[subcommand], "-o", value)
+
+    if subcommand == "postprocess" and value == "out/result":
+        assert result.returncode == 2
+        assert "argument --output-prefix/-o: 'out/result' is not a valid directory." in result.stderr
+    else:
+        assert result.returncode == 0, result.stderr

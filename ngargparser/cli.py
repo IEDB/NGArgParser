@@ -232,33 +232,103 @@ def write_pyproject_toml(project_dir, tool_name):
         )
 
 
-SCAFFOLD_STAMP_RE = re.compile(
-    r'(\[tool\.ngargparser\][^\[]*?scaffold_version\s*=\s*")([^"]*)(")',
-    re.DOTALL,
-)
+# A TOML table header line ([name] or [[name]], an optional trailing comment).
+_TOML_HEADER_RE = re.compile(r"^[ \t]*\[\[?[ \t]*([^\]]+?)[ \t]*\]\]?[ \t]*(?:#.*)?$")
+
+
+def _scaffold_stamp(content, key="scaffold_version"):
+    """Find [tool.ngargparser] and its `key` (scaffold_version, app_name) in pyproject.toml text.
+
+    Returns (header_end, value_span): header_end is the offset just past the
+    [tool.ngargparser] header line, or None when there is no such table, and
+    value_span is the (start, end) of the `key` string value inside that
+    table, or None when it has none. Line based: only a header line ends the
+    table, so a "[" in a comment or a value (`# see [release notes]`) does not.
+    """
+    key_line = re.compile(rf'^[ \t]*{re.escape(key)}[ \t]*=[ \t]*"([^"]*)"')
+    header_end = None
+    offset = 0
+    for line in content.splitlines(keepends=True):
+        header = _TOML_HEADER_RE.match(line.rstrip("\r\n"))
+        if header:
+            if header_end is not None:
+                break  # the next table starts
+            if header.group(1) == "tool.ngargparser":
+                header_end = offset + len(line)
+        elif header_end is not None:
+            stamp = key_line.match(line)
+            if stamp:
+                return header_end, (offset + stamp.start(1), offset + stamp.end(1))
+        offset += len(line)
+    return header_end, None
+
+
+def _check_scaffold_stamp(content, version, path, key="scaffold_version"):
+    """Raise ValueError unless `content` is valid pyproject text whose one
+    [tool.ngargparser] table holds `key` = `version`."""
+    try:
+        import tomllib as toml_reader  # Python 3.11+
+    except ImportError:
+        try:
+            import tomli as toml_reader  # the same parser, when installed
+        except ImportError:
+            toml_reader = None
+    if toml_reader is not None:
+        try:
+            data = toml_reader.loads(content)
+        except toml_reader.TOMLDecodeError as e:
+            raise ValueError(
+                f"{path} would not be valid TOML with the version stamp ({e}); it was left unchanged"
+            ) from e
+        stamped = data.get("tool", {}).get("ngargparser", {}).get(key)
+    else:
+        headers = 0
+        for line in content.splitlines():
+            header = _TOML_HEADER_RE.match(line)
+            if header and header.group(1) == "tool.ngargparser":
+                headers += 1
+        span = _scaffold_stamp(content, key)[1]
+        stamped = content[span[0] : span[1]] if headers == 1 and span else None
+    if stamped != version:
+        raise ValueError(
+            f"could not stamp {key} = {version!r} in {path} safely; it was left unchanged. "
+            "Check its [tool.ngargparser] table by hand."
+        )
 
 
 def write_scaffold_version(pyproject_path, version):
     """Write or update [tool.ngargparser] scaffold_version in pyproject.toml.
     Returns the previous version string, or None if no stamp existed before."""
+    return write_ngargparser_key(pyproject_path, "scaffold_version", version)
+
+
+def write_ngargparser_key(pyproject_path, key, version):
+    """Write or update the string `key` in pyproject.toml's [tool.ngargparser] table.
+    Returns the previous value, or None if the key was not there before."""
     if not os.path.exists(pyproject_path):
         return None
 
     with open(pyproject_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    match = SCAFFOLD_STAMP_RE.search(content)
-    if match:
-        previous = match.group(2)
+    header_end, span = _scaffold_stamp(content, key)
+    if span:
+        previous = content[span[0] : span[1]]
         if previous == version:
             return previous
-        new_content = content[: match.start(2)] + version + content[match.end(2) :]
+        new_content = content[: span[0]] + version + content[span[1] :]
+    elif header_end is not None:
+        # The table exists without a stamp: add it there, never as a second table.
+        previous = None
+        head = content[:header_end] if content[:header_end].endswith("\n") else content[:header_end] + "\n"
+        new_content = head + f'{key} = "{version}"\n' + content[header_end:]
     else:
         previous = None
         if not content.endswith("\n"):
             content += "\n"
-        new_content = content + f'\n[tool.ngargparser]\nscaffold_version = "{version}"\n'
+        new_content = content + f'\n[tool.ngargparser]\n{key} = "{version}"\n'
 
+    _check_scaffold_stamp(new_content, version, pyproject_path, key)
     with open(pyproject_path, "w", encoding="utf-8") as f:
         f.write(new_content)
     return previous
@@ -812,6 +882,11 @@ def _invalid_dep_name(name):
     var = normalize_name(name)
     if not var:
         return f"'{name}' has no letters or digits"
+    if not f"{var}_path".isidentifier():
+        return (
+            f"'{name}' becomes '{var}', which starts with a digit, so '{var}_path' is not a valid "
+            f"Python name. Pick a name that starts with a letter."
+        )
     for suffix in (*DEP_NAME_FIELD_SUFFIXES, "_path"):
         if var.endswith(suffix):
             return (
@@ -1284,6 +1359,8 @@ def startapp_command(args):
     # Seed a .gitignore so ngargparser runtime artifacts (and common cruft)
     # stay out of the user's git history from the first commit.
     ensure_gitignore(os.path.join(project_dir_name, ".gitignore"))
+    # Record the framework files as generated, so `cli sync` can spot later local edits.
+    _write_framework_hashes(_sync_framework_files(), root=project_dir_name)
 
     # Write initial .env with APP_NAME and APP_ROOT in the new project root, plus
     # APP_ENTRY: the start-up script a tool that depends on this one runs.
@@ -1564,16 +1641,35 @@ def _run_self_upgrade(url):
 def _project_scaffold_version():
     """Return the [tool.ngargparser] scaffold_version stamp in CWD's pyproject.toml, or None
     (i.e. None when not run from inside a stamped scaffolded project)."""
-    import os
+    return _project_ngargparser_key("scaffold_version")
 
+
+def _derived_app_name():
+    """The APP_NAME ./configure gives the tool in CWD: the one in its own .env file, else
+    the name it derives from the folder ('ng_<name>-local' gives <name>, any other
+    folder its own name)."""
+    if os.path.isfile(".env"):
+        from dotenv import dotenv_values
+
+        env_app_name = dotenv_values(".env").get("APP_NAME")
+        if env_app_name:
+            return env_app_name
+    base_name = os.path.basename(os.getcwd())
+    match = re.match(r"^ng[_-]([A-Za-z0-9_-]+?)-local$", base_name)
+    return match.group(1) if match else base_name
+
+
+def _project_ngargparser_key(key):
+    """Return `key` from the [tool.ngargparser] table in CWD's pyproject.toml, or None."""
     if not os.path.isfile("pyproject.toml"):
         return None
     try:
         with open("pyproject.toml", encoding="utf-8") as f:
-            m = SCAFFOLD_STAMP_RE.search(f.read())
+            content = f.read()
     except OSError:
         return None
-    return m.group(2) if m else None
+    span = _scaffold_stamp(content, key)[1]
+    return content[span[0] : span[1]] if span else None
 
 
 def _remind_sync(installed, did_install):
@@ -1937,6 +2033,80 @@ def _sync_framework_files():
 _SYNC_LEGACY_BUILD = "scripts/build.sh"
 _SYNC_LEGACY_HOOKS = ("scripts/dependencies.sh", "scripts/build_hooks.sh")
 _SYNC_LEGACY_BUILD_CONF = "scripts/build.conf"
+# Older exclusion files, in the order build.sh checks them. The first one found becomes .distignore.
+_SYNC_LEGACY_DISTIGNORE = ("scripts/do-not-distribute.txt", "do-not-distribute.txt", "scripts/.distignore")
+
+# The content hash of each framework file as `cli generate` or `cli sync` last
+# wrote it, so sync can tell a local edit from an older framework version.
+_FRAMEWORK_HASHES = ".ngargparser/framework-hashes.json"
+
+
+def _is_ngargparser_tool():
+    """True when the current folder shows a sign that ngargparser made it: a
+    [tool.ngargparser] table in pyproject.toml, src/core/NGArgumentParser.py or
+    scripts/core/build.sh. Every tool has at least one; an unrelated project
+    with src/ and scripts/ has none."""
+    if os.path.isfile("src/core/NGArgumentParser.py") or os.path.isfile("scripts/core/build.sh"):
+        return True
+    try:
+        with open("pyproject.toml", encoding="utf-8") as f:
+            return _scaffold_stamp(f.read())[0] is not None
+    except OSError:
+        return False
+
+
+def _sync_legacy_moves():
+    """The legacy files `cli sync` moves, as (legacy, current) pairs in the order
+    it moves them. A legacy file stays put when its current name already exists."""
+    moves = []
+    if os.path.exists(_SYNC_LEGACY_BUILD) and not os.path.exists("scripts/core/build.sh"):
+        moves.append((_SYNC_LEGACY_BUILD, "scripts/core/build.sh"))
+    hook = next((p for p in _SYNC_LEGACY_HOOKS if os.path.exists(p)), None)
+    if hook and not os.path.exists("scripts/hooks.sh"):
+        moves.append((hook, "scripts/hooks.sh"))
+    if os.path.exists(_SYNC_LEGACY_BUILD_CONF) and not os.path.exists("scripts/core/build.conf"):
+        moves.append((_SYNC_LEGACY_BUILD_CONF, "scripts/core/build.conf"))
+    exclusion = next((p for p in _SYNC_LEGACY_DISTIGNORE if os.path.exists(p)), None)
+    if exclusion and not os.path.exists(".distignore"):
+        moves.append((exclusion, ".distignore"))
+    return moves
+
+
+def _file_sha256(path):
+    import hashlib
+
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def _read_framework_hashes(root="."):
+    """The recorded framework file hashes as {path: sha256}, or {} when there is no usable record."""
+    import json
+
+    try:
+        with open(os.path.join(root, _FRAMEWORK_HASHES), encoding="utf-8") as f:
+            record = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
+def _write_framework_hashes(framework_files, root="."):
+    """Record the hash of each framework file under `root`, unless the record already says so."""
+    import json
+
+    record = {
+        dst: _file_sha256(os.path.join(root, dst))
+        for _src, dst, _exe in framework_files
+        if os.path.isfile(os.path.join(root, dst))
+    }
+    if record == _read_framework_hashes(root):
+        return
+    path = os.path.join(root, _FRAMEWORK_HASHES)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(record, f, indent=2, sort_keys=True)
+        f.write("\n")
 
 
 def _sync_touched_paths(framework_files):
@@ -1947,6 +2117,9 @@ def _sync_touched_paths(framework_files):
         "scripts/hooks.sh",
         _SYNC_LEGACY_BUILD_CONF,
         "scripts/core/build.conf",
+        *_SYNC_LEGACY_DISTIGNORE,
+        ".distignore",
+        _FRAMEWORK_HASHES,
         "deploy/install.sh",
         ".gitignore",
         "pyproject.toml",
@@ -1957,11 +2130,7 @@ def _sync_touched_paths(framework_files):
 def _framework_changes_pending(framework_files):
     """True when sync would change a framework file or move a legacy one, i.e.
     when there is something a test drive could be affected by."""
-    if os.path.exists(_SYNC_LEGACY_BUILD) and not os.path.exists("scripts/core/build.sh"):
-        return True
-    if not os.path.exists("scripts/hooks.sh") and any(os.path.exists(p) for p in _SYNC_LEGACY_HOOKS):
-        return True
-    if os.path.exists(_SYNC_LEGACY_BUILD_CONF) and not os.path.exists("scripts/core/build.conf"):
+    if _sync_legacy_moves():
         return True
     return any(
         not os.path.exists(dst) or not filecmp.cmp(src, dst, shallow=False) for src, dst, _exe in framework_files
@@ -2307,10 +2476,14 @@ def sync_command(args):
         do_backup = getattr(args, "backup", True) and not _env_flag("NGARGPARSER_SYNC_NO_BACKUP")
         verify = getattr(args, "verify", True) and not _env_flag("NGARGPARSER_SYNC_NO_VERIFY")
 
-        # Check if we're in a project directory
-        if not os.path.exists("src") or not os.path.exists("scripts"):
-            print("\033[91m✗\033[0m Error: This doesn't appear to be a valid ngargparser project directory")
-            print("Make sure you're in a project directory with src/ and scripts/ subdirectories.")
+        # Check that this is an ngargparser tool: src/ and scripts/ alone match plenty of
+        # other projects, whose Makefile and README.md sync would otherwise overwrite.
+        if not (os.path.exists("src") and os.path.exists("scripts") and _is_ngargparser_tool()):
+            print(
+                "\033[91m✗\033[0m This folder is not an ngargparser tool: cli sync found no "
+                "[tool.ngargparser] table in pyproject.toml, no src/core/NGArgumentParser.py and no "
+                "scripts/core/build.sh. Run cli sync from inside a tool folder, or cli generate <name> to start one."
+            )
             return 1
 
         # Self-upgrade the installed ngargparser, then re-exec so the new code
@@ -2419,49 +2592,63 @@ def sync_command(args):
             else:
                 print(f"  └ {label} is already up to date")
 
-        # Layout migrations run before the sync loop so build.sh/hooks.sh/build.conf sit at
-        # their current paths first. They move user files, so they're skipped in
-        # dry-run (which must not touch the tree).
-        if not dry_run:
-            if os.path.exists(_SYNC_LEGACY_BUILD) and not os.path.exists("scripts/core/build.sh"):
-                os.makedirs("scripts/core", exist_ok=True)
-                shutil.move(_SYNC_LEGACY_BUILD, "scripts/core/build.sh")
+        # Layout migrations run before the sync loop so build.sh/hooks.sh/build.conf/.distignore
+        # sit at their current paths first (see _sync_legacy_moves). Content is preserved
+        # exactly. Dry-run lists the moves without making them.
+        moves = _sync_legacy_moves()
+        for legacy, current in moves:
+            note = " (framework-owned scripts now live under scripts/core/)" if legacy == _SYNC_LEGACY_BUILD else ""
+            if dry_run:
+                print(f"  └ \033[93mWould move\033[0m {legacy} → {current}{note}")
+                continue
+            if os.path.dirname(current):
+                os.makedirs(os.path.dirname(current), exist_ok=True)
+            shutil.move(legacy, current)
+            print(f"  └ \033[93mMigrated\033[0m {legacy} → {current}{note}")
+        # A legacy file left behind because its new name already exists is never
+        # run (a hook), stops the build (build.conf) or is ignored (an old exclusion
+        # file); say so rather than leave it.
+        moved = {legacy for legacy, _current in moves}
+        for legacy, current, effect in (
+            *((hook, "scripts/hooks.sh", "The build never runs it") for hook in _SYNC_LEGACY_HOOKS),
+            (_SYNC_LEGACY_BUILD_CONF, "scripts/core/build.conf", "The build stops while it exists"),
+            *((path, ".distignore", "The build ignores it") for path in _SYNC_LEGACY_DISTIGNORE),
+        ):
+            if os.path.exists(legacy) and legacy not in moved:
                 print(
-                    "  └ \033[93mMigrated\033[0m scripts/build.sh → scripts/core/build.sh "
-                    "(framework-owned scripts now live under scripts/core/)"
+                    f"  └ \033[93m⚠\033[0m {legacy} was not moved: {current} already exists. "
+                    f"{effect}; merge it into {current} and delete it."
                 )
-            # Legacy hook filenames → hooks.sh. Content is preserved exactly.
-            for legacy in _SYNC_LEGACY_HOOKS:
-                if os.path.exists(legacy) and not os.path.exists("scripts/hooks.sh"):
-                    shutil.move(legacy, "scripts/hooks.sh")
-                    print(f"  └ \033[93mMigrated\033[0m {legacy} → scripts/hooks.sh")
-                    break
-            # build.conf moved next to build.sh. Content is preserved exactly.
-            if os.path.exists(_SYNC_LEGACY_BUILD_CONF) and not os.path.exists("scripts/core/build.conf"):
-                os.makedirs("scripts/core", exist_ok=True)
-                shutil.move(_SYNC_LEGACY_BUILD_CONF, "scripts/core/build.conf")
-                print(f"  └ \033[93mMigrated\033[0m {_SYNC_LEGACY_BUILD_CONF} → scripts/core/build.conf")
-            # A legacy file left behind because its new name already exists is never
-            # run (a hook) or stops the build (build.conf); say so rather than leave it.
-            for legacy, current, effect in (
-                *((hook, "scripts/hooks.sh", "The build never runs it") for hook in _SYNC_LEGACY_HOOKS),
-                (_SYNC_LEGACY_BUILD_CONF, "scripts/core/build.conf", "The build stops while it exists"),
-            ):
-                if os.path.exists(legacy):
-                    print(
-                        f"  └ \033[93m⚠\033[0m {legacy} was not moved: {current} already exists. "
-                        f"{effect}; merge it into {current} and delete it."
-                    )
 
         # Framework-owned files (see _sync_framework_files). _sync_file copies
         # only when content differs, backs up any overwrite, and records the
-        # action so the summary can count what changed.
+        # action so the summary can count what changed. A file whose hash differs
+        # from the one recorded when it was last written has local edits: say they
+        # are replaced, and where the old copy is.
         print("\nUpdating framework files...")
+        recorded = _read_framework_hashes()
+        # A dry run did not make the moves above, so it compares the file a real run would move there.
+        moved_to = {current: legacy for legacy, current in moves} if dry_run else {}
         for src, dst, executable in framework_files:
+            path = moved_to.get(dst, dst)
+            edited = dst in recorded and os.path.isfile(path) and _file_sha256(path) != recorded[dst]
             action = _sync_file(
-                src, dst, executable=executable, dry_run=dry_run, backup_root=backup_root, changes=changes
+                src, path, executable=executable, dry_run=dry_run, backup_root=backup_root, changes=changes
             )
             report(action, dst)
+            if edited and action == "updated":
+                if dry_run:
+                    print(f"  └ \033[93m⚠\033[0m Would replace local edits in {dst}.")
+                elif backup_root:
+                    print(
+                        f"  └ \033[93m⚠\033[0m {dst} had local edits; sync replaced them. "
+                        f"Your version is in {os.path.join(backup_root, dst)}."
+                    )
+                else:
+                    print(
+                        f"  └ \033[93m⚠\033[0m {dst} had local edits; sync replaced them. "
+                        "Backups are off for this run, so your version was not kept."
+                    )
 
         files_changed = sum(1 for action, _ in changes if action in ("created", "updated"))
 
@@ -2508,6 +2695,19 @@ def sync_command(args):
                 if not dry_run:
                     write_scaffold_version("pyproject.toml", __version__)
 
+            # A deployed copy has no .env, so ./configure reads the tool's name from
+            # [tool.ngargparser] app_name instead of the install folder (1.0.0).
+            # Tools generated before app_name existed get it here, once.
+            if _project_ngargparser_key("app_name") is None:
+                app_name = _derived_app_name()
+                if not stamp_updated:
+                    print("\nStamping framework version...")
+                stamp_updated = True
+                verb = "Would add" if dry_run else "Added"
+                print(f'  └ {verb} app_name = "\033[92m{app_name}\033[0m" to [tool.ngargparser]')
+                if not dry_run:
+                    write_ngargparser_key("pyproject.toml", "app_name", app_name)
+
         # README badge → current ngargparser version (green), only in README.md.
         print("\nUpdating README version badges...")
         current_badge = f"ngargparser-{__version__}-green.svg"
@@ -2522,7 +2722,7 @@ def sync_command(args):
         else:
             print("  └ README.md badge is already current (or no README found)")
 
-        anything_changed = files_changed > 0 or stamp_updated or readme_updated
+        anything_changed = files_changed > 0 or stamp_updated or readme_updated or bool(moves)
 
         # Test drive: every help screen that worked before the sync must still
         # work now. If one doesn't, undo the whole sync and say why.
@@ -2550,11 +2750,15 @@ def sync_command(args):
                     return 1
                 verification = ("verified", f"{len(worked_before)} of {len(baseline['results'])}")
 
+        # The sync stands (a rollback returned above): record what each framework file now holds.
+        if not dry_run:
+            _write_framework_hashes(framework_files)
+
         # Summary
         print("\nSynchronization Summary:")
         print(f"  └ Framework files {'to change' if dry_run else 'changed'}: \033[92m{files_changed}\033[0m")
         if stamp_updated:
-            print(f"  └ scaffold_version stamp: \033[92m{'would update' if dry_run else 'updated'}\033[0m")
+            print(f"  └ [tool.ngargparser] stamps: \033[92m{'would update' if dry_run else 'updated'}\033[0m")
         if readme_updated:
             print(f"  └ README badge: \033[92m{'would update' if dry_run else 'updated'}\033[0m")
 

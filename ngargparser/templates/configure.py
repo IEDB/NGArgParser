@@ -1,11 +1,14 @@
 #! /usr/bin/env python3
 
 import argparse
+import ast
 import os
+import shutil
 import sys
 import importlib.util
 import re
 import glob
+import shlex
 try:
     from dotenv import load_dotenv, dotenv_values
 except ImportError:
@@ -163,7 +166,7 @@ def own_entry(app_root):
     )
     return None
 
-def resolve_tool_venvs(config, detected_tools):
+def resolve_tool_venvs(config, detected_tools, published=None):
     """Fill in a tool's virtualenv when the user hasn't set one explicitly.
 
     Two sources, in order: what the tool publishes about itself in its own
@@ -177,7 +180,9 @@ def resolve_tool_venvs(config, detected_tools):
 
     Returns the tools left unresolved because their bundled virtualenv was
     ambiguous, so the caller can skip the generic "no virtualenv" warning for
-    them: "has more than one" already said it, more precisely.
+    them: "has more than one" already said it, more precisely. Tools whose
+    virtualenv came from their own .env are added to the `published` set, if
+    one is given: their setup script reads it again when it is sourced.
     """
     ambiguous = set()
     for tool_prefix in detected_tools:
@@ -192,6 +197,8 @@ def resolve_tool_venvs(config, detected_tools):
             # Adopted even when it looks wrong, for the same reason a missing
             # path doesn't block: it may be correct on the deploy target.
             config[f"{tool_prefix}_venv"] = declared
+            if published is not None:
+                published.add(tool_prefix)
             print(f"* {tool_prefix}: using virtualenv declared in its .env: {declared}")
             if os.path.isdir(declared) and not is_usable_venv(declared):
                 print(
@@ -244,10 +251,55 @@ def build_arg_parser(config, detected_tools):
             )
     return parser
 
+def find_assignment(tree, var_name):
+    """Find the lines of paths.py that a --<tool>-<field> flag may rewrite.
+
+    Only a lone top-level `name = ...` or `name: T = ...` qualifies, and only
+    when nothing else in the file binds the name: replacing those lines must
+    change the value Python ends up with, and nothing else. Returns
+    (first_line, last_line, None), or (None, None, reason) when the variable
+    can't be rewritten safely.
+    """
+    bindings = [
+        node for node in ast.walk(tree)
+        if (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id == var_name)
+        or (isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) == var_name)
+        or (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.ExceptHandler))
+            and node.name == var_name)
+    ]
+    if not bindings:
+        return None, None, "paths.py does not assign it"
+    if len(bindings) > 1:
+        return None, None, "paths.py assigns it more than once"
+
+    binding = bindings[0]
+    stmt = next(s for s in tree.body if any(node is binding for node in ast.walk(s)))
+    if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and stmt.targets[0] is binding:
+        pass
+    elif isinstance(stmt, ast.AnnAssign) and stmt.target is binding and stmt.value is not None:
+        pass
+    elif isinstance(stmt, ast.Assign):  # a_path = b_path = ..., or a_path, b_path = ...
+        return None, None, "paths.py assigns it together with other names"
+    elif hasattr(stmt, "body"):
+        return None, None, "paths.py assigns it inside a block, not at the top level"
+    else:
+        return None, None, f"paths.py does not assign it with '{var_name} = ...'"
+
+    # a_path = None; b_path = None: replacing the line would drop b_path.
+    if any(s is not stmt and s.lineno <= stmt.end_lineno and s.end_lineno >= stmt.lineno for s in tree.body):
+        return None, None, "paths.py has another statement on the same line"
+    return stmt.lineno, stmt.end_lineno, None
+
 def apply_paths_overrides(config, args, config_path):
     """
     Apply any --<tool>-<field> flags to `config` and persist them back into
-    `config_path` (paths.py). Returns the set of variable names changed.
+    `config_path` (paths.py). Returns {variable: value} for each one changed.
+
+    Each flag replaces the lines of its variable's assignment, or adds the
+    variable right after its tool's <tool>_path line when paths.py leaves it
+    out, and the old file is kept as paths.py.bak. When any variable is
+    assigned in a way that can't be rewritten safely (chained, inside an if),
+    nothing is written and ./configure exits 1.
     """
     overrides = {
         var_name: value
@@ -259,20 +311,84 @@ def apply_paths_overrides(config, args, config_path):
 
     with open(config_path, "r") as f:
         content = f.read()
+    tree = ast.parse(content, filename=config_path)
+
+    spans = {}
+    added = {}  # a field paths.py leaves out: inserted after its tool's <tool>_path line
+    problems = []
+    for var_name in overrides:
+        first, last, reason = find_assignment(tree, var_name)
+        if reason == "paths.py does not assign it":
+            tool_path = re.sub(r"_(lib_path|path|venv|module)$", "", var_name) + "_path"
+            _first, anchor_last, anchor_reason = find_assignment(tree, tool_path)
+            if not anchor_reason and tool_path != var_name:
+                added[var_name] = anchor_last
+                continue
+        if reason:
+            problems.append((var_name, reason))
+        else:
+            spans[var_name] = (first, last)
+    if problems:
+        for var_name, reason in problems:
+            print(
+                f"\033[91m✗\033[0m Can't set \033[1m{var_name}\033[0m: {reason}. "
+                f"Edit {config_path} by hand, then re-run ./configure."
+            )
+        sys.exit(1)
+
+    # Bottom to top, so an edit never moves the lines of one still to come. An
+    # inserted line goes right after its anchor, so it sorts just past it.
+    edits = [(first - 1, last, var_name) for var_name, (first, last) in spans.items()]
+    edits += [(anchor_last, anchor_last, var_name) for var_name, anchor_last in added.items()]
+    lines = content.split("\n")
+    for start, end, var_name in sorted(edits, reverse=True):
+        lines[start:end] = [f"{var_name}={overrides[var_name]!r}"]
+    new_content = "\n".join(lines)
+    try:
+        ast.parse(new_content, filename=config_path)
+    except SyntaxError as e:
+        print(
+            f"\033[91m✗\033[0m Can't update {config_path}: the result would not parse "
+            f"({e.msg}, line {e.lineno}). {config_path} is unchanged."
+        )
+        sys.exit(1)
+
+    backup_path = f"{config_path}.bak"
+    shutil.copy2(config_path, backup_path)
+    with open(config_path, "w") as f:
+        f.write(new_content)
 
     for var_name, value in overrides.items():
-        content = re.sub(
-            rf"(?m)^{re.escape(var_name)}\s*=.*$",
-            f"{var_name}={value!r}",
-            content,
-        )
         config[var_name] = value
         print(f"* Set {var_name} = {value!r} in paths.py")
-
-    with open(config_path, "w") as f:
-        f.write(content)
+    print(f"  └ Backup saved to '{backup_path}'.")
 
     return overrides
+
+def pyproject_app_name(path="pyproject.toml"):
+    """Return app_name from the [tool.ngargparser] table of pyproject.toml, or None.
+
+    Read line by line, so no TOML library is needed: only a table header line
+    ends the table, and only a plain "quoted" value is read.
+    """
+    if not os.path.isfile(path):
+        return None
+    header = re.compile(r'^[ \t]*\[\[?[ \t]*([^\]]+?)[ \t]*\]\]?[ \t]*(?:#.*)?$')
+    key = re.compile(r'^[ \t]*app_name[ \t]*=[ \t]*"([^"]*)"')
+    in_table = False
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            table = header.match(line.rstrip("\r\n"))
+            if table:
+                if in_table:
+                    break
+                in_table = table.group(1) == "tool.ngargparser"
+            elif in_table:
+                value = key.match(line)
+                if value:
+                    return value.group(1) or None
+    return None
+
 
 def render_env_content(config, app_root):
     """Build the .env content for `config`. Returns a string; callers
@@ -296,7 +412,7 @@ def render_env_content(config, app_root):
         lines.append(f"{key.upper()}={value}\n")
     return "".join(lines)
 
-def create_shell_script(config, tool_prefix, output_path, warn_no_venv=True):
+def create_shell_script(config, tool_prefix, output_path, warn_no_venv=True, venv_published=False):
     """
     Create shell script for a dependency tool.
 
@@ -306,6 +422,7 @@ def create_shell_script(config, tool_prefix, output_path, warn_no_venv=True):
         output_path: Path where to write the shell script
         warn_no_venv: Whether to warn when the tool has no virtualenv. Off for a
             tool whose bundled virtualenvs were ambiguous, which already warned.
+        venv_published: The virtualenv came from the tool's own .env (APP_VENV).
     """
     # Get values from config using prefix
     module = config.get(f"{tool_prefix}_module")
@@ -353,8 +470,32 @@ def create_shell_script(config, tool_prefix, output_path, warn_no_venv=True):
         lines.append("module purge")
         lines.append(f"module load {module}")
 
+    # What the tool publishes in its own .env (APP_VENV, APP_ENTRY) is read from
+    # that file when this script is sourced, not copied in now: a redeploy puts a
+    # new version behind the same <tool>_path (a `current` link), and nothing
+    # re-runs this tool's ./configure. The values found now are the fallback.
+    entry = config.get(f"{tool_prefix}_entry")
+    published_keys = [("APP_VENV", "_ng_venv", venv)] if venv and venv_published else []
+    if entry:
+        published_keys.append(("APP_ENTRY", "_ng_entry", entry))
+    if published_keys:
+        lines.append(f"# {' and '.join(key for key, _var, _value in published_keys)} come from {tool_prefix}'s own .env, read")
+        lines.append("# when this script is sourced, so a redeploy of it is picked up without")
+        lines.append("# re-running ./configure here. The values below are what ./configure saw.")
+        lines.append(f"_ng_env={shlex.quote(os.path.join(tool_path, DOT_ENV_PATH))}")
+        for _key, var, value in published_keys:
+            lines.append(f"{var}={shlex.quote(value)}")
+        lines.append('if [ -f "$_ng_env" ]; then')
+        for key, var, _value in published_keys:
+            lines.append(f"    _ng_value=$(sed -n 's/^{key}=//p' \"$_ng_env\" | tail -n 1)")
+            lines.append('    _ng_value=${_ng_value%\\"}; _ng_value=${_ng_value#\\"}')
+            lines.append(f'    if [ -n "$_ng_value" ]; then {var}=$_ng_value; fi')
+        lines.append("fi")
+
     # Optional: Activate virtualenv
-    if venv:
+    if venv and venv_published:
+        lines.append('source "$_ng_venv/bin/activate"')
+    elif venv:
         lines.append(f"source {venv}/bin/activate")
 
     # Optional: Set LD_LIBRARY_PATH
@@ -364,10 +505,13 @@ def create_shell_script(config, tool_prefix, output_path, warn_no_venv=True):
     # Required: Export tool path
     lines.append(f"export {env_var}={tool_path}")
 
-    # Optional: the start-up script the tool publishes in its .env (APP_ENTRY)
-    entry = config.get(f"{tool_prefix}_entry")
+    # Optional: the start-up script the tool publishes in its .env (APP_ENTRY),
+    # relative to the tool unless it is an absolute path
     if entry:
-        lines.append(f"export {tool_prefix.upper()}_ENTRY={entry}")
+        lines.append(f'case "$_ng_entry" in /*) ;; *) _ng_entry="${env_var}/$_ng_entry" ;; esac')
+        lines.append(f'export {tool_prefix.upper()}_ENTRY="$_ng_entry"')
+    if published_keys:
+        lines.append("unset _ng_env _ng_venv _ng_entry _ng_value")
 
     with open(output_path, "w") as f:
         f.write("\n".join(lines) + "\n")
@@ -414,7 +558,8 @@ def main():
 
     # Fall back to a tool's own bundled .venv for any tool without an
     # explicit virtualenv, so paths.py doesn't need a host-specific path.
-    ambiguous_venvs = resolve_tool_venvs(config, detected_tools)
+    published_venvs = set()
+    ambiguous_venvs = resolve_tool_venvs(config, detected_tools, published=published_venvs)
     resolve_tool_entries(config, detected_tools)
 
     # Always ensure APP_ROOT is present in config
@@ -423,7 +568,9 @@ def main():
         config['APP_ROOT'] = app_root
 
     # Ensure APP_NAME is set. Prefer persisted APP_NAME from .env (created by 'cli g').
-    # If not present, derive from build dir name pattern 'ng_<name>-local' or fall back to directory name.
+    # A deployed copy has no .env, so next comes [tool.ngargparser] app_name in
+    # pyproject.toml, which ships in the tarball; without either, derive from
+    # build dir name pattern 'ng_<name>-local' or fall back to directory name.
     # Read from the file, not os.environ: a tool that started this one may have
     # passed its own APP_NAME down.
     env_app_name = None
@@ -434,7 +581,7 @@ def main():
     elif 'APP_NAME' not in config:
         base_name = os.path.basename(app_root)
         match = re.match(r'^ng[_-]([A-Za-z0-9_-]+?)-local$', base_name)
-        config['APP_NAME'] = match.group(1) if match else base_name
+        config['APP_NAME'] = pyproject_app_name() or (match.group(1) if match else base_name)
 
     # Publish this project's own virtualenv so a tool that depends on it can
     # read it from .env instead of hunting for it. Re-derived every run, so a
@@ -495,6 +642,7 @@ def main():
             tool_prefix,
             output_path=f'setup_{tool_prefix}_env.sh',
             warn_no_venv=tool_prefix not in ambiguous_venvs,
+            venv_published=tool_prefix in published_venvs,
         )
         if not ok:
             unfilled.append(tool_prefix)

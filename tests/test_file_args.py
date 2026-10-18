@@ -130,6 +130,30 @@ def test_example_app_preprocess_writes_job_descriptions(example_project):
     assert all(Path(j["shell_cmd"].split()[0]).resolve() == Path(run_path).resolve() for j in jobs)
 
 
+def test_example_app_pipeline_runs_with_a_dependency(example_project):
+    # With a dependency declared and filled in, preprocess builds <out>/<dep>/ and
+    # <out>/aa-counter/. Every job it writes must run: the defaults used to point at
+    # out/predict-inputs/, which that layout never creates (FileNotFoundError).
+    cli.add_deps_to_paths("paths.py", ["pepx"])
+    paths = example_project / "paths.py"
+    paths.write_text(paths.read_text().replace("pepx_path=None", f"pepx_path='{example_project}'"))
+
+    result = run_script(example_project, "run_aa_counter.py", "preprocess", "-j", "src/example.json", "-o", "out")
+    assert result.returncode == 0, result.stderr
+
+    jobs = json.loads((example_project / "out" / "job_descriptions.json").read_text())
+    assert len(jobs) > 1
+    for job in jobs:
+        script, *args = job["shell_cmd"].split()
+        ran = subprocess.run([sys.executable, script, *args], cwd=example_project, capture_output=True, text=True)
+        assert ran.returncode == 0, ran.stderr
+        assert all(Path(output).exists() for output in job["expected_outputs"])
+    tree = example_project / "out" / "aa-counter"
+    assert sorted(p.name for p in (tree / "predict-inputs" / "params").iterdir())
+    assert (tree / "aggregate" / "final-result.json").exists()
+    assert not (example_project / "out" / "predict-inputs").exists()
+
+
 def test_example_app_failed_preprocess_leaves_no_folders(example_project):
     result = run_script(example_project, "run_aa_counter.py", "preprocess", "-o", "out", "-j", "nonexist.json")
     assert result.returncode == 2

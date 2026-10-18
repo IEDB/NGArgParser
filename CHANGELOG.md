@@ -123,6 +123,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed build now also removes the previous tarball, so an old one never looks fresh.
 
 ### Fixed
+- A deployed tool keeps its name. A tarball ships no `.env`, so `./configure` took `APP_NAME` from
+  the install folder: `1.0.0` under the orchestrator's `<name>/<version>/`, `ng_<name>-1.0.0` by
+  hand. `APP_NAME` names the dependency layout `<out>/<APP_NAME>/`, so a deployed tool wrote to
+  `out/1.0.0/`. `cli generate` now records the name as `[tool.ngargparser] app_name` in
+  `pyproject.toml`, which ships, and `./configure` reads it when there is no `.env`. `cli sync` adds
+  it to older tools from `APP_NAME` in their `.env` (else the folder name) and never changes an
+  existing one. A `.env` value still wins.
+- `preprocess` works once a tool declares a dependency. With a filled-in dependency, preprocess
+  creates `<out>/<dep>/` and `<out>/<APP_NAME>/`, but the `--inputs-dir` and `--params-dir`
+  defaults still pointed at `<out>/predict-inputs/`, which that layout never creates. The sample app
+  then failed with `FileNotFoundError: 'out/predict-inputs/data'`. The defaults now point at
+  `<out>/<APP_NAME>/predict-inputs/`, and the sample app writes its predict and postprocess outputs
+  under `<out>/<APP_NAME>/` too. Without dependencies, every path is unchanged.
+- Dependency wiring follows a redeployed dependency. `setup_<dep>_env.sh` copied the virtualenv
+  and start-up script a dependency publishes (`APP_VENV`, `APP_ENTRY`) as fixed text when
+  `./configure` ran. A deploy puts a new version behind the same path (a `current` link) and never
+  re-runs a dependent's `./configure`, so the caller kept activating the old version's virtualenv
+  and called a renamed entry script that no longer existed ("can't open file"). The script now
+  reads both from `<dep>_path/.env` when it is sourced, with the values `./configure` saw as the
+  fallback. An explicit `<dep>_venv`, or a virtualenv found inside `<dep>_path`, stays fixed.
+- `cli sync` refuses a folder that is not an ngargparser tool. It accepted any folder with `src/`
+  and `scripts/`, and in an unrelated project it created `src/core/` and replaced the project's
+  `Makefile`, exiting 0. It now also needs a `[tool.ngargparser]` table in `pyproject.toml`,
+  `src/core/NGArgumentParser.py` or `scripts/core/build.sh` (every tool has one), and otherwise
+  exits 1 without writing.
+- The `scaffold_version` stamp can no longer corrupt `pyproject.toml`. A `[` between
+  `[tool.ngargparser]` and `scaffold_version` (a `# see [release notes]` comment) hid the stamp, so
+  sync appended a second `[tool.ngargparser]` table and `uv sync`, and with it every deploy, failed
+  with "duplicate key". The stamp is now found line by line, added inside an existing table that
+  lacks it, and the result is checked (with `tomllib` where available) before it is written; a
+  failed check rolls the sync back.
+- Build: Ctrl-C or a kill during `make build` removes the half-built copy and says the build
+  failed; the exit trap used to see status 0 and leave it. A failing `scripts/hooks.sh` shows its
+  exit code and the last 20 lines of `.ngargparser/hooks.log` (its output went to /dev/null). A
+  `.distignore` rule that excludes the entry script fails the build instead of skipping the startup
+  check. File names holding `"`, `\` or a tab are now matched by `.distignore` (`git check-ignore`
+  quoted them in its output, so they always shipped).
+- Sync: `cli sync --dry-run` lists every legacy move a real run would make and the files it could
+  not move. Sync moves a legacy `scripts/do-not-distribute.txt`, `do-not-distribute.txt` or
+  `scripts/.distignore` to `.distignore` (the build stops on them), and warns when `.distignore`
+  already exists. `cli generate` and each sync record the framework files' hashes in
+  `.ngargparser/framework-hashes.json`; sync warns before replacing a framework file you edited and
+  names the backup.
+- Machine setup: `cli deps add` refuses a name that starts with a digit (`2fold_path=None` is not
+  valid Python). `./configure --<dep>-<field>` rewrites the whole assignment, multi-line and
+  annotated ones included, adds a field `paths.py` leaves out after its `<dep>_path` line, keeps
+  `paths.py.bak`, and stops with exit 1 instead of claiming success when the variable is chained or
+  inside an `if` (it used to leave a broken file, or print "Set" and write nothing). A tool's own
+  `.env` now wins for every key it defines, so a tool started by another tool no longer sees the
+  caller's `APP_VENV`, `APP_ENTRY` or dependency paths; `PATH`, `PYTHONPATH`, `PYTHONHOME`,
+  `LD_LIBRARY_PATH` and `HOME` keep the environment's value, so a stale `PATH=` line in an old
+  `.env` cannot break the tool. The default `.distignore` excludes `*.bak`.
+- Parser API: the generated input group is required, so `predict` with no `-j`/`-t` is a usage
+  error instead of a `TypeError` in the predict code; `remove_argument` drops a mutually exclusive
+  group it leaves empty. A passed `--params-dir`/`--inputs-dir` reaches `run()` as `str`, like the
+  default. `write_results` writes path values in JSON as text, numbers a repeated table type
+  (`<prefix>.<type>-2.tsv`) instead of overwriting the first, and `-o` that ends in `/` or names an
+  existing folder is a usage error (it wrote a hidden `<folder>/.tsv`).
 - The once-a-day update notice no longer offers a pre-release tag left in the shared cache. Every
   installed `cli` uses `~/.cache/ngargparser/update-check.json`, and an older one that does not skip
   pre-release tags stored `v0.4.2-test`; the notice trusted it for a day ("0.4.1 → v0.4.2-test").

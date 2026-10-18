@@ -27,9 +27,12 @@ Every tool produces the same result envelope::
 * ``output_format="tsv"`` (default): tab-separated columns/rows. When the
   envelope holds two or more tables, each is prefixed with a ``--- <type> ---``
   banner on stdout, and written to a separate ``<prefix>.<type>.tsv`` file when
-  ``-o`` is given. A single table gets no banner and a single ``<prefix>.tsv``.
+  ``-o`` is given. A type that repeats is numbered from its second table on
+  (``<type>-2``, ``<type>-3``, ...) in both. A single table gets no banner and a
+  single ``<prefix>.tsv``.
 * ``output_format="json"``: the full envelope is dumped verbatim, preserving all
-  metadata (warnings/errors/unique_vals/field_ranges/...).
+  metadata (warnings/errors/unique_vals/field_ranges/...). Path values are
+  written as text.
 
 Destination:
 
@@ -41,6 +44,7 @@ stdout stays a clean, pipeable data stream (json keeps them in the payload).
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -52,6 +56,26 @@ def _tables(result):
         columns = table.get("table_columns", [])
         rows = table.get("table_data", [])
         yield table_type, columns, rows
+
+
+def _labels(tables):
+    """Name each table by its type, numbering a repeat (x, x-2, x-3) so no two
+    tables share a banner or a file."""
+    labels = []
+    for table_type, _, _ in tables:
+        label, n = table_type, 1
+        while label in labels:
+            n += 1
+            label = f"{table_type}-{n}"
+        labels.append(label)
+    return labels
+
+
+def _json_default(value):
+    """json.dumps fallback: write a Path (any os.PathLike) as its text."""
+    if isinstance(value, os.PathLike):
+        return os.fspath(value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 def _render_tsv_block(columns, rows):
@@ -100,7 +124,7 @@ def write_results(result, output_prefix=None, output_format="tsv"):
 
     # ---- JSON: dump the full envelope verbatim (metadata preserved) ----
     if output_format == "json":
-        payload = json.dumps(result, indent=2)
+        payload = json.dumps(result, indent=2, default=_json_default)
         if output_prefix is None:
             print(payload)
             return []
@@ -116,15 +140,15 @@ def write_results(result, output_prefix=None, output_format="tsv"):
     if output_prefix is None:
         # stdout: banner-separate multiple tables; a single table gets no banner.
         blocks = []
-        for table_type, columns, rows in tables:
+        for label, (_, columns, rows) in zip(_labels(tables), tables):
             block = _render_tsv_block(columns, rows)
             if len(tables) > 1:
-                block = f"--- {table_type} ---\n{block}"
+                block = f"--- {label} ---\n{block}"
             blocks.append(block)
         print("\n\n".join(blocks))
         return []
 
-    # file(s): single table -> <prefix>.tsv; multiple -> <prefix>.<type>.tsv
+    # file(s): single table -> <prefix>.tsv; multiple -> <prefix>.<type>[-N].tsv
     written = []
     if len(tables) <= 1:
         columns, rows = (tables[0][1], tables[0][2]) if tables else ([], [])
@@ -132,8 +156,8 @@ def write_results(result, output_prefix=None, output_format="tsv"):
         _write_text(path, _render_tsv_block(columns, rows) + "\n")
         written.append(path)
     else:
-        for table_type, columns, rows in tables:
-            path = f"{output_prefix}.{table_type}.tsv"
+        for label, (_, columns, rows) in zip(_labels(tables), tables):
+            path = f"{output_prefix}.{label}.tsv"
             _write_text(path, _render_tsv_block(columns, rows) + "\n")
             written.append(path)
     for path in written:

@@ -149,6 +149,7 @@ STATE_DIR="$PROJECT_ROOT/.ngargparser"
 GET_LIBS_SCRIPT="$SRC_DIR/get_libs.sh"
 LIBS_STAMP="$STATE_DIR/libs-stamp"
 GET_LIBS_LOG="$STATE_DIR/get_libs.log"
+HOOKS_LOG="$STATE_DIR/hooks.log"
 LIBS_DIR="$PROJECT_ROOT/libs"
 STAMP_FORMAT="ngargparser-libs-stamp 1"
 NL=$'\n'
@@ -250,15 +251,19 @@ setup_exclusions() {
     fi
 
     # Batch evaluation. Exit 0 = some paths ignored, 1 = none ignored (not an
-    # error), >1 = fatal. Excluded dirs get their trailing '/' back, the form
-    # is_excluded expects.
+    # error), >1 = fatal. Paths go in and come out NUL-separated: without -z,
+    # git C-quotes names holding '"', '\' or a tab (core.quotePath does not stop
+    # that), and the quoted form never matches the path. Excluded dirs get their
+    # trailing '/' back, the form is_excluded expects.
     local status=0
+    tr '\n' '\0' < "$candidates" > "$TMPWORK/candidates0"
     git -C "$IGNORE_REPO" -c core.quotePath=off -c core.excludesFile=/dev/null \
-        check-ignore --stdin < "$candidates" > "$TMPWORK/ignored" || status=$?
+        check-ignore -z --stdin < "$TMPWORK/candidates0" > "$TMPWORK/ignored0" || status=$?
     if [ "$status" -gt 1 ]; then
         echo "ERROR: git check-ignore failed (exit $status) while evaluating distignore rules" >&2
         exit 1
     fi
+    tr '\0' '\n' < "$TMPWORK/ignored0" > "$TMPWORK/ignored"
     awk 'NR == FNR { dir[$0] = 1; next } { print (($0 in dir) ? $0 "/" : $0) }' \
         "$dirs" "$TMPWORK/ignored" > "$EXCLUDED_LIST"
 }
@@ -650,6 +655,23 @@ check_startup() {
             scripts+=("$script")
         fi
     done
+    if [ ${#scripts[@]} -eq 0 ]; then
+        # A tarball without the project's only entry script cannot run, so a
+        # .distignore rule that drops it fails the build instead of skipping.
+        local project_scripts=() entry
+        for script in "$PROJECT_ROOT"/src/run_*.py; do
+            if [ -f "$script" ]; then
+                project_scripts+=("$script")
+            fi
+        done
+        if [ ${#project_scripts[@]} -eq 1 ]; then
+            entry="src/$(basename "${project_scripts[0]}")"
+            if is_excluded "$entry"; then
+                error "$entry is excluded by .distignore, so the tarball would have no entry script. Remove the rule that excludes it."
+                exit 1
+            fi
+        fi
+    fi
     if [ ${#scripts[@]} -ne 1 ]; then
         notice "Startup check skipped: expected exactly one src/run_*.py in the build, found ${#scripts[@]}."
         return 0
@@ -730,6 +752,11 @@ on_exit() {
     exit $status
 }
 trap on_exit EXIT
+# Without these, Ctrl-C or a kill runs on_exit with the status of the last
+# command that finished (usually 0), so the half-built copy stays. The codes
+# are 128 + the signal number, as the shell reports them.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # Clean and recreate build directory. The previous tarball goes too, so a
 # failed build never leaves an old one that looks fresh.
@@ -793,9 +820,17 @@ if [ -n "$HOOK_SCRIPT" ]; then
     # Set environment variables visible to the hook
     export SRC_DIR PROJECT_ROOT APP_NAME TOOL_NAME TOOL_VERSION TOOL_DIR BUILD_DIR
 
-    # Run script (suppress output in progress mode)
+    # In progress mode the hook's output goes to a log, shown when it fails.
     if [ "$PROGRESS_MODE" = true ]; then
-        bash "$HOOK_SCRIPT" > /dev/null 2>&1
+        mkdir -p "$STATE_DIR"
+        HOOK_RC=0
+        bash "$HOOK_SCRIPT" > "$HOOKS_LOG" 2>&1 || HOOK_RC=$?
+        if [ "$HOOK_RC" -ne 0 ]; then
+            error "scripts/hooks.sh failed (exit $HOOK_RC)."
+            echo "--- last lines of .ngargparser/hooks.log ---" >&2
+            tail -n 20 "$HOOKS_LOG" >&2
+            exit 1
+        fi
     else
         bash "$HOOK_SCRIPT"
     fi

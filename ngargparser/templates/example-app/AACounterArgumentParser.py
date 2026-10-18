@@ -28,9 +28,9 @@ class AACounterArgumentParser(NGArgumentParser):
         # -----------------------------------------------------
         # Genuinely mutually exclusive, not just labelled that way: argparse
         # rejects passing both with exit 2, rather than silently using the TSV
-        # and ignoring the JSON.
+        # and ignoring the JSON. It also rejects passing neither.
         self.predict_input_group.title = "Input method (mutually exclusive)"
-        inputs = self.predict_input_group.add_mutually_exclusive_group()
+        inputs = self.predict_input_group.add_mutually_exclusive_group(required=True)
         inputs.add_argument("--input-tsv", "-t",
                                 dest="input_tsv",
                                 type=validators.validate_file,
