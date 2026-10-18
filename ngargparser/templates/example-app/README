@@ -126,7 +126,8 @@ uv run python src/run_aa_counter.py postprocess --job-desc-file ../aa-counter-ou
 ```
 
 `--input-results-dir` merges every result file in a folder instead. With it,
-aa-counter needs `-p`, an existing folder to write `final-result.json` to.
+give `-o <prefix>` to write `<prefix>.json`, or `-p`, an existing folder to
+write `final-result.json` to. With neither, aa-counter stops with a usage error.
 With `--job-desc-file`, aa-counter does not write to `-p`, but a `-p` you pass
 must still be an existing folder.
 

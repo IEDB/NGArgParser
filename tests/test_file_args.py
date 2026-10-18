@@ -134,3 +134,44 @@ def test_example_app_failed_preprocess_leaves_no_folders(example_project):
     result = run_script(example_project, "run_aa_counter.py", "preprocess", "-o", "out", "-j", "nonexist.json")
     assert result.returncode == 2
     assert not (example_project / "out").exists()
+
+
+# The example's postprocess with --input-results-dir: -o alone used to crash with
+# TypeError (it built a default path from the missing -p first).
+
+
+@pytest.fixture
+def example_results(example_project):
+    run_script(example_project, "run_aa_counter.py", "preprocess", "-j", "src/example.json", "-o", "../jobs")
+    jobs = json.loads((example_project / ".." / "jobs" / "job_descriptions.json").read_text())
+    for job in jobs[:-1]:
+        script, *args = job["shell_cmd"].split()
+        assert subprocess.run([sys.executable, script, *args], cwd=example_project).returncode == 0
+    return example_project / ".." / "jobs"
+
+
+def test_example_postprocess_input_dir_with_output_prefix(example_project, example_results):
+    result = run_script(
+        example_project, "run_aa_counter.py", "postprocess", "-i", "../jobs/predict-outputs", "-o", "../merged"
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads((example_project / ".." / "merged.json").read_text())["results"][0]["table_data"]
+
+
+def test_example_postprocess_input_dir_needs_an_output(example_project, example_results):
+    result = run_script(example_project, "run_aa_counter.py", "postprocess", "-i", "../jobs/predict-outputs")
+
+    assert result.returncode == 2
+    assert "with --input-results-dir, give -o <prefix> or -p <folder>" in result.stderr
+
+
+def test_example_postprocess_input_dir_with_results_dir(example_project, example_results):
+    # Control: -p alone still writes final-result.json into that folder.
+    (example_project / ".." / "final").mkdir()
+    result = run_script(
+        example_project, "run_aa_counter.py", "postprocess", "-i", "../jobs/predict-outputs", "-p", "../final"
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (example_project / ".." / "final" / "final-result.json").exists()

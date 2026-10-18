@@ -676,16 +676,18 @@ def create_paths_file(project_name_or_path):
                     break
                 elif response in ["n", "no"]:
                     print("Skipping paths.py creation. Existing file was not modified.")
-                    return
+                    return 0
                 else:
                     print("Please enter 'y' for yes or 'n' for no.")
 
         # Get dependencies from user, refusing names ./configure couldn't see as a tool
         dependencies = []
+        refused = False
         for dep in get_dependencies():
             reason = _invalid_dep_name(dep)
             if reason:
                 print(f"\033[91m✗\033[0m Not added: {reason}")
+                refused = True
             else:
                 dependencies.append(dep)
 
@@ -695,7 +697,7 @@ def create_paths_file(project_name_or_path):
             with open(paths_file_path, "w", encoding="utf-8") as f:
                 f.write("")
             print(f"\n\033[92m✓\033[0m Created empty '\033[92m{paths_file_path}\033[0m'.")
-            return
+            return 1 if refused else 0
         else:
             print(f"Found {len(dependencies)} dependencies:")
             for i, dep in enumerate(dependencies, 1):
@@ -720,11 +722,14 @@ def create_paths_file(project_name_or_path):
             f"\n\033[92m✓\033[0m Created '\033[92m{paths_file_path}\033[0m' with \033[92m{len(dependencies)}\033[0m dependencies."
         )
         print(f"You can now edit '{paths_file_path}' to set the actual paths for your dependencies.")
+        return 1 if refused else 0
 
     except KeyboardInterrupt:
         print("\n\n\033[91m✗\033[0m Paths.py configuration cancelled.")
+        return 1
     except Exception as e:
         print(f"\n\033[91m✗\033[0m Error creating paths.py: \033[91m{e}\033[0m")
+        return 1
 
 
 # What makes a dependency is ./configure's rule (templates/configure.py,
@@ -860,17 +865,19 @@ def update_paths_file(file_path, existing_content, existing_deps):
 
     if not new_dependencies:
         print("No new dependencies to add.")
-        return
+        return 0
 
     # Check for duplicates and prepare new sections
     new_sections = []
     skipped = []
+    refused = False
 
     for dep in new_dependencies:
         var_name = normalize_name(dep)
         reason = _invalid_dep_name(dep)
         if reason:
             print(f"\033[91m✗\033[0m Not added: {reason}")
+            refused = True
         elif var_name in existing_deps:
             skipped.append(dep)
         else:
@@ -883,7 +890,7 @@ def update_paths_file(file_path, existing_content, existing_deps):
 
     if not new_sections:
         print("No new dependencies to add after checking for duplicates.")
-        return
+        return 1 if refused else 0
 
     # Append new sections to existing content
     # Remove any trailing whitespace from existing content first
@@ -917,9 +924,11 @@ def update_paths_file(file_path, existing_content, existing_deps):
             f"\n\033[92m✓\033[0m Updated '\033[92m{file_path}\033[0m' with \033[92m{len(new_sections)}\033[0m new dependencies."
         )
         print(f"You can now edit '{file_path}' to set the actual paths for your dependencies.")
+        return 1 if refused else 0
 
     except Exception as e:
         print(f"\n\033[91m✗\033[0m Error updating file: \033[91m{e}\033[0m")
+        return 1
 
 
 def remove_dependencies_from_file(file_path, existing_content, existing_deps):
@@ -935,7 +944,7 @@ def remove_dependencies_from_file(file_path, existing_content, existing_deps):
 
     if not existing_deps:
         print("No dependencies found to remove.")
-        return
+        return 0
 
     print("\nCurrent dependencies:")
     dep_list = list(existing_deps.items())
@@ -950,7 +959,7 @@ def remove_dependencies_from_file(file_path, existing_content, existing_deps):
         selection = input("Dependencies to remove: ").strip()
         if not selection:
             print("Removal cancelled.")
-            return
+            return 0
 
         try:
             # Parse selection (support both comma-separated and ranges)
@@ -996,13 +1005,14 @@ def remove_dependencies_from_file(file_path, existing_content, existing_deps):
             break
         elif confirm in ["n", "no"]:
             print("Removal cancelled.")
-            return
+            return 0
         else:
             print("Please enter 'y' for yes or 'n' for no.")
 
     # Same removal as `cli deps remove`: exact block lines, a backup first, and
     # a re-read afterwards so only what is really gone is reported.
-    _remove_deps(file_path, [var_name for var_name, _ in deps_to_remove])
+    result = _remove_deps(file_path, [var_name for var_name, _ in deps_to_remove])
+    return 1 if result["not_found"] or result["refused"] or result["error"] else 0
 
 
 def _add_deps(file_path, names):
@@ -1221,7 +1231,7 @@ def setup_paths_file(file_path):
         if existing_content is None:
             # Never overwrite a paths.py that can't be read or doesn't parse.
             print(f"Fix '{file_path}' first; nothing was changed.")
-            return
+            return 1
 
         print(f"=== Paths file exists at {file_path} ===")
 
@@ -1241,19 +1251,17 @@ def setup_paths_file(file_path):
         while True:
             choice = input("Choose an option (1-3): ").strip()
             if choice == "1":
-                update_paths_file(file_path, existing_content, existing_deps)
-                break
+                return update_paths_file(file_path, existing_content, existing_deps)
             elif choice == "2":
-                remove_dependencies_from_file(file_path, existing_content, existing_deps)
-                break
+                return remove_dependencies_from_file(file_path, existing_content, existing_deps)
             elif choice == "3":
                 print("Operation cancelled.")
-                break
+                return 0
             else:
                 print("Please enter 1, 2, or 3.")
     else:
         # File doesn't exist - create new one
-        create_paths_file(file_path)
+        return create_paths_file(file_path)
 
 
 def startapp_command(args):
@@ -1310,20 +1318,38 @@ def deps_command(args):
             result = _add_deps("paths.py", args.names)
             return 1 if result["rejected"] or result["error"] else 0
         # No names given → fall through to interactive add menu via setup_paths_file
-        setup_paths_file("paths.py")
-        return 0
+        return _deps_menu("paths.py")
     if action == "remove":
         if args.names:
             result = _remove_deps("paths.py", args.names)
             return 1 if result["not_found"] or result["refused"] or result["error"] else 0
-        setup_paths_file("paths.py")
-        return 0
+        return _deps_menu("paths.py")
     if action == "list":
         _count, error = _list_deps("paths.py")
         return 1 if error else 0
     # Bare `cli deps` → today's interactive flow
-    setup_paths_file("paths.py")
-    return 0
+    return _deps_menu("paths.py")
+
+
+def _deps_menu(file_path):
+    """Run the interactive `cli deps` menu; return 1 when it changed nothing because of an error.
+
+    The menu asks questions, so without a terminal (a script, CI) it stops at once
+    instead of reading empty answers and reporting success.
+    """
+    import sys
+
+    if not sys.stdin.isatty():
+        print(
+            "\033[91m✗\033[0m cli deps without names asks questions, so it needs a terminal. "
+            "Use 'cli deps add <name> ...', 'cli deps remove <name> ...' or 'cli deps list'."
+        )
+        return 1
+    try:
+        return setup_paths_file(file_path)
+    except (EOFError, KeyboardInterrupt):
+        print("\nCancelled.")
+        return 1
 
 
 class _RemoteUnavailable(Exception):
@@ -1335,6 +1361,11 @@ class _RemoteUnavailable(Exception):
 
 
 _UNSET = object()  # sentinel: "argument not supplied" (distinct from None)
+
+
+# A release tag: vX.Y.Z, the v optional, a +build suffix allowed. Pre-release tags
+# (v0.4.2-test, v1.0.0-rc1) do not match.
+_RELEASE_TAG_RE = re.compile(r"v?(\d+)\.(\d+)\.(\d+)(?:\+.*)?")
 
 
 def _latest_release_tag(remote_url, timeout=10, *, strict=False, prompt=True):
@@ -1358,7 +1389,6 @@ def _latest_release_tag(remote_url, timeout=10, *, strict=False, prompt=True):
     wants credentials fails fast instead of stalling until `timeout`. Stored
     credentials, credential helpers and SSH keys still apply.
     """
-    import re
     import subprocess
 
     env, stdin = None, None
@@ -1382,7 +1412,7 @@ def _latest_release_tag(remote_url, timeout=10, *, strict=False, prompt=True):
     for line in out.splitlines():
         ref = line.split("\t", 1)[-1] if "\t" in line else ""
         name = ref.rsplit("/", 1)[-1]
-        m = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:\+.*)?", name)
+        m = _RELEASE_TAG_RE.fullmatch(name)
         if m:
             semver_tags.append((tuple(int(g) for g in m.groups()), name))
     return max(semver_tags)[1] if semver_tags else None
@@ -1727,8 +1757,10 @@ def _maybe_notify_update(command):
             return
 
         cache = _read_update_cache()
-        latest = cache.get("latest")
-        fresh = (time.time() - cache.get("checked_at", 0)) < UPDATE_CHECK_TTL
+        cached = cache.get("latest")
+        latest = cached if cached and _RELEASE_TAG_RE.fullmatch(cached) else None
+        # A pre-release in the cache came from an older cli (they share the file); look it up again.
+        fresh = cached == latest and (time.time() - cache.get("checked_at", 0)) < UPDATE_CHECK_TTL
         if not fresh:
             # One bounded network check per TTL. Stamp the time even on failure
             # so we don't re-query (or hang) on every invocation when offline.

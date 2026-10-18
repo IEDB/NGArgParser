@@ -183,6 +183,10 @@ def main():
         preprocess.run(**vars(args))
 
     if args.subcommand == 'postprocess':
+        # Without a job description file, there is no default place for the result.
+        if args.postprocess_input_dir and not (args.output_prefix or args.postprocess_result_dir):
+            parser.error("with --input-results-dir, give -o <prefix> or -p <folder> for the merged result")
+
         # Run postprocess logic
         postprocess.run(**vars(args))
 

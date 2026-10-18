@@ -410,3 +410,29 @@ def test_bare_cli_does_not_run_live_check(monkeypatch, capsys):
     assert captured.out.startswith("usage: cli ")
     assert captured.err == ""
     assert cli._notify_at_exit in registered and unregistered == []
+
+
+# Every installed cli shares the cache file, and an older one may have stored a
+# pre-release tag such as v0.4.2-test. The notice must not offer it.
+
+
+def test_passive_notice_looks_up_again_over_a_cached_pre_release(monkeypatch, tmp_path, capsys):
+    cache = _seed_cache(tmp_path, "v9.9.9-test")  # fresh, but not a release tag
+    calls = _lookup_returning(monkeypatch, f"v{INSTALLED}")
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
+
+    cli._maybe_notify_update("generate")
+
+    assert len(calls) == 1
+    assert capsys.readouterr().err == ""
+    assert json.loads(cache.read_text(encoding="utf-8"))["latest"] == f"v{INSTALLED}"
+
+
+def test_passive_notice_never_offers_a_cached_pre_release_when_offline(monkeypatch, tmp_path, capsys):
+    _seed_cache(tmp_path, "v9.9.9-test")
+    _lookup_returning(monkeypatch, None)  # GitLab unreachable
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
+
+    cli._maybe_notify_update("generate")
+
+    assert NOTICE not in capsys.readouterr().err

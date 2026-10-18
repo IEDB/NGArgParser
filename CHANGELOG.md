@@ -123,6 +123,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed build now also removes the previous tarball, so an old one never looks fresh.
 
 ### Fixed
+- The once-a-day update notice no longer offers a pre-release tag left in the shared cache. Every
+  installed `cli` uses `~/.cache/ngargparser/update-check.json`, and an older one that does not skip
+  pre-release tags stored `v0.4.2-test`; the notice trusted it for a day ("0.4.1 → v0.4.2-test").
+  A cached value that is not a release tag now counts as stale: the notice looks the latest release
+  up again, and prints nothing if GitLab cannot be reached.
+- The interactive `cli deps` menu exits 1 when it changed nothing because of an error (a refused
+  name, a `paths.py` that does not parse, a failed write, Ctrl-C or Ctrl-D at a prompt), like
+  `cli deps add/remove/list`; it always exited 0. Without a terminal (a script or CI job) it stops at
+  once with "needs a terminal" and exit 1, instead of printing "Error creating paths.py: EOF when
+  reading a line" and exiting 0.
+- The example app's `postprocess --input-results-dir ... -o <prefix>` writes `<prefix>.json`; it
+  crashed with `TypeError` when `-p` was not given. With neither `-o` nor `-p` it stops with a usage
+  error.
 - `cli sync --no-backup` holds when sync upgrades ngargparser first. The restarted sync got only
   `s` and carried `--no-verify` alone, so it wrote backups anyway; `--no-backup` now travels as
   `NGARGPARSER_SYNC_NO_BACKUP=1`.

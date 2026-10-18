@@ -1,4 +1,6 @@
 import importlib.util
+import io
+import sys
 from argparse import Namespace
 
 import pytest
@@ -222,3 +224,70 @@ def test_first_run_menu_refuses_names_configure_cannot_see(in_tmp_dir, monkeypat
     assert "peer_path=None" in content
     assert "foo_venv" not in content
     assert "Not added: 'foo_venv' becomes 'foo_venv', which ends in '_venv'" in capsys.readouterr().out
+
+
+# The interactive menu (`cli deps` with no names) exits 1 when it changed nothing
+# because of an error, like `cli deps add/remove/list`; it used to exit 0 always.
+
+
+class _Terminal(io.StringIO):
+    def isatty(self):
+        return True
+
+
+@pytest.fixture
+def terminal(monkeypatch):
+    def _answers(*answers):
+        monkeypatch.setattr(sys, "stdin", _Terminal())
+        replies = iter(answers)
+        monkeypatch.setattr("builtins.input", lambda *_: next(replies))
+
+    return _answers
+
+
+def test_menu_without_a_terminal_stops_with_exit_1(in_tmp_dir, monkeypatch, capsys):
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))  # a script or CI job: not a terminal
+
+    assert deps(None) == 1
+    assert "needs a terminal" in capsys.readouterr().out
+    assert not (in_tmp_dir / "paths.py").exists()
+
+
+def test_menu_on_a_broken_paths_py_exits_1(in_tmp_dir, terminal):
+    write_paths(in_tmp_dir, "mhci_path = '/opt/mhci\n")
+    terminal()
+
+    assert deps(None) == 1
+
+
+def test_first_run_menu_with_a_refused_name_exits_1(in_tmp_dir, terminal):
+    terminal("foo_venv", "")
+
+    assert deps(None) == 1
+
+
+def test_first_run_menu_with_a_good_name_exits_0(in_tmp_dir, terminal):
+    terminal("peer", "")
+
+    assert deps(None) == 0  # control
+    assert "peer_path=None" in (in_tmp_dir / "paths.py").read_text()
+
+
+def test_menu_cancel_exits_0(in_tmp_dir, terminal):
+    cli.add_deps_to_paths("paths.py", ["peer"])
+    terminal("3")
+
+    assert deps(None) == 0  # control: cancelling is not an error
+
+
+def test_end_of_input_at_a_menu_prompt_exits_1(in_tmp_dir, monkeypatch, capsys):
+    cli.add_deps_to_paths("paths.py", ["peer"])
+    monkeypatch.setattr(sys, "stdin", _Terminal())
+
+    def eof(*_):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", eof)
+
+    assert deps(None) == 1
+    assert "Cancelled." in capsys.readouterr().out

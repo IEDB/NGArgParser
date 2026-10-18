@@ -441,7 +441,7 @@ cli deps add mhci-predictor                          # writes a stub block to pa
 | `cli deps add <dep> [<dep> ...]` | Writes one stub block per name to `paths.py` |
 | `cli deps remove <dep> [<dep> ...]` | Removes those blocks (alias `rm`); backs up `paths.py` to `paths.py.bak` first |
 | `cli deps list` | Lists the declared dependencies; `●` means the path is set, `○` means it is still `None` (alias `ls`) |
-| `cli deps` | Opens an interactive add and remove menu. Without `paths.py`, it asks for names first and creates the file |
+| `cli deps` | Opens an interactive add and remove menu. Without `paths.py`, it asks for names first and creates the file. It needs a terminal: in a script or CI job it stops with exit code 1 |
 | `./configure --<dep>-path=<path>` | Sets a setting in `paths.py` (also `--<dep>-venv`, `--<dep>-module`, `--<dep>-lib-path`), then regenerates `.env` and the setup scripts |
 | `./configure` | Regenerates `.env` and one `setup_<dep>_env.sh` per dependency from `paths.py`, for example after a hand edit |
 
@@ -1072,7 +1072,7 @@ A flag exists only for a dependency `cli deps add` has declared, so a misspelled
 
 `cli deps` and `./configure` use one rule: a dependency is a top-level `<dep>_path` variable whose `<dep>` does not end in `_lib`, `_venv` or `_module` (those are its settings). The rule covers plain `<dep>_path = value` lines at the top of the file, the form `cli deps add` writes. `./configure` runs `paths.py` as Python, so it also sees other forms (a type annotation, a line inside an `if`, a chained `a_path = b_path = ...`) that `cli deps` does not list or remove; keep to the plain form.
 
-The `''' [ Title ] '''` line above a block is only a label, so a hand-edited `paths.py` whose title does not match its variables (`T Cell Class I` above `tcell_class_i_path`), or one with no titles at all, still lists and removes correctly. `cli deps add <name>` and the interactive menu refuse a name ending in `_lib`, `_venv`, `_module` or `_path`, because `./configure` could not tell it from a setting. `remove` deletes the block's exact lines, refuses a block mixed with another tool's lines, and reports only what it really removed. `cli deps add` and `cli deps remove` with names, and `cli deps list`, exit 1 when a name was refused or not found, or when `paths.py` does not parse. `cli deps` never overwrites such a file. The interactive menu always exits 0.
+The `''' [ Title ] '''` line above a block is only a label, so a hand-edited `paths.py` whose title does not match its variables (`T Cell Class I` above `tcell_class_i_path`), or one with no titles at all, still lists and removes correctly. `cli deps add <name>` and the interactive menu refuse a name ending in `_lib`, `_venv`, `_module` or `_path`, because `./configure` could not tell it from a setting. `remove` deletes the block's exact lines, refuses a block mixed with another tool's lines, and reports only what it really removed. Every form of `cli deps`, the interactive menu included, exits 1 when a name was refused or not found, or when `paths.py` does not parse, and never overwrites such a file. Cancelling the menu exits 0; Ctrl-C or Ctrl-D at a prompt exits 1.
 
 `./configure` copies only plain values (text, numbers, paths) from `paths.py` into `.env`. Settings left at `None` are skipped, and an import such as `from pathlib import Path` does not appear there.
 
