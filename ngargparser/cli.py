@@ -680,8 +680,14 @@ def create_paths_file(project_name_or_path):
                 else:
                     print("Please enter 'y' for yes or 'n' for no.")
 
-        # Get dependencies from user
-        dependencies = get_dependencies()
+        # Get dependencies from user, refusing names ./configure couldn't see as a tool
+        dependencies = []
+        for dep in get_dependencies():
+            reason = _invalid_dep_name(dep)
+            if reason:
+                print(f"\033[91m✗\033[0m Not added: {reason}")
+            else:
+                dependencies.append(dep)
 
         if not dependencies:
             print("No dependencies specified. Creating empty paths.py file.")
@@ -2024,7 +2030,7 @@ def _clash_predict_output_options(skipped=None):
     The base class has added `--output-prefix/-o` and `--output-format/-f` to
     `predict` itself since 0.3.0, so a project that declares either again, or
     reuses one of the short letters for another option, fails with argparse's
-    "conflicting option strings" as soon as its parser is built. A declaration
+    "conflicting option string(s)" as soon as its parser is built. A declaration
     that follows `remove_argument(<option>, "predict")` in the same file is not
     a clash: removing an option frees all its names (removing --output-format
     frees -f too), so the project can declare its own.
@@ -2097,7 +2103,7 @@ KNOWN_CLASHES = [
         "explain": (
             "Since 0.3.0 the framework adds --output-prefix/-o and --output-format/-f to predict.",
             "Declaring either again, or reusing -o or -f for another option there, makes every",
-            'command fail with "conflicting option strings".',
+            'command fail with "conflicting option string(s)".',
             "Delete the duplicate declaration, or give your own option another letter. To change",
             "the help text or default of the framework's option, use",
             "self.parser_predict.update_arguments(...); to replace it, call",
@@ -2266,7 +2272,7 @@ def sync_command(args):
         import shutil
 
         dry_run = getattr(args, "dry_run", False)
-        do_backup = getattr(args, "backup", True)
+        do_backup = getattr(args, "backup", True) and not _env_flag("NGARGPARSER_SYNC_NO_BACKUP")
         verify = getattr(args, "verify", True) and not _env_flag("NGARGPARSER_SYNC_NO_VERIFY")
 
         # Check if we're in a project directory
@@ -2324,6 +2330,8 @@ def sync_command(args):
             env = {**os.environ, "NGARGPARSER_NO_SELF_UPGRADE": "1"}
             if not verify:  # the bare re-exec drops --no-verify, so carry it in the environment
                 env["NGARGPARSER_SYNC_NO_VERIFY"] = "1"
+            if not do_backup:  # ... and --no-backup the same way
+                env["NGARGPARSER_SYNC_NO_BACKUP"] = "1"
             os.execvpe(sys.argv[0], [sys.argv[0], "s"], env)
 
         if dry_run:
@@ -2401,6 +2409,17 @@ def sync_command(args):
                 os.makedirs("scripts/core", exist_ok=True)
                 shutil.move(_SYNC_LEGACY_BUILD_CONF, "scripts/core/build.conf")
                 print(f"  └ \033[93mMigrated\033[0m {_SYNC_LEGACY_BUILD_CONF} → scripts/core/build.conf")
+            # A legacy file left behind because its new name already exists is never
+            # run (a hook) or stops the build (build.conf); say so rather than leave it.
+            for legacy, current, effect in (
+                *((hook, "scripts/hooks.sh", "The build never runs it") for hook in _SYNC_LEGACY_HOOKS),
+                (_SYNC_LEGACY_BUILD_CONF, "scripts/core/build.conf", "The build stops while it exists"),
+            ):
+                if os.path.exists(legacy):
+                    print(
+                        f"  └ \033[93m⚠\033[0m {legacy} was not moved: {current} already exists. "
+                        f"{effect}; merge it into {current} and delete it."
+                    )
 
         # Framework-owned files (see _sync_framework_files). _sync_file copies
         # only when content differs, backs up any overwrite, and records the

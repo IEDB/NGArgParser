@@ -433,7 +433,7 @@ def main():
         config['APP_NAME'] = env_app_name
     elif 'APP_NAME' not in config:
         base_name = os.path.basename(app_root)
-        match = re.match(r'^ng[_-]([A-Za-z0-9_]+?)-local$', base_name)
+        match = re.match(r'^ng[_-]([A-Za-z0-9_-]+?)-local$', base_name)
         config['APP_NAME'] = match.group(1) if match else base_name
 
     # Publish this project's own virtualenv so a tool that depends on it can

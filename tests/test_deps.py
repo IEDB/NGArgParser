@@ -208,3 +208,17 @@ def test_cli_deps_and_configure_see_the_same_tools(in_tmp_dir, sample):
     seen_by_configure = list(configure.detect_dependency_tools(configure.load_config(str(paths))))
 
     assert seen_by_cli == seen_by_configure
+
+
+def test_first_run_menu_refuses_names_configure_cannot_see(in_tmp_dir, monkeypatch, capsys):
+    # With no paths.py, the menu asks for names and creates the file; it used to
+    # write `foo_venv` as a tool, which ./configure reads as a setting instead.
+    answers = iter(["foo_venv", "peer", ""])
+    monkeypatch.setattr("builtins.input", lambda *_: next(answers))
+
+    cli.create_paths_file("paths.py")
+
+    content = (in_tmp_dir / "paths.py").read_text()
+    assert "peer_path=None" in content
+    assert "foo_venv" not in content
+    assert "Not added: 'foo_venv' becomes 'foo_venv', which ends in '_venv'" in capsys.readouterr().out

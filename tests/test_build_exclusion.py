@@ -265,3 +265,22 @@ def test_folder_contents_rule_alone_ships_nothing_from_it(scaffolded_project, ru
     members = run_build(scaffolded_project).members
 
     assert not any(name == "data" or name.startswith("data/") for name in members)
+
+
+# The deploy contract re-includes the top-level README and deploy/ only; a nested
+# README or deploy/ follows the user's rules like any other file.
+
+
+def test_nested_readme_and_deploy_follow_user_rules(scaffolded_project, run_build):
+    (scaffolded_project / "docs").mkdir()
+    (scaffolded_project / "docs" / "README").write_text("internal notes\n")
+    (scaffolded_project / "docs" / "guide.txt").write_text("guide\n")
+    (scaffolded_project / "sub" / "deploy").mkdir(parents=True)
+    (scaffolded_project / "sub" / "deploy" / "notes.txt").write_text("notes\n")
+    append_rules(scaffolded_project, "docs/*", "sub/*")
+
+    members = run_build(scaffolded_project).members
+
+    assert "docs/README" not in members
+    assert "sub/deploy/notes.txt" not in members
+    assert "README" in members and "deploy/install.sh" in members  # control: top level always ships

@@ -309,3 +309,34 @@ def test_real_sync_from_a_local_checkout_still_installs_a_named_version(
 
     assert upgrade_spy["installed"] == [f"{cli.BASE_REPO_URL}{expected}"]
     assert upgrade_spy["re_exec"]
+
+
+# A legacy file sync cannot move (its new name already exists) is never run, or
+# stops the build; sync says so instead of leaving it in place without a word.
+
+
+def test_sync_warns_about_a_legacy_hook_it_could_not_move(scaffolded_project, sync_args, strip_ansi, capsys):
+    scripts = scaffolded_project / "scripts"
+    (scripts / "dependencies.sh").write_text("echo deps\n")
+    (scripts / "build_hooks.sh").write_text("echo hooks\n")
+
+    assert cli.sync_command(sync_args()) == 0
+
+    out = strip_ansi(capsys.readouterr().out)
+    assert (scripts / "hooks.sh").read_text() == "echo deps\n"
+    assert "scripts/build_hooks.sh was not moved: scripts/hooks.sh already exists. The build never runs it" in out
+
+
+def test_sync_warns_about_a_legacy_build_conf_it_could_not_move(scaffolded_project, sync_args, strip_ansi, capsys):
+    (scaffolded_project / "scripts" / "build.conf").write_text('TARBALL_PREFIX="LJI_"\n')
+
+    assert cli.sync_command(sync_args()) == 0
+
+    out = strip_ansi(capsys.readouterr().out)
+    assert "scripts/build.conf was not moved: scripts/core/build.conf already exists. The build stops" in out
+
+
+def test_sync_prints_no_legacy_warning_for_a_current_tool(scaffolded_project, sync_args, strip_ansi, capsys):
+    assert cli.sync_command(sync_args()) == 0
+
+    assert "was not moved" not in strip_ansi(capsys.readouterr().out)

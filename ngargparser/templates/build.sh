@@ -140,11 +140,7 @@ TOOL_DIR=$TOOL_NAME-$TOOL_VERSION
 BUILD_DIR=$PROJECT_ROOT/build/$TOOL_DIR
 
 [ -z "$TARBALL_PREFIX" ] && TARBALL_PREFIX="IEDB_"
-if [ -n "$TARBALL_PREFIX" ]; then
-    TAR_NAME="${TARBALL_PREFIX}$(echo "$TOOL_NAME" | tr '[:lower:]' '[:upper:]')-${TOOL_VERSION}.tar.gz"
-else
-    TAR_NAME="${TOOL_NAME}-${TOOL_VERSION}.tar.gz"
-fi
+TAR_NAME="${TARBALL_PREFIX}$(echo "$TOOL_NAME" | tr '[:lower:]' '[:upper:]')-${TOOL_VERSION}.tar.gz"
 
 # Dependency fetch state. .ngargparser/ is the project's runtime-state dir: the
 # scaffold's .gitignore keeps it out of git and the '.*' rule keeps it out of
@@ -190,10 +186,12 @@ rm_tree() {
 #   1. '.*'                      built-in baseline: hidden files do not ship
 #                                (lowest precedence — '!' rules can re-include)
 #   2. the user's exclusion file, verbatim
-#   3. '!README' '!deploy/' '!deploy/install.sh'
+#   3. '!/README' '!/deploy/' '!/deploy/install.sh'
 #                                tarball contract: the deploy orchestrator
 #                                requires these at the tarball top level
-#                                (highest precedence — not overridable)
+#                                (highest precedence — not overridable).
+#                                Anchored, so a nested README or deploy/
+#                                follows the user's rules like any file
 # The project-root build/ and .git/ dirs are hard-pruned from the candidate
 # list, so no rule (not even '!') can bring them back. Entries fetched by
 # scripts/get_libs.sh are not filtered: they ship as get_libs.sh left them.
@@ -223,7 +221,7 @@ setup_exclusions() {
             # line here is inert — .gitignore ignores blank lines).
             printf '\n'
         fi
-        printf '!README\n!deploy/\n!deploy/install.sh\n'
+        printf '!/README\n!/deploy/\n!/deploy/install.sh\n'
     } > "$IGNORE_REPO/.gitignore"
 
     # Candidate paths: everything in the project, PROJECT_ROOT-relative. Nested

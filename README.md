@@ -163,7 +163,7 @@ uv run python src/run_aa_counter.py predict -j src/example.json
 | `.distignore` | Files to keep out of the tarball |
 | `deploy/install.sh` | Setup steps on the deploy host |
 
-Leave `src/core/`, `scripts/core/build.sh`, `Makefile` and `configure` alone: `cli sync` overwrites them. [File ownership](#file-ownership) has the full rule, and [Project tree](#project-tree) shows every file.
+Leave `src/core/`, `scripts/core/build.sh`, `Makefile` and `configure` alone: `cli sync` overwrites them (all of `src/core/` except its empty `__init__.py`). [File ownership](#file-ownership) has the full rule, and [Project tree](#project-tree) shows every file.
 
 ## Workflow: preprocess, predict, postprocess
 
@@ -209,7 +209,7 @@ uv run python src/run_my_app.py postprocess -i ../my-app-runs/job/predict-output
 └── results/
 ```
 
-When `paths.py` declares dependencies with a path set, `preprocess` creates the tree once per dependency (without `results/`) and once for the tool, in `<output dir>/<dependency>/` and `<output dir>/<APP_NAME>/`. Unlike `cli deps` and `./configure`, `preprocess` finds dependencies by the `''' [ Title ] '''` line above each block. The folder name is that title in lowercase with spaces as `_`, except that `T Cell Class I` and `T Cell Class II` become `mhci` and `mhcii`. A block without a title is not counted, and a `paths.py` with no titled block gets the tree above.
+When `paths.py` declares dependencies with a path set, `preprocess` creates the tree once per dependency (without `results/`) and once for the tool, in `<output dir>/<dependency>/` and `<output dir>/<APP_NAME>/`. Unlike `cli deps` and `./configure`, `preprocess` finds dependencies by the `''' [ Title ] '''` line above each block. The folder name is that title in lowercase with spaces as `_`, except that `T Cell Class I` and `T Cell Class II` become `mhci` and `mhcii`. A block counts when any of its `*_path` settings is filled in, so a `<dep>_lib_path` alone counts. A block without its own title counts toward the titled block above it; one before the first title is ignored, and a `paths.py` with no titled block gets the tree above.
 
 `postprocess` takes exactly one input: `--job-desc-file/-j` or `--input-results-dir/-i`. The folder given to `-p` must already exist; otherwise the command stops with `'<dir>' is not a valid directory.`
 
@@ -527,13 +527,13 @@ The tarball holds one folder, `ng_<name>-<version>/`, with every file of the too
 - anything `.distignore` excludes; the default file excludes `__pycache__/`, `build.sh`, `build.md`, `Makefile` and `*.sh`
 - the tool folder's `build/` and `.git/`, always
 
-`README` and `deploy/install.sh` always ship, whatever `.distignore` says, because the deploy orchestrator uses them ([Deploy](#deploy)). The build's rules for them match at any depth, so every file named `README` and every `deploy/` folder in the tool ships too. The build adds a `VERSION` file and writes the version into `README` (see [Build pipeline](#build-pipeline)). `README.md` ships too unless `.distignore` lists it. `.distignore` does not apply to entries fetched by `scripts/get_libs.sh`; the build only strips version-control folders and caches from them ([get_libs internals](#get_libs-internals)).
+`README` and `deploy/install.sh` always ship, whatever `.distignore` says, because the deploy orchestrator uses them ([Deploy](#deploy)). These rules cover only the top-level `README` and `deploy/`; a nested `README` or `deploy/` folder follows your rules like any other file. The build adds a `VERSION` file and writes the version into `README` (see [Build pipeline](#build-pipeline)). `README.md` ships too unless `.distignore` lists it. `.distignore` does not apply to entries fetched by `scripts/get_libs.sh`; the build only strips version-control folders and caches from them ([get_libs internals](#get_libs-internals)).
 
 `.env` does not ship unless `.distignore` re-includes it, and it should not: its `APP_ROOT` is an absolute path on the build machine. An extracted tarball stays unconfigured until `./configure` writes a new `.env` there ([Deploy](#deploy)).
 
 ### `.distignore` rules
 
-`.distignore` sits at the tool folder's top, next to `.gitignore`, and lists paths that must not ship in the tarball or the build copy. It has exact `.gitignore` semantics, so you can paste `.gitignore` content as is: wildcards, folder-only `name/`, `!` negation, `/` anchoring and `**` all match at every depth of the tool folder.
+`.distignore` sits at the tool folder's top, next to `.gitignore`, and lists paths that must not ship in the tarball or the build copy. It has exact `.gitignore` semantics, so you can paste `.gitignore` content as is: wildcards, folder-only `name/`, `!` negation, `/` anchoring and `**` all work as in `.gitignore`: a pattern with no `/`, or only a trailing one, matches at every depth, and a pattern with a leading or middle `/` matches from the tool folder's top.
 
 The build adds rules around your file:
 
@@ -555,7 +555,7 @@ The build adds rules around your file:
   ```
 
 - `.git/` and `build/` at the tool folder's top are always excluded; no `!` rule brings them back.
-- `README` and `deploy/install.sh` are always included, so no rule (including the default `*.sh`) strips them. The rules `!README` and `!deploy/` match at any depth, so a nested `README` or `deploy/` folder ships as well.
+- `README` and `deploy/install.sh` are always included, so no rule (including the default `*.sh`) strips them. A nested `README` or `deploy/` folder follows your rules like any other file.
 
 The rules reach every depth of the tool folder, including code you keep in `libs/`. A symlink is copied as a link, so rules never follow it into its target. `.distignore` does not apply to entries fetched by `scripts/get_libs.sh`.
 
@@ -573,7 +573,7 @@ TARBALL_PREFIX="IEDB_"
 | `TARBALL_PREFIX` | `IEDB_` | Start of the tarball name |
 | `TOOL_NAME` | `ng_<name>` | Name of the build copy (`build/<TOOL_NAME>-<version>/`); the tarball uses it in capitals |
 
-`build.conf` sits in `scripts/core/` next to `build.sh`, but it is yours: `cli sync` never overwrites it. Older tools keep it in `scripts/`. `cli sync` moves it when `scripts/core/build.conf` does not exist yet, and the build stops while `scripts/build.conf` is still there. If both exist, merge them by hand and delete `scripts/build.conf`. `EXCLUDE_FROM_BUILD_SYMLINK` has no effect any more, because the build copies everything; a leftover setting prints a notice.
+`build.conf` sits in `scripts/core/` next to `build.sh`, but it is yours: `cli sync` never overwrites it. Older tools keep it in `scripts/`. `cli sync` moves it when `scripts/core/build.conf` does not exist yet, and the build stops while `scripts/build.conf` is still there. If both exist, sync warns about it: merge them by hand and delete `scripts/build.conf`. `EXCLUDE_FROM_BUILD_SYMLINK` has no effect any more, because the build copies everything; a leftover setting prints a notice.
 
 ### Build hook: `scripts/hooks.sh`
 
@@ -607,7 +607,7 @@ The three `*.sh` files you own run at different times, in different places:
 
 | | `scripts/get_libs.sh` | `scripts/hooks.sh` | `deploy/install.sh` |
 |---|---|---|---|
-| When | Start of `make build`: first build, after a change to the script, or when a fetched entry is missing | Every `make build`, after copying, if the file exists | Deploy time, on the target host |
+| When | Early in `make build` (step 3, after the preflight checks): first build, after a change to the script, or when a fetched entry is missing | Every `make build`, after copying, if the file exists | Deploy time, on the target host |
 | Run by | `scripts/core/build.sh` | `scripts/core/build.sh` | The nxg-tools-deployments orchestrator |
 | Purpose | Bring all outside code into the tool's `libs/` (git repositories, archives, data, software you download by hand) | Patch the build copy (code generation, edits, extra files) | Set up the extracted tarball on the host (`uv sync`, `./configure`, editing `paths.py`) |
 
@@ -660,7 +660,7 @@ Two commands update two different things:
 | Update the installed ngargparser (the `cli` command), for example before `cli generate` | `cli upgrade` | Any folder |
 | Bring one tool's framework files up to the installed ngargparser | `cli sync` | Inside that tool folder |
 
-They overlap in one place: `cli sync` upgrades ngargparser first (unless you pass `--no-upgrade` or ngargparser is a local checkout), so getting a tool onto the latest framework takes one command. `cli upgrade` is the only way to update ngargparser without touching a tool, and `--check` exists only on `cli upgrade`. Both commands take `--ref <version>` and `--dev`.
+They overlap in one place: `cli sync` upgrades ngargparser first (except with `--no-upgrade` or `--dry-run`, or for a plain `cli sync` from a local checkout), so getting a tool onto the latest framework takes one command. `cli upgrade` is the only way to update ngargparser without touching a tool, and `--check` exists only on `cli upgrade`. Both commands take `--ref <version>` and `--dev`.
 
 ### `cli upgrade`
 
@@ -713,7 +713,7 @@ The lookup is skipped in CI and when `NGARGPARSER_NO_UPDATE_CHECK=1` is set. Sub
 
 ### `cli sync`
 
-`cli sync` (alias `s`) refreshes a tool's framework-owned files to match the installed ngargparser. It upgrades ngargparser first, unless you pass `--no-upgrade` or ngargparser is a local checkout. Run it from inside the tool folder:
+`cli sync` (alias `s`) refreshes a tool's framework-owned files to match the installed ngargparser. It upgrades ngargparser first, except with `--no-upgrade` or `--dry-run`, or for a plain `cli sync` from a local checkout (see below). Run it from inside the tool folder:
 
 ```bash
 cd path/to/your-tool
@@ -730,7 +730,7 @@ cli sync
 | `README.md` | Sets the ngargparser badge to the installed version and turns it green, to mark the tool as synced; adds the badge below the title when missing. `README` is never touched |
 | `scripts/build.sh`, `scripts/dependencies.sh`, `scripts/build_hooks.sh`, `scripts/build.conf` | Moves these legacy names to `scripts/core/build.sh`, `scripts/hooks.sh` and `scripts/core/build.conf`, when the new name does not exist yet |
 
-Before overwriting a framework file, sync copies it to `.ngargparser/sync-backups/<timestamp>/`. `--no-backup` skips the copies only when sync does not upgrade ngargparser first (with `--no-upgrade`, or from a local checkout): an upgrading sync restarts itself and drops the flag. It never overwrites `validators.py`, `<Name>ArgumentParser.py`, `run_<name>.py`, `preprocess.py`, `postprocess.py`, `paths.py`, `hooks.sh`, `get_libs.sh`, `build.conf`, `.distignore`, `README` or anything else you own. A tool that still has `requirements.txt` and no `pyproject.toml` gets a migration hint.
+Before overwriting a framework file, sync copies it to `.ngargparser/sync-backups/<timestamp>/`. `--no-backup` skips the copies. It never overwrites `validators.py`, `<Name>ArgumentParser.py`, `run_<name>.py`, `preprocess.py`, `postprocess.py`, `paths.py`, `hooks.sh`, `get_libs.sh`, `build.conf`, `.distignore`, `README` or anything else you own. A tool that still has `requirements.txt` and no `pyproject.toml` gets a migration hint.
 
 When ngargparser is an editable install of a local checkout, a plain `cli sync` skips the upgrade and syncs from the checkout: the latest release would replace your working copy and copy older framework files into the tool. `cli upgrade` installs a release on purpose, and `--ref <version>` or `--dev` still upgrades.
 
@@ -796,7 +796,7 @@ The build stops with a message that names the fix when it finds a removed layout
 | `libs` that is a symlink | `libs/ is a symlink (-> <target>). Replace it with a real directory: ...` |
 | `libs` that is a file | `libs exists but is not a directory.` |
 
-`cli sync` renames these legacy names on its first run: `scripts/build.sh` to `scripts/core/build.sh`, `scripts/dependencies.sh` or `scripts/build_hooks.sh` to `scripts/hooks.sh`, and `scripts/build.conf` to `scripts/core/build.conf`. It renames only when the new name does not exist yet. When both `scripts/dependencies.sh` and `scripts/build_hooks.sh` exist, only `dependencies.sh` is renamed; `build_hooks.sh` stays, never runs and gets no warning, so merge it into `scripts/hooks.sh` by hand.
+`cli sync` renames these legacy names on its first run: `scripts/build.sh` to `scripts/core/build.sh`, `scripts/dependencies.sh` or `scripts/build_hooks.sh` to `scripts/hooks.sh`, and `scripts/build.conf` to `scripts/core/build.conf`. It renames only when the new name does not exist yet. When both `scripts/dependencies.sh` and `scripts/build_hooks.sh` exist, only `dependencies.sh` is renamed; `build_hooks.sh` stays and never runs. Sync warns about any legacy file it could not move, so merge that file into its new name and delete it.
 
 ### Move a tool to `scripts/get_libs.sh`
 
@@ -906,7 +906,7 @@ cli deps list                 # list declared dependencies and their status (ali
 cli sync                      # bring a tool's framework files up to date (alias: s)
 cli sync --dry-run            # show what would change; write and install nothing (-n)
 cli sync --no-upgrade         # skip upgrading ngargparser first
-cli sync --no-backup          # skip the backups; works when sync does not upgrade first
+cli sync --no-backup          # skip the backups in .ngargparser/sync-backups/
 cli sync --no-verify          # skip the known-clash check and the startup check
 
 cli upgrade                   # update ngargparser to the latest release tag (alias: u)
@@ -1045,7 +1045,7 @@ A custom validator takes the command-line text, returns the converted value, and
 
 `./configure` runs from the tool folder. It reads `paths.py` and regenerates two things: the tool's `.env`, and one `setup_<dep>_env.sh` per declared dependency. Both hold this machine's paths, so the tool's `.gitignore` keeps them out of git and each machine runs `./configure` itself.
 
-The `./configure` launcher uses `.venv/bin/python` when the tool has one, so the venv does not need to be active. Without python-dotenv available, it says to run `uv sync` first. `APP_NAME` is read from the tool's own `.env` file, so a value passed down by a calling tool is ignored. Without a `.env`, it is the folder name, or `<name>` for a folder named `ng_<name>-local` when `<name>` has no hyphen (`ng_my-app-local` stays `ng_my-app-local`).
+The `./configure` launcher uses `.venv/bin/python` when the tool has one, so the venv does not need to be active. Without python-dotenv available, it says to run `uv sync` first. `APP_NAME` is read from the tool's own `.env` file, so a value passed down by a calling tool is ignored. Without a `.env`, it is the folder name, or `<name>` for a folder named `ng_<name>-local` (`ng_my-app-local` gives `my-app`).
 
 `./configure -h` lists one flag per setting of every declared dependency, with the setting's current value:
 
@@ -1072,7 +1072,7 @@ A flag exists only for a dependency `cli deps add` has declared, so a misspelled
 
 `cli deps` and `./configure` use one rule: a dependency is a top-level `<dep>_path` variable whose `<dep>` does not end in `_lib`, `_venv` or `_module` (those are its settings). The rule covers plain `<dep>_path = value` lines at the top of the file, the form `cli deps add` writes. `./configure` runs `paths.py` as Python, so it also sees other forms (a type annotation, a line inside an `if`, a chained `a_path = b_path = ...`) that `cli deps` does not list or remove; keep to the plain form.
 
-The `''' [ Title ] '''` line above a block is only a label, so a hand-edited `paths.py` whose title does not match its variables (`T Cell Class I` above `tcell_class_i_path`), or one with no titles at all, still lists and removes correctly. `cli deps add` refuses a name ending in `_lib`, `_venv`, `_module` or `_path`, because `./configure` could not tell it from a setting. `remove` deletes the block's exact lines, refuses a block mixed with another tool's lines, and reports only what it really removed. `cli deps add` and `cli deps remove` with names, and `cli deps list`, exit 1 when a name was refused or not found, or when `paths.py` does not parse. `cli deps` never overwrites such a file. The interactive menu always exits 0.
+The `''' [ Title ] '''` line above a block is only a label, so a hand-edited `paths.py` whose title does not match its variables (`T Cell Class I` above `tcell_class_i_path`), or one with no titles at all, still lists and removes correctly. `cli deps add <name>` and the interactive menu refuse a name ending in `_lib`, `_venv`, `_module` or `_path`, because `./configure` could not tell it from a setting. `remove` deletes the block's exact lines, refuses a block mixed with another tool's lines, and reports only what it really removed. `cli deps add` and `cli deps remove` with names, and `cli deps list`, exit 1 when a name was refused or not found, or when `paths.py` does not parse. `cli deps` never overwrites such a file. The interactive menu always exits 0.
 
 `./configure` copies only plain values (text, numbers, paths) from `paths.py` into `.env`. Settings left at `None` are skipped, and an import such as `from pathlib import Path` does not appear there.
 
@@ -1104,7 +1104,7 @@ A dependency's `paths.py` is never read. It is a Python module, loaded by runnin
 
 Only those four folder names are tried, and only when the candidate holds both `pyvenv.cfg` and `bin/activate`. Anything else (`pyenv virtualenv 3.11.3 myenv`, a conda env, a `myenv/` inside the dependency's folder) must be set with `--<dep>-venv=`. When two candidates match, neither is adopted: the run names both and asks you to pick one, instead of binding the dependency to whichever the filesystem listed first.
 
-Steps 2 and 3 are never written to `paths.py`. They are worked out again on every run, so the same `paths.py` works on your laptop, on the dev server and at SDSC, each resolving locally. Writing one down would freeze one host's absolute path, which goes stale as soon as `<dep>_path` moves.
+Steps 2 and 3 are never written to `paths.py`. They are worked out again on every run, so the same `paths.py` works on your laptop and on each deploy host, each resolving locally. Writing one down would freeze one host's absolute path, which goes stale as soon as `<dep>_path` moves.
 
 #### Warnings and rewrites
 
@@ -1170,7 +1170,7 @@ A build that fails after step 1 removes its build copy, so no half-built copy or
 | Check | What it does |
 |---|---|
 | Known clash | Before writing anything, sync reads your tool's `src/*ArgumentParser.py` for code a framework release is known to break, and stops with the file, the line numbers and the fix. `cli sync --dry-run` reports the same findings. The list holds one entry today: declaring `--output-prefix` or `--output-format` on `predict`, or reusing `-o` or `-f` there, which the base class has owned since 0.3.0. A break that is not on the list is left to the startup check |
-| Startup check | When a framework file is about to change, sync runs your entry script with `--help`, `predict --help`, `preprocess --help` and `postprocess --help`, before and after, using the tool's own `.venv` interpreter. This runs your tool's code. It runs only when `src/` holds exactly one `run_*.py`; with several, sync cannot tell which is the entry script and runs none of them. `cli sync --help` calls this check the test drive |
+| Startup check | When a framework file is about to change or a legacy file is about to move, sync runs your entry script with `--help`, `predict --help`, `preprocess --help` and `postprocess --help`, before and after, using the tool's own `.venv` interpreter. This runs your tool's code. It runs only when `src/` holds exactly one `run_*.py`; with several, sync cannot tell which is the entry script and runs none of them. `cli sync --help` calls this check the test drive |
 | Undo | If a screen that worked before fails after, or sync is interrupted or hits an error, sync puts back every file it touched, including moved, created and edited ones and files reached through a symlink, and prints the error your tool raised |
 
 `cli sync --no-verify` skips the known-clash check and the startup check, and says so. Undo on error still applies. Setting `NGARGPARSER_SYNC_NO_VERIFY=1` has the same effect.
@@ -1286,13 +1286,12 @@ my-app/
 | Release tag | A git tag of the form `vX.Y.Z` (the `v` optional, a `+build` suffix allowed); pre-release tags such as `v0.4.2-test` do not count |
 | Result envelope | The dict `write_results` takes: `warnings`, `errors` and a list of tables under `results` |
 | `scaffold_version` | `[tool.ngargparser] scaffold_version` in `pyproject.toml`: the ngargparser version the tool was last generated or synced with |
-| SDSC | San Diego Supercomputer Center, one of the hosts IEDB tools are deployed to |
-| `setup_<dep>_env.sh` | Shell script `./configure` writes per dependency. It runs `module purge` and loads the dependency's module (when one is set), activates its virtualenv, adds its library path to `LD_LIBRARY_PATH` (when set), and exports `<DEP>_PATH`, plus `<DEP>_ENTRY` when the dependency publishes one |
+| `setup_<dep>_env.sh` | Shell script `./configure` writes per dependency. It runs `module purge` and loads the dependency's module (when one is set), activates its virtualenv (when one is set or found), adds its library path to `LD_LIBRARY_PATH` (when set), and exports `<DEP>_PATH`, plus `<DEP>_ENTRY` when the dependency publishes one |
 | Startup check | Running the entry script's four help screens; `make build` runs it on the build copy, `cli sync` before and after a sync |
 | Stub block | The four `None` settings `cli deps add` writes for a dependency |
 | Subcommand | `preprocess`, `predict` or `postprocess` |
 | Subparser | The parser of one subcommand, kept as `self.parser_<subcommand>` |
-| `SubparserWrapper` | The class wrapping each subparser; adds `.help`, `update_arguments` and `group=` |
+| `SubparserWrapper` | The class wrapping each subparser; adds `.help` and `update_arguments`. `NGArgumentParser` gives its `add_argument` the `group=` keyword |
 | Tool, tool folder | A project you create with `cli generate`, and its top folder |
 | `TOOL_VERSION` | The version `make build` uses: the environment variable, default `local` |
 | `TOOLS_DEPLOY_TOKEN` | GitLab CI/CD variable holding a token that get_libs.sh uses to clone in CI |

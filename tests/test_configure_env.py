@@ -645,3 +645,16 @@ def test_imported_names_in_paths_py_never_reach_env(scaffolded_project):
     assert not any(line.startswith("PATH=") for line in lines)
     assert f"APP_ROOT={scaffolded_project}" in lines
     assert f"TCELL_CLASS_I_PATH={scaffolded_project}" in lines
+
+
+@pytest.mark.parametrize("folder, app_name", [("ng_my-app-local", "my-app"), ("ng_myapp-local", "myapp")])
+def test_app_name_from_a_build_folder_name(scaffolded_project, folder, app_name):
+    # Without a .env, a folder named ng_<name>-local (a build copy) names the tool <name>,
+    # hyphens included.
+    renamed = scaffolded_project.parent / folder
+    scaffolded_project.rename(renamed)
+    (renamed / ".env").unlink()
+
+    run_configure(renamed)
+
+    assert f"APP_NAME={app_name}" in (renamed / ".env").read_text().splitlines()

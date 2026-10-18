@@ -371,6 +371,42 @@ def test_self_upgrade_re_exec_carries_no_verify(scaffolded_project, sync_args, m
     assert seen["env"]["NGARGPARSER_NO_SELF_UPGRADE"] == "1"
 
 
+@pytest.mark.parametrize("backup, carried", [(False, "1"), (True, None)])
+def test_self_upgrade_re_exec_carries_no_backup(scaffolded_project, sync_args, monkeypatch, backup, carried):
+    # The re-exec passes a bare `cli s`, which drops flags, so --no-backup travels in the environment.
+    seen = {}
+
+    def fake_exec(file, argv, env):
+        seen["env"] = env
+        raise SystemExit(0)
+
+    monkeypatch.delenv("NGARGPARSER_NO_SELF_UPGRADE", raising=False)
+    monkeypatch.delenv("NGARGPARSER_SYNC_NO_BACKUP", raising=False)
+    monkeypatch.setattr(cli, "_local_checkout", lambda: None)  # a released install
+    monkeypatch.setattr(
+        cli, "_resolve_upgrade_url", lambda *a, **k: ("https://example.invalid/repo.git@v9.9.9", "v9.9.9")
+    )
+    monkeypatch.setattr(cli, "_run_self_upgrade", lambda url: 0)
+    monkeypatch.setattr(cli.os, "execvpe", fake_exec)
+
+    with pytest.raises(SystemExit):
+        cli.sync_command(sync_args(upgrade=True, backup=backup))
+
+    assert seen["env"].get("NGARGPARSER_SYNC_NO_BACKUP") == carried
+
+
+def test_no_backup_from_the_environment_writes_no_backups(scaffolded_project, sync_args, monkeypatch):
+    # What the re-exec'd sync sees: no --no-backup flag, only the variable.
+    monkeypatch.setenv("NGARGPARSER_SYNC_NO_BACKUP", "1")
+    core = scaffolded_project / "src" / "core" / "result_writer.py"
+    core.write_text(core.read_text() + "# stale\n")
+
+    assert cli.sync_command(sync_args()) == 0
+
+    assert "# stale" not in core.read_text()  # control: the file was overwritten
+    assert not (scaffolded_project / ".ngargparser" / "sync-backups").exists()
+
+
 def test_no_verify_still_rolls_back_an_error(runnable_project, sync_args, monkeypatch):
     cli.write_scaffold_version(str(runnable_project / "pyproject.toml"), "0.0.1")
     make_stale(runnable_project)

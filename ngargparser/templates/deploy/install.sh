@@ -37,8 +37,8 @@ echo "[install.sh] venv: $PROJECT_ROOT/.venv"
 
 uv sync
 
-# Activate the venv so ./configure (shebangless wrapper around src/core/configure.py)
-# finds the right interpreter via PATH.
+# ./configure runs src/core/configure.py with .venv/bin/python on its own; the
+# venv is activated so any command added after it here uses the tool's Python too.
 # shellcheck disable=SC1091
 source .venv/bin/activate
 

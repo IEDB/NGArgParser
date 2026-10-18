@@ -70,7 +70,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contents; internals moved under Reference. About 40 statements the audit found wrong are
   corrected, among them a Quickstart `./configure` that exited 1, `python` without `uv run`,
   "auto-creates three subparsers", the ownership rule, the sync outcomes, and the build names.
-  Every Python example marked `<!-- example: -->` still runs against a fresh tool.
+  Every Python example marked `<!-- example: -->` still runs against a fresh tool. A second audit
+  pass corrected 7 more statements and 4 contradictions, and dropped SDSC, which is not a deploy
+  target.
 - The `--help` contact block drops the retired IEDB Help Desk (https://help.iedb.org/) and lists
   only the IEDB Discussion Forum, in both the framework base class (`NGArgumentParser.py`) and the
   example-app scaffold template.
@@ -121,6 +123,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed build now also removes the previous tarball, so an old one never looks fresh.
 
 ### Fixed
+- `cli sync --no-backup` holds when sync upgrades ngargparser first. The restarted sync got only
+  `s` and carried `--no-verify` alone, so it wrote backups anyway; `--no-backup` now travels as
+  `NGARGPARSER_SYNC_NO_BACKUP=1`.
+- `cli sync` warns about a legacy file it cannot move because the new name already exists: a
+  `scripts/build_hooks.sh` next to `scripts/dependencies.sh` or an existing `scripts/hooks.sh`
+  (the build never runs it), or a `scripts/build.conf` next to `scripts/core/build.conf` (the build
+  stops while it exists, saying sync would move it). These used to stay without a word.
+- The build forces only the top-level `README` and `deploy/` into the tarball (`!/README`,
+  `!/deploy/`). The unanchored rules also re-included a nested `README` or `deploy/` folder your
+  `.distignore` excluded. None of the 12 tools' tarballs changes.
+- `./configure` without a `.env` names a tool in a folder like `ng_my-app-local` `my-app`; the
+  pattern rejected hyphens, so the name stayed `ng_my-app-local`.
+- The first-run `cli deps` menu, which creates `paths.py`, refuses names ending in `_lib`, `_venv`,
+  `_module` or `_path`, as `cli deps add` does; it used to write them.
+- Stale comments: `deploy/install.sh` no longer calls `./configure` a shebangless wrapper,
+  `set_pythonpath.py` no longer says the build skips dotfiles, the known-clash text says
+  "conflicting option string(s)", and a tarball-name branch that could never run is gone.
 - `.distignore` judges folders the way git does. The build asked git about each folder with a
   trailing slash in an empty scratch repo, so a `folder/*` rule also matched the folder itself and
   the whole folder was dropped: the README's own recipe (`!.streamlit/`, `.streamlit/*`,

@@ -13,7 +13,7 @@ from core.app_env import load_app_env
 # when another tool started this one and passed its values down.
 load_app_env()
 
-# A fresh build tree or clone has no .env (build.sh's glob skips dotfiles; .env is
+# A fresh build tree or clone has no .env (the build does not ship it, and .env is
 # gitignored), so APP_ROOT is unset until './configure' runs. Say that outright instead
 # of letting Path(None) raise a TypeError several frames deep in pathlib.
 _app_root = os.getenv('APP_ROOT')
