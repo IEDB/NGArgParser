@@ -358,7 +358,7 @@ def create_project_structure(project_name):
         exec_file = f"run_{format_project_name(project_name)}.py"
         parser_file = f"{format_project_name(project_name, capitalize=True)}ArgumentParser.py"
         parser_name = f"{format_project_name(project_name, capitalize=True)}ArgumentParser"
-        update_and_place_readme(f"{TEMPLATE_DIR}/README.md", project_name)
+        update_and_place_readme(f"{TEMPLATE_DIR}/README.md", project_name, plain_file_path=f"{TEMPLATE_DIR}/README")
         shutil.copy(f"{TEMPLATE_DIR}/run_app.py", f"{project_name}/src/{exec_file}")
         shutil.copy(f"{NGPARSER_DIR}/NGChildArgumentParser.py", f"{project_name}/src/{parser_file}")
         shutil.copy(f"{TEMPLATE_DIR}/preprocess.py", f"{project_name}/src/preprocess.py")
@@ -426,23 +426,28 @@ def create_project_structure(project_name):
         return 1
 
 
-def update_and_place_readme(file_path, app_name, is_example=False):
-    # Copy over and generate README files (both README.md and README)
+def update_and_place_readme(file_path, app_name, is_example=False, plain_file_path=None):
+    # Copy over and generate README files (both README.md and README).
+    # README.md comes from `file_path` and gets the version badge. README comes
+    # from `plain_file_path` when given (a blank tool's end-user README, which
+    # ships in the tarball), else from `file_path` too (the example walkthrough).
     readme_md_path = f"{app_name}/README.md"
     readme_plain_path = f"{app_name}/README"
     # Ensure we have a starting file to read from
     shutil.copy(file_path, readme_md_path)
 
+    def replace_variables(content):
+        content = content.replace("{TOOL_NAME}", app_name)
+        content = content.replace("{TOOL_EXEC_NAME}", format_project_name(app_name))
+        if is_example:
+            return content.replace("{TOOL_NAME_CAP}", "AACounter")
+        return content.replace("{TOOL_NAME_CAP}", format_project_name(app_name, capitalize=True))
+
     with open(readme_md_path, "r") as file:
         content = file.read()
 
     # Replace variables in README
-    content = content.replace("{TOOL_NAME}", app_name)
-    content = content.replace("{TOOL_EXEC_NAME}", format_project_name(app_name))
-    if is_example:
-        base_updated_content = content.replace("{TOOL_NAME_CAP}", "AACounter")
-    else:
-        base_updated_content = content.replace("{TOOL_NAME_CAP}", format_project_name(app_name, capitalize=True))
+    base_updated_content = replace_variables(content)
 
     # Insert ngargparser version badge just below the title if possible
     try:
@@ -458,11 +463,16 @@ def update_and_place_readme(file_path, app_name, is_example=False):
         # If anything goes wrong, proceed without badge insertion
         content_with_badge = base_updated_content
 
+    plain_content = base_updated_content
+    if plain_file_path:
+        with open(plain_file_path, "r") as file:
+            plain_content = replace_variables(file.read())
+
     # Write the updated content to both README.md and README
     with open(readme_md_path, "w") as f_md:
         f_md.write(content_with_badge)  # README.md includes badge
     with open(readme_plain_path, "w") as f_plain:
-        f_plain.write(base_updated_content)  # README (no extension) has no badge
+        f_plain.write(plain_content)  # README (no extension) has no badge
 
 
 def replace_text_in_place(file_path, old_text, new_text):

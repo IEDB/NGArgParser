@@ -55,6 +55,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Absolute, dangling, looping and escaping links fail the build and are listed.
 
 ### Changed
+- `cli generate <name>` writes two different READMEs. `README`, which ships in the tarball, is now
+  the end-user README in the layout every IEDB tool uses (`<Name> (<name>) - version TOOL_VERSION`,
+  Quick Install, Introduction, Release Notes, Prerequisites, Installation, Usage), with
+  placeholders to fill in. It used to be a 403-line framework tutorial that each tool had to
+  replace by hand. `README.md` is a 54-line developer note: the files you edit, where the predict
+  logic goes, and commands that run as written. `cli generate example` keeps one walkthrough in
+  both, rewritten from a real run: its commands failed as written (wrong file name, `json` named as
+  the default format, an option pair the tool rejects, folders that don't exist).
+  `tests/test_generated_readmes.py` runs every command in the generated READMEs.
+- README rewritten for a developer new to ngargparser: prerequisites, a Quickstart that goes from
+  `cli generate` through writing predict logic to `make build`, the files you edit, the workflow
+  with job descriptions defined, troubleshooting for the first errors, a glossary, and a table of
+  contents; internals moved under Reference. About 40 statements the audit found wrong are
+  corrected, among them a Quickstart `./configure` that exited 1, `python` without `uv run`,
+  "auto-creates three subparsers", the ownership rule, the sync outcomes, and the build names.
+  Every Python example marked `<!-- example: -->` still runs against a fresh tool.
 - The `--help` contact block drops the retired IEDB Help Desk (https://help.iedb.org/) and lists
   only the IEDB Discussion Forum, in both the framework base class (`NGArgumentParser.py`) and the
   example-app scaffold template.

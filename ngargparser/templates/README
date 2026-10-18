@@ -1,0 +1,87 @@
+{TOOL_NAME_CAP} ({TOOL_NAME}) - version TOOL_VERSION
+============================================================
+
+Quick Install
+-------------
+
+    curl -LsSf https://astral.sh/uv/install.sh | sh   # if uv is not installed yet
+    uv sync
+    ./configure
+
+uv sync creates ./.venv with Python 3.11 and the locked dependencies. See
+"Usage" to run the tool and "Installation" for a shared install.
+
+Introduction
+------------
+
+<Describe what {TOOL_NAME} does: the input it takes, the method it runs, and
+the output it reports. Cite the method's paper.>
+
+Release Notes
+-------------
+
++ v0.1 beta
+  - <Summarize what this release adds or changes.>
+
+Prerequisites
+-------------
+
++ Linux, 64-bit.
++ uv, the Python package and project manager: https://docs.astral.sh/uv/
+  uv installs Python 3.11 for the tool, so a system Python is not needed.
++ <List any other software {TOOL_NAME} needs, or delete this line.>
+
+Installation
+------------
+
+Single-user install (default)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. Extract the tarball into ~/iedb_tools and change into the tool folder:
+
+    mkdir -p ~/iedb_tools
+    tar -xvzf IEDB_NG_*-TOOL_VERSION.tar.gz -C ~/iedb_tools
+    cd ~/iedb_tools/ng_{TOOL_NAME}-TOOL_VERSION
+
+2. Install the dependencies into ./.venv, then write the .env file that the
+tool reads at run time:
+
+    uv sync
+    ./configure
+
+Multi-user / shared install
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+uv sync keeps Python under ~/.local/share/uv/python/, so a single-user
+install works only for the user who ran it. To share one install, point uv
+at world-readable folders before uv sync. An admin creates /apps/uv once.
+
+    export UV_PYTHON_INSTALL_DIR=/apps/uv/python
+    export UV_CACHE_DIR=/apps/uv/cache
+    export UV_PYTHON_PREFERENCE=only-managed
+    umask 0022
+    uv sync
+    ./configure
+
+Usage
+-----
+
+The commands below start with uv run, which runs them in ./.venv without
+activating it. To type plain python instead, run source .venv/bin/activate
+first.
+
+List the subcommands, then the options of predict. Each subcommand takes -h.
+
+    uv run python src/run_{TOOL_EXEC_NAME}.py -h
+    uv run python src/run_{TOOL_EXEC_NAME}.py predict -h
+
+Run a prediction on a JSON input file. -o sets the output prefix, and -f sets
+the format: tsv (the default) or json. <Replace the example input with a real
+one, and describe the output.>
+
+    echo '{"<parameter>": "<value>"}' > input.json
+    uv run python src/run_{TOOL_EXEC_NAME}.py predict -j input.json -o output/result
+
+For batch runs, preprocess splits an input into jobs and postprocess merges
+their results. <Describe the batch workflow for {TOOL_NAME}, or delete this
+paragraph.>

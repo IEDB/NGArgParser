@@ -1,7 +1,7 @@
 # Here, the code for the following logic should be implemented.
-# * It should read over all the results file created (under 'preprocess_job/results/') from each job units.
+# * It should read over all the results file created (under '<output dir>/predict-outputs/') from each job units.
 # * Every tool will differ, but logic to combine all the results into single file is needed.
-#     * This file should be saved under 'postprocess_job/aggregated_result.json'.
+#     * This file should be saved under '<output dir>/aggregate/'.
 
 def run(**kwargs):
     # ADD CODE LOGIC TO COMBINE RESULTS.

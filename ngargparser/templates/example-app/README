@@ -1,160 +1,158 @@
 # aa-counter
 
-This example app will take list of sequences along with a chosen amino acid and count the number of occurrence in each sequence.
+aa-counter is the sample tool that `cli generate example` writes. It counts
+how often one amino acid occurs in each peptide of a list. The commands below
+run its predict, preprocess, and postprocess subcommands end to end.
 
-This tool wrapper was created with the NGArgumentParser Framework. This framework is intended to help standardize the workflow for running NG standalone tools and allow for more rapid and distributed development.
+## Set up
 
-All tools created with this framework has three subcommands:
-1. **predict**\
-   Executes the prediction process for each unit based on the input provided in a JSON file.
+```bash
+cli generate example
+cd aa-counter
+uv sync
+```
 
-2. **preprocess**\
-   Splits the input JSON file into smaller, atomic units, each of which is suitable for independent processing by the "predict" command. Additionally, generates a file containing detailed descriptions of the commands to be executed.
-
-3. **postprocess**\
-   Aggregates the results from all predict commands into a consolidated output file.
-
-The "src" directory contains several template files that may need to be filled in to incorporate your tool:
-1. **run_aa_counter.py**\
-   This is the primary script that users execute, responsible for managing and executing the various sub-commands.
-2. **AACounterArgumentParser.py**\
-   This is the primary argument parser class, where developers can define and customize flags and parameters for the "predict" sub-command.
-3. **preprocess.py**\
-   This script implements the logic for dividing the input JSON file into discrete, atomic job units for processing.
-4. **postprocess.py**\
-   This script consolidates the results from the atomic job units into a single, unified output file.
-5. **validators.py**\
-   This file contains all validation logic for (mainly) the arguments that can be used with Python's argparse.
-
-Getting Started
----------------
+`cli generate example` always names the folder `aa-counter/`. Run every
+command below from that folder. The commands write to `../aa-counter-out/`,
+outside the project, because `make build` packs the files in the project
+folder into the tarball.
 
 ## Predict
-Inside the `aa-counter`, we can run a simple prediction example.
-```bash
-# to run JSON file as input
-python src/run_aa_counter.py predict -j src/example.json
 
-# to run TSV file as input
-python src/run_aa_counter.py predict -t src/example.tsv -a P
-```
-This will output the results to the terminal in `JSON` format. To specify an output file (`-o`), including the desired path, or to change the file extension (`-f`), use the corresponding flags:
-```bash
-python src/run_aa_counter.py predict \
--j src/example.json \
--o ./result \
--f json
-```
-*__NOTE__*: By default, `-f` is set to `json` format.
+`predict` reads one input file: JSON with `-j` or TSV with `-t`. The JSON file
+names the amino acid to count. With a TSV file, `-a` names it.
 
-These formats will not be used in the NG workflow, but it might be valuable for users who prefer to specify more options directly on the command line. 
+<!-- run -->
+```bash
+uv run python src/run_aa_counter.py predict -j src/example.json
+uv run python src/run_aa_counter.py predict -t src/example.tsv -a P
+```
+
+Without `-o`, the result prints to the screen as TSV. The first command prints:
+
+```text
+peptide	length	AAcount(L)
+ADMGHLKY	8	1
+ELDDTLKY	8	2
+FMDHVLRYP	9	1
+...
+```
+
+`-f json` prints JSON instead. `-o` takes an output prefix and creates its
+folder: `-o ../aa-counter-out/result` writes `../aa-counter-out/result.tsv`.
+
+<!-- run -->
+```bash
+uv run python src/run_aa_counter.py predict -j src/example.json -f json
+uv run python src/run_aa_counter.py predict -j src/example.json -o ../aa-counter-out/result
+```
 
 ## Preprocess
-Ideally, any apps created with this framework should be able to split inputs into smaller input units. For `aa-counter`, sequences are divided by peptide length. It will create multiple files where each file contains sequences with the same length. 
 
-Note that "output-directory" folder should be created in advance before running the below command.
+`preprocess` splits one JSON input into jobs and lists them in
+`job_descriptions.json`. aa-counter makes one job per peptide length. The
+command creates the `-o` folder and the folders inside it.
+
+<!-- run -->
 ```bash
-python src/run_aa_counter.py preprocess -j src/example.json -o output-directory
+uv run python src/run_aa_counter.py preprocess -j src/example.json -o ../aa-counter-out/jobs
 ```
 
-Notice that the above code outputs some text about creating folders. This is the default output file structure that is provided by this framework. The file structure should look the following:
-```
-aa-counter
-├── output-directory/
-│   ├── predict-inputs/
-│   │   ├── data/
-│   │   └── params/
-│   └── predict-outputs/
-└── src/
-    ├── ...
-    ├── postprocess.py
-    ├── preprocess.py
-    ├── run_aa_counter.py
-    └── validators.py
+```text
+../aa-counter-out/jobs/
+├── job_descriptions.json   4 jobs: 3 predict jobs, then 1 postprocess job
+├── predict-inputs/
+│   ├── data/               the peptides of each job, one file per job
+│   └── params/             the parameters of each job, one JSON file per job
+├── predict-outputs/        empty until the predict jobs run
+├── aggregate/              empty until the postprocess job runs
+└── results/                empty; postprocess -p uses it below
 ```
 
-If using the default file structure is unfavorable, and would like to use custom folders instead, run the following command:
+The example peptides have 3 lengths (8, 9, and 10), so there are 3 predict
+jobs. The last entry is the postprocess job, and `depends_on_job_ids` lists
+the jobs that must finish first:
+
+```json
+{
+    "shell_cmd": "/path/to/aa-counter/src/run_aa_counter.py postprocess --job-desc-file=../aa-counter-out/jobs/job_descriptions.json -o ../aa-counter-out/jobs/aggregate/final-result -f json",
+    "job_id": 3,
+    "job_type": "postprocess",
+    "depends_on_job_ids": [
+        0,
+        1,
+        2
+    ],
+    "expected_outputs": [
+        "../aa-counter-out/jobs/aggregate/final-result.json"
+    ]
+}
+```
+
+## Run the jobs
+
+Each `shell_cmd` starts with the path to `src/run_aa_counter.py`. The script
+is not executable, so run each command with `uv run python` in front. The
+first line below writes the commands to `jobs.txt`, and the second runs them
+in order:
+
+<!-- run -->
 ```bash
-python src/run_aa_counter.py preprocess \
--j src/example.json \
--o /PATH/TO/OUTPUT/DIR \
---params-dir /PATH/TO/DIR/FOR/PARAMS \
---inputs-dir /PATH/TO/DIR/FOR/INPUTS
+uv run python -c 'import json; print("\n".join(j["shell_cmd"] for j in json.load(open("../aa-counter-out/jobs/job_descriptions.json"))))' > ../aa-counter-out/jobs/jobs.txt
+xargs -L1 uv run python < ../aa-counter-out/jobs/jobs.txt
 ```
-This app will split the inputs into smaller units and save them under the defined paths (`--params-dir` and `--inputs-dir`).
 
-At this point, `job_descriptions.json` should have been created inside the `aa-counter` directory.
+`jobs.txt` holds one command per job. Each parameter file name ends in a
+random suffix:
 
-The `job_descriptions.json` should contain multiple independent job commands along with parameter descriptions. It contains details on how to run the individual jobs including the specific command lines, job dependencies and expected outputs.  
-
-It should roughly look like this (Fuller version can be found under the `ngparser>templates>example-app>example_job_descriptions.json`):
-```bash
-[
-    {
-        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aacounter.py predict -j /ABSOLUTE/PATH/TO/PARAMS/0-bkewmn69.json -o /ABSOLUTE/PATH/TO/PREDICTION/OUTPUT/result.0 -f json",
-        "job_id": 0,
-        "job_type": "prediction",
-        "depends_on_job_ids": [],
-        "expected_outputs": [
-            "/ABSOLUTE/PATH/TO/PREDICTION/OUTPUT/result.0.json"
-        ]
-    },
-    ...
-    {
-        "shell_cmd": "/ABSOLUTE/PATH/TO/aa-counter/src/run_aa_counter.py postprocess --job-desc-file=/ABSOLUTE/PATH/TO/aa-counter/job_descriptions.json --input-results-dir=/ABSOLUTE/PATH/TO/PREDICTION/OUTPUT --postprocessed-results-dir=PATH/TO/OUTPUT",
-        "job_id": 3,
-        "job_type": "postprocess",
-        "depends_on_job_ids": [
-            0,
-            1,
-            2
-        ],
-        "expected_outputs": [
-            "PATH/TO/OUTPUT/final-result.json"
-        ]
-    }
-]
+```text
+/path/to/aa-counter/src/run_aa_counter.py predict -j ../aa-counter-out/jobs/predict-inputs/params/0-tyitmshd.json -o ../aa-counter-out/jobs/predict-outputs/result.0 -f json
+/path/to/aa-counter/src/run_aa_counter.py predict -j ../aa-counter-out/jobs/predict-inputs/params/1-dbafrisq.json -o ../aa-counter-out/jobs/predict-outputs/result.1 -f json
+/path/to/aa-counter/src/run_aa_counter.py predict -j ../aa-counter-out/jobs/predict-inputs/params/2-zra1ewrh.json -o ../aa-counter-out/jobs/predict-outputs/result.2 -f json
+/path/to/aa-counter/src/run_aa_counter.py postprocess --job-desc-file=../aa-counter-out/jobs/job_descriptions.json -o ../aa-counter-out/jobs/aggregate/final-result -f json
 ```
-Please note that the last command is the only one that uses `postprocess` as it will aggregate all the output files from the previous steps together.
+
+The preprocess `-o` was relative, so these paths are too. Run the jobs from
+the project folder.
 
 ## Postprocess
-The last command of the `job_descriptions.json` will look like this, which aggregates all the results into one file.
 
+To merge the results again by hand, pass the job descriptions file.
+Without `-o`, postprocess writes the output that the postprocess job lists:
+
+<!-- run -->
 ```bash
-python src/run_aa_counter.py postprocess \
---job-desc-file=output-directory/job_descriptions.json \
--o /ABSOLUTE/PATH/TO/OUTPUT/DIR/final-result \
--f json
+uv run python src/run_aa_counter.py postprocess --job-desc-file ../aa-counter-out/jobs/job_descriptions.json
 ```
 
-Given the job description file, you can run the postprocess command with the following command:
+`--input-results-dir` merges every result file in a folder instead. With it,
+aa-counter needs `-p`, an existing folder to write `final-result.json` to.
+With `--job-desc-file`, aa-counter does not write to `-p`, but a `-p` you pass
+must still be an existing folder.
+
+<!-- run -->
 ```bash
-python src/run_aa_counter.py postprocess \
---job-desc-file=output-directory/job_descriptions.json \
---postprocessed-results-dir=custom-output-dir
+uv run python src/run_aa_counter.py postprocess --input-results-dir ../aa-counter-out/jobs/predict-outputs -p ../aa-counter-out/jobs/results
 ```
 
+postprocess takes exactly one of `--job-desc-file` and `--input-results-dir`.
+It writes JSON by default, and `-f tsv` writes TSV.
 
-If postprocessing needs to be done without having to provide the `job_descriptions.json`, run the same command with `--input-results-dir`:
+## Output locations
 
-```bash
-python src/run_aa_counter.py postprocess \
---input-results-dir=custom-output-dir/predict-outputs \
---postprocessed-results-dir=custom-output-dir
-```
+| Command | Writes |
+|---|---|
+| `predict -o ../aa-counter-out/result` | `../aa-counter-out/result.tsv` |
+| `preprocess -o ../aa-counter-out/jobs` | `jobs/job_descriptions.json`, `jobs/predict-inputs/` |
+| each predict job | `jobs/predict-outputs/result.0.json` to `result.2.json` |
+| the postprocess job, or `postprocess --job-desc-file` | `jobs/aggregate/final-result.json` |
+| `postprocess --input-results-dir ... -p jobs/results` | `jobs/results/final-result.json` |
 
+## Code to read next
 
-Contributing a standalone
--------------------------
-The IEDB team welcomes collaboration in developing new features for our platform. External developers have several opportunities to contribute tools, as outlined below. Contributions from external developers will help accelerate the implementation of tools on the IEDB next-gen tools website. 
-> **NOTE:**\
-All tools must be pre-approved by the IEDB team before development is started. Submitting a standalone tool to IEDB does not guarantee its integration into the platform.
-
-* 1. Hand off source code or binary (low effort, longest time to completion)
-* 2. Create a package with NGArugmentParser and implement the "predict" method (medium effort, medium time to completion)
-* 3. Create a package with NGArgumentParser and implement all methods (high effort, shortest time to completion)
-
-> **NOTE:**\
-> One of the requirements for the "predict" command is the option to generate output in JSON format that adheres to the NG tools output format specifications. Examples of this format can be found in the 'examples' directory and more details on can be found [here](https://nextgen-tools.iedb.org/docs/).
-
-Once the CLI tool is able to run basic prediction given a JSON file, the next step is to implement preprocessing.
+| File | What it shows |
+|---|---|
+| `src/AACounterArgumentParser.py` | The tool description and the `predict` options |
+| `src/run_aa_counter.py` | The `predict` branch: read the input, count, write the result |
+| `src/preprocess.py` | Splitting the input by length and writing `job_descriptions.json` |
+| `src/postprocess.py` | Merging the job results into one result |
