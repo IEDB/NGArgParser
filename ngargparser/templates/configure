@@ -1,2 +1,24 @@
 #!/bin/sh
-exec ./src/core/configure.py "$@"
+# Work in the tool folder this launcher sits in, so `../other-tool/configure`
+# configures other-tool, not the current folder. A symlink to the launcher is
+# followed to the real one first.
+unset CDPATH
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self") || break
+    case $link in
+        /*) self=$link ;;
+        *) case $self in */*) self=${self%/*}/$link ;; *) self=$link ;; esac ;;
+    esac
+done
+case $self in
+    */*) cd "${self%/*}/" || exit 1 ;;
+esac
+# Use the tool's own virtualenv when it has one, so ./configure works
+# without activating it first (python-dotenv is installed there). Without one,
+# python3 runs it, the interpreter its shebang names, so configure.py works
+# without its exec bit (an archive or a copy that dropped it).
+if [ -x .venv/bin/python ]; then
+    exec .venv/bin/python ./src/core/configure.py "$@"
+fi
+exec python3 ./src/core/configure.py "$@"

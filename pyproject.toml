@@ -1,6 +1,6 @@
 [project]
 name = "ngargparser"
-version = "0.4.1"
+version = "0.5.0"
 description = "Standardized parser framework for CLI tools. Enforces structure for argument parsing, project scaffolding, dependency wiring, and build packaging across IEDB next-gen apps."
 readme = "README.md"
 license = { text = "MIT" }
@@ -18,6 +18,8 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 
 [project.urls]
@@ -27,7 +29,17 @@ Homepage = "https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies
 cli = "ngargparser.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=7", "ruff>=0.6", "mypy>=1.10"]
+dev = [
+    "pytest>=7",
+    "ruff>=0.6",
+    # mypy 2 cannot check for Python 3.9 ([tool.mypy] python_version below):
+    # it warns and checks for 3.10 instead.
+    "mypy>=1.10,<2",
+    # tests/test_build_ci_template.py parses the generated .gitlab-ci.yml.
+    "pyyaml>=6",
+    # The build's lock check reads TOML; Python 3.11+ has tomllib built in.
+    "tomli>=1.1; python_version < '3.11'",
+]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -65,15 +77,26 @@ select = ["E", "F", "W", "I"]
 ignore = ["E501"]
 
 [tool.mypy]
-# 3.9 runtime compatibility is covered by the CI test matrix; modern mypy
-# only accepts >=3.10 as an analysis target.
-python_version = "3.10"
+# The oldest Python ngargparser supports, so 3.10+ syntax is caught here too.
+python_version = "3.9"
 files = [
     "ngargparser/cli.py",
     "ngargparser/core_validators.py",
     "ngargparser/result_writer.py",
+    "ngargparser/app_env.py",
+    "ngargparser/NGArgumentParser.py",
+    "ngargparser/NGChildArgumentParser.py",
+    # Listed by name: `exclude` below only skips files mypy finds on its own.
+    "ngargparser/templates/configure.py",
 ]
 ignore_missing_imports = true
-check_untyped_defs = false
+check_untyped_defs = true
 warn_unused_ignores = true
 exclude = '(^|/)(templates|build|test)/'
+
+# pytest drops Python 3.9 before ngargparser does: where uv installs a newer
+# pytest (on Python 3.10+), its own code uses syntax 3.9 lacks, which mypy,
+# checking for 3.9, cannot read. Its types are left out (Any) instead.
+[[tool.mypy.overrides]]
+module = ["pytest", "_pytest.*"]
+follow_imports = "skip"

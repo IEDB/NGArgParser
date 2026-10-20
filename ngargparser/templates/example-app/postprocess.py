@@ -9,8 +9,8 @@ from core.result_writer import write_results
 
 
 def read_json(jfile):
-    content = json.load(jfile)
-    jfile.seek(0)
+    with open(jfile, 'r') as f:
+        content = json.load(f)
 
     return json.dumps(content)
 
@@ -100,7 +100,8 @@ def run(**kwargs):
         # allow user to perform postprocess without job-description
         result_dir = kwargs.get('postprocess_result_dir')
         final_header, final_data = collect_all_job_results_without_jd(kwargs)
-        default_path = Path(result_dir) / 'final-result.json'          
+        # -p is only the fallback when -o is not given (run_aa_counter.py requires one of them).
+        default_path = Path(result_dir) / 'final-result.json' if result_dir else None
 
     # write_results appends the extension, so hand it a prefix (no suffix).
     # postprocess defaults to json to preserve the aggregated envelope.

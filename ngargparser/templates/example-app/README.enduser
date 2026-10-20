@@ -1,0 +1,141 @@
+aa-counter - version TOOL_VERSION
+============================================================
+
+Quick Install
+-------------
+
+    curl -LsSf https://astral.sh/uv/0.11.14/install.sh | sh   # if uv is not installed yet
+    uv sync --frozen --no-dev
+    ./configure
+
+uv sync creates ./.venv with Python 3.11 and the locked dependencies:
+--frozen installs exactly the versions in uv.lock, and --no-dev leaves out
+the developer packages. See "Usage" to run the tool and "Installation" for a
+shared install.
+
+Introduction
+------------
+
+aa-counter counts how often one amino acid occurs in each peptide of a list.
+It reads the peptides and the amino acid from a JSON file, or the peptides
+from a TSV file with the amino acid given on the command line. For each
+peptide, it reports the peptide, its length and the count.
+
+aa-counter is the sample tool of the IEDB ngargparser framework. It runs no
+published method, so there is no paper to cite.
+
+Release Notes
+-------------
+
++ v0.1 beta
+  - First release. predict counts one amino acid in each peptide of a JSON
+    or TSV file. preprocess splits a JSON file into one job per peptide
+    length, and postprocess merges the results of those jobs.
+
+Prerequisites
+-------------
+
++ Linux, 64-bit.
++ uv, the Python package and project manager: https://docs.astral.sh/uv/
+  uv installs Python 3.11 for the tool, so a system Python is not needed.
++ No other software: aa-counter runs no other tool.
+
+Installation
+------------
+
+Single-user install (default)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. Extract the tarball into ~/iedb_tools and change into the tool folder:
+
+    mkdir -p ~/iedb_tools
+    tar -xvzf IEDB_NG_AA-COUNTER-TOOL_VERSION.tar.gz -C ~/iedb_tools
+    cd ~/iedb_tools/ng_aa-counter-TOOL_VERSION
+
+2. Install the dependencies into ./.venv, then write the .env file that the
+tool reads at run time:
+
+    uv sync --frozen --no-dev
+    ./configure
+
+Multi-user / shared install
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+uv sync keeps Python under ~/.local/share/uv/python/, so a single-user
+install works only for the user who ran it. To share one install, point uv
+at world-readable folders before uv sync. An admin creates /apps/uv once.
+
+    export UV_PYTHON_INSTALL_DIR=/apps/uv/python
+    export UV_CACHE_DIR=/apps/uv/cache
+    export UV_PYTHON_PREFERENCE=only-managed
+    umask 0022
+    uv sync --frozen --no-dev
+    ./configure
+
+Usage
+-----
+
+Run the commands below from the tool folder. They start with
+.venv/bin/python, the Python that uv sync set up, not uv run: uv run first
+installs the developer packages a deploy leaves out, and fails in a shared
+install you cannot write to. To type plain python instead, run
+source .venv/bin/activate first.
+
+List the subcommands, then the options of predict. Each subcommand takes -h.
+
+    .venv/bin/python src/run_aa_counter.py -h
+    .venv/bin/python src/run_aa_counter.py predict -h
+
+Count the amino acid L in the sample peptides that ship with the tool.
+Without -o, predict prints the result to the screen as TSV: a header line
+(peptide, length, AAcount(L)), then one line per peptide. It writes no file,
+so it works in a shared install you cannot write to.
+
+    .venv/bin/python src/run_aa_counter.py predict -j src/example.json
+
+A JSON input names the peptides and the amino acid. -o sets the output
+prefix, and -f sets the format: tsv (the default) or json. The second
+command below writes output/result.tsv, and creates output/ when it is
+missing.
+
+    echo '{"peptide": ["ADMGHLKY", "ELDDTLKY"], "amino_acid": "L"}' > input.json
+    .venv/bin/python src/run_aa_counter.py predict -j input.json -o output/result
+    .venv/bin/python src/run_aa_counter.py predict -j input.json -o output/result -f json
+
+A TSV input starts with a header line that holds a column named peptide, in
+any position, so a header of id and peptide works. Every line after it has
+as many tab-separated columns as the header. predict stops with a usage error
+(exit code 2) when the header has no peptide column, when a line has a
+different number of columns, or when a line is empty, such as a blank line at
+the end of the file.
+
+For a TSV input, -a names the amino acid to count, as one letter of
+ACDEFGHIKLMNPQRSTVWY in either case, so -a l counts L. The amino_acid of a
+JSON input takes the same letters. -a works only with -t: a JSON input names
+its own amino acid. predict stops with a usage error when -a is not one of
+those letters, when -t comes without -a, and when -j and -a are both given.
+
+    .venv/bin/python src/run_aa_counter.py predict -t src/example.tsv -a P
+
+In a shared install, write the input and the output in a folder of your own,
+and give their full paths, such as -j ~/aa-runs/input.json and
+-o ~/aa-runs/result.
+
+For batch runs, preprocess splits a JSON input into one job per peptide
+length. It writes the jobs to job_descriptions.json in its -o folder, with
+their parameter files in predict-inputs/ there. Each job's shell_cmd starts
+with the path of src/run_aa_counter.py, which is not executable, so run each
+command with .venv/bin/python in front. The second line below lists the
+commands in jobs.txt, and the third runs them in order: 3 predict jobs, then
+a postprocess job that writes output/jobs/aggregate/final-result.json.
+
+    .venv/bin/python src/run_aa_counter.py preprocess -j src/example.json -o output/jobs
+    .venv/bin/python -c 'import json; print("\n".join(j["shell_cmd"] for j in json.load(open("output/jobs/job_descriptions.json"))))' > output/jobs/jobs.txt
+    xargs -L1 .venv/bin/python < output/jobs/jobs.txt
+
+The job commands hold the paths as you gave them to preprocess, so run them
+from the same folder, or give preprocess a full -o path. To merge every
+result file in a folder instead, give postprocess --input-results-dir and an
+output prefix. It writes JSON by default, and -f tsv writes TSV.
+
+    .venv/bin/python src/run_aa_counter.py postprocess --input-results-dir output/jobs/predict-outputs -o output/merged

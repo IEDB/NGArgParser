@@ -9,7 +9,17 @@ dependencies = [
 ]
 
 [dependency-groups]
-test = ["pytest"]
+# Tools for working on this tool: `uv sync` installs them, deploy/install.sh does not (--no-dev).
+dev = ["pytest"]
 
 [tool.ngargparser]
 scaffold_version = "{NGARGPARSER_VERSION}"
+app_name = "{TOOL_NAME}"
+# The start-up script ./configure publishes as APP_ENTRY, for tools that call this one.
+entry = "src/run_{TOOL_EXEC_NAME}.py"
+
+[tool.pytest.ini_options]
+# Tests import the tool's modules from src/, such as its ArgumentParser module.
+pythonpath = ["src"]
+# Only the tool's own tests: libs/ can hold the tests of the code fetched into it.
+testpaths = ["tests"]
