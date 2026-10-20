@@ -77,6 +77,8 @@ def test_sync_installs_a_newer_latest_release_and_re_execs_with_the_flags(
     scaffolded_project, sync_args, strip_ansi, capsys, monkeypatch, stubs
 ):
     # Also the equal case above: without it this test alone passes before and after the change.
+    # Stamped older than the 0.4.x versions below, whatever the real version is.
+    cli.write_scaffold_version(str(scaffolded_project / "pyproject.toml"), "0.4.0")
     monkeypatch.setattr(cli, "__version__", "0.4.1")
     assert cli.sync_command(sync_args(upgrade=True)) == 0
     assert stubs["installed"] == []
