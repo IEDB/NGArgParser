@@ -248,6 +248,7 @@ def test_self_upgrade_re_exec_carries_allow_downgrade(scaffolded_project, sync_a
     monkeypatch.setattr(
         cli, "_resolve_upgrade_url", lambda *a, **k: ("https://example.invalid/repo.git@v9.9.9", "v9.9.9")
     )
+    monkeypatch.setattr(cli, "_latest_release_tag", lambda *a, **k: "v9.9.9")  # no GitLab lookup
     monkeypatch.setattr(cli, "_run_self_upgrade", lambda url: 0)
     monkeypatch.setattr(cli.os, "execvpe", fake_exec)
 
