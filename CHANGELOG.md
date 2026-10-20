@@ -681,9 +681,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   another: "Warning: scripts/core/build.conf sets TOOL_VERSION=..., which is ignored: the
   TOOL_VERSION environment variable (...) wins. Remove TOOL_VERSION from build.conf."
 - ngargparser's own CI runs 11 fast test files on Python 3.12 on every push (`pytest-fast`). A tag
-  pipeline runs the full suite on Python 3.9, 3.10, 3.11, 3.12, 3.13 and 3.14, and once more as a
-  non-root user, where the tests that need a permission error run. The full-suite jobs install
-  `git` and `make`, so the build tests run instead of skipping.
+  pipeline runs the full suite on Python 3.9, 3.10, 3.11, 3.12, 3.13 and 3.14, once more as a
+  non-root user, where the tests that need a permission error run, and the `real_uv` tests
+  (`pytest-real-uv`). The full-suite jobs install `git` and `make`, so the build tests run instead
+  of skipping.
 - `scripts/get_libs.sh` runs again when `TOOL_VERSION` changes; the stamp's second line is now
   `hash <sha> version <TOOL_VERSION>`.
 - A startup check failure shows the last 15 lines of stderr, such as a traceback, below the error
