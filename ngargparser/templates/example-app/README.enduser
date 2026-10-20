@@ -102,11 +102,18 @@ missing.
     .venv/bin/python src/run_aa_counter.py predict -j input.json -o output/result
     .venv/bin/python src/run_aa_counter.py predict -j input.json -o output/result -f json
 
-A TSV input holds a header line, then one peptide per line in its first
-column. -a names the amino acid to count, as a regular expression, so -a
-'[KR]' counts K and R together. -a works only with -t: a JSON input names its
-own amino acid, and predict stops with a usage error when -j and -a are both
-given.
+A TSV input starts with a header line that holds a column named peptide, in
+any position, so a header of id and peptide works. Every line after it has
+as many tab-separated columns as the header. predict stops with a usage error
+(exit code 2) when the header has no peptide column, when a line has a
+different number of columns, or when a line is empty, such as a blank line at
+the end of the file.
+
+For a TSV input, -a names the amino acid to count, as one letter of
+ACDEFGHIKLMNPQRSTVWY in either case, so -a l counts L. The amino_acid of a
+JSON input takes the same letters. -a works only with -t: a JSON input names
+its own amino acid. predict stops with a usage error when -a is not one of
+those letters, when -t comes without -a, and when -j and -a are both given.
 
     .venv/bin/python src/run_aa_counter.py predict -t src/example.tsv -a P
 

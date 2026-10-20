@@ -14,6 +14,7 @@ the commands a user of a deployed copy runs.
 cli generate example
 cd aa-counter
 uv sync
+./configure
 ```
 
 `cli generate example` always names the folder `aa-counter/`, and it refuses
@@ -22,11 +23,16 @@ to run inside another tool's folder. Run every command below from
 outside the tool folder, because `make build` packs the files in the tool
 folder into the tarball.
 
+`./configure` writes `.env`, which `run_aa_counter.py` reads at start.
+`cli generate` writes one too, but `.gitignore` keeps `.env` out of git: in a
+fresh clone, `run_aa_counter.py` exits with code 1 until `./configure` runs.
+
 ## Predict
 
 `predict` reads one input file: JSON with `-j` or TSV with `-t`. The JSON file
-names the amino acid to count. With a TSV file, `-a` names it; `-a` with `-j`
-stops with a usage error and exit code 2.
+names the amino acid to count. With a TSV file, `-a` names it, as one letter
+of `ACDEFGHIKLMNPQRSTVWY` in either case. `-t` without `-a`, or `-a` with
+`-j`, stops with a usage error and exit code 2.
 
 <!-- run -->
 ```bash
@@ -127,7 +133,10 @@ the tool folder.
 ## Postprocess
 
 To merge the results again by hand, pass the job descriptions file.
-Without `-o`, postprocess writes the output that the postprocess job lists:
+Without `-o`, postprocess writes to the path that the postprocess job lists,
+with the extension that `-f` sets. The command below writes
+`../aa-counter-out/jobs/aggregate/final-result.json`, and with `-f tsv` it
+writes `final-result.tsv` in the same folder.
 
 <!-- run -->
 ```bash
@@ -136,7 +145,9 @@ uv run python src/run_aa_counter.py postprocess --job-desc-file ../aa-counter-ou
 
 `--input-results-dir` merges every result file in a folder instead. With it,
 give `-o <prefix>` to write `<prefix>.json`, or `-p`, an existing folder to
-write `final-result.json` to. With neither, aa-counter stops with a usage error.
+write `final-result.json` to. The extension follows `-f`: with `-f tsv`, the
+files are `<prefix>.tsv` and `final-result.tsv`. With neither `-o` nor `-p`,
+aa-counter stops with a usage error.
 With `--job-desc-file`, aa-counter does not write to `-p`, but a `-p` you pass
 must still be an existing folder.
 
@@ -147,6 +158,26 @@ uv run python src/run_aa_counter.py postprocess --input-results-dir ../aa-counte
 
 postprocess takes exactly one of `--job-desc-file` and `--input-results-dir`.
 It writes JSON by default, and `-f tsv` writes TSV.
+
+## Build and test
+
+`make build` packs the tool folder into a tarball, without the files that
+`.distignore` lists. `uv run pytest` runs the tests in `tests/`.
+
+```bash
+make build
+uv run pytest
+```
+
+`make build` ends with the tarball path:
+
+```text
+Build completed: build/IEDB_NG_AA-COUNTER-local.tar.gz
+```
+
+The version in the name is `local` unless the `TOOL_VERSION` environment
+variable sets one: `TOOL_VERSION=0.1 make build` writes
+`build/IEDB_NG_AA-COUNTER-0.1.tar.gz`.
 
 ## Output locations
 
@@ -163,7 +194,7 @@ It writes JSON by default, and `-f tsv` writes TSV.
 | File | What it shows |
 |---|---|
 | `src/AACounterArgumentParser.py` | The tool description and the `predict` options |
-| `src/validators.py` | The check for `-a`: a pattern that is not a valid regular expression stops `predict` with exit code 2 |
+| `src/validators.py` | The input checks, which stop `predict` or `preprocess` with exit code 2 when they fail: `-a` is one letter of `ACDEFGHIKLMNPQRSTVWY`; a `-t` file has a header line with a `peptide` column, and no empty line or line with another column count; a `-j` file has an `amino_acid` key with one of those letters, and a `peptide` key (`peptide_file_path` in a job file) |
 | `src/run_aa_counter.py` | The `predict` branch: read the input, count, write the result |
 | `src/preprocess.py` | Splitting the input by length and writing `job_descriptions.json` |
 | `src/postprocess.py` | Merging the job results into one result |
