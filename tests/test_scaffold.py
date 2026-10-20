@@ -1,3 +1,4 @@
+import re
 import shutil
 import stat
 import subprocess
@@ -254,6 +255,13 @@ ONE_INPUT = {
 }
 
 
+def _parsed(result):
+    """The command line parsed: the command ran, or reached the unedited predict or postprocess stub."""
+    if result.returncode == 1 and re.search(r"\b(predict|postprocess) is not implemented yet", result.stderr):
+        return True
+    return result.returncode == 0
+
+
 @pytest.mark.parametrize("name, folder, script", TOOLS, ids=["blank", "example"])
 def test_predict_without_input_is_a_usage_error(in_tmp_dir, name, folder, script):
     cli.startapp_command(Namespace(project_name=name))
@@ -273,7 +281,7 @@ def test_predict_with_one_input_still_runs(in_tmp_dir, name, folder, script):
 
     for args in ONE_INPUT[name]:
         result = _run(project, script, "predict", *args)
-        assert result.returncode == 0, f"{args}: {result.stderr}"
+        assert _parsed(result), f"{args}: {result.stderr}"
 
 
 # -o is a prefix. 'out/' used to write the hidden file out/.tsv, and an existing
@@ -308,12 +316,8 @@ def test_output_prefix_that_is_a_folder_is_rejected(demo, subcommand, value, exa
 @pytest.mark.parametrize("subcommand", ["predict", "postprocess"])
 @pytest.mark.parametrize("value", ["result", "existing/result", "out/result"])
 def test_output_prefix_that_is_a_file_name_is_accepted(demo, subcommand, value):
-    # Control: a prefix, even one inside a folder, still parses. 'out/result' is
-    # fine for predict, which creates out/, but postprocess still wants out/ to exist.
+    # Control: a prefix, even one inside a folder, still parses. Both predict and
+    # postprocess create a missing folder (out/) when they write.
     result = _run(demo, "run_demo.py", subcommand, "-j", INPUT[subcommand], "-o", value)
 
-    if subcommand == "postprocess" and value == "out/result":
-        assert result.returncode == 2
-        assert "argument --output-prefix/-o: 'out/result' is not a valid directory." in result.stderr
-    else:
-        assert result.returncode == 0, result.stderr
+    assert _parsed(result), result.stderr

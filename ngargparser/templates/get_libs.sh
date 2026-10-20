@@ -6,18 +6,20 @@
 # data files, and third-party tools you download by hand (licensed software).
 # This script is USER-OWNED; `cli sync` never touches it.
 #
-# When it runs: at the start of `make build`, before the project is copied into
-# build/. It is skipped while this file is unchanged and everything it fetched
-# last time is still in libs/. To force a fresh fetch, delete the folders this
+# When it runs: at the start of `make build`, before the tool folder is copied into
+# build/, and on its own with `make libs`, so a run in the tool folder can import
+# what it fetches before the first build. It is skipped while this file and
+# TOOL_VERSION are unchanged and everything it fetched last time is still in libs/,
+# unchanged. To force a fresh fetch, delete the folders this
 # script fetched into libs/ (listed in libs/.gitignore) and build again.
 # .ngargparser/libs-stamp records which libs/ folders the build owns; if it is
 # lost, the build reads the same list from libs/.gitignore. If both are gone,
 # delete the fetched folders in libs/ and build again.
 #
 # Working directory: an empty temp dir. When the script succeeds, each
-# top-level entry it leaves there replaces libs/<entry> in the project, gets
-# __init__.py files, and is listed in libs/.gitignore. Both the project-folder
-# run and the build then see the same libs/. If the script fails, libs/ is left
+# top-level entry it leaves there replaces libs/<entry> in the tool folder, gets
+# __init__.py files, and is listed in libs/.gitignore. A run in the tool folder
+# and the build then see the same libs/. If the script fails, libs/ is left
 # as it was and the build stops.
 #
 # Rules:

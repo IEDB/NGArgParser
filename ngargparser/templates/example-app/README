@@ -1,8 +1,12 @@
 # aa-counter
 
-aa-counter is the sample tool that `cli generate example` writes. It counts
+aa-counter is the sample app that `cli generate example` writes. It counts
 how often one amino acid occurs in each peptide of a list. The commands below
 run its predict, preprocess, and postprocess subcommands end to end.
+
+This walkthrough is `README.md`, for developers; the default `.distignore`
+keeps it out of the tarball. `README` is the end-user README that ships, with
+the commands a user of a deployed copy runs.
 
 ## Set up
 
@@ -12,15 +16,17 @@ cd aa-counter
 uv sync
 ```
 
-`cli generate example` always names the folder `aa-counter/`. Run every
-command below from that folder. The commands write to `../aa-counter-out/`,
-outside the project, because `make build` packs the files in the project
+`cli generate example` always names the folder `aa-counter/`, and it refuses
+to run inside another tool's folder. Run every command below from
+`aa-counter/`. The commands write to `../aa-counter-out/`,
+outside the tool folder, because `make build` packs the files in the tool
 folder into the tarball.
 
 ## Predict
 
 `predict` reads one input file: JSON with `-j` or TSV with `-t`. The JSON file
-names the amino acid to count. With a TSV file, `-a` names it.
+names the amino acid to count. With a TSV file, `-a` names it; `-a` with `-j`
+stops with a usage error and exit code 2.
 
 <!-- run -->
 ```bash
@@ -51,7 +57,10 @@ uv run python src/run_aa_counter.py predict -j src/example.json -o ../aa-counter
 
 `preprocess` splits one JSON input into jobs and lists them in
 `job_descriptions.json`. aa-counter makes one job per peptide length. The
-command creates the `-o` folder and the folders inside it.
+command creates the `-o` folder and the folders inside it. A rerun deletes only
+the files an earlier run wrote, which `.aa-counter-preprocess-files` in each
+folder lists, so a file of yours in `--params-dir` stays and never becomes a
+job.
 
 <!-- run -->
 ```bash
@@ -113,7 +122,7 @@ random suffix:
 ```
 
 The preprocess `-o` was relative, so these paths are too. Run the jobs from
-the project folder.
+the tool folder.
 
 ## Postprocess
 
@@ -154,6 +163,7 @@ It writes JSON by default, and `-f tsv` writes TSV.
 | File | What it shows |
 |---|---|
 | `src/AACounterArgumentParser.py` | The tool description and the `predict` options |
+| `src/validators.py` | The check for `-a`: a pattern that is not a valid regular expression stops `predict` with exit code 2 |
 | `src/run_aa_counter.py` | The `predict` branch: read the input, count, write the result |
 | `src/preprocess.py` | Splitting the input by length and writing `job_descriptions.json` |
 | `src/postprocess.py` | Merging the job results into one result |

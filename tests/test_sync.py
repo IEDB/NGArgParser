@@ -1,9 +1,18 @@
 import hashlib
 import json
+import sys
 
 import pytest
 
 from ngargparser import cli
+
+
+@pytest.fixture(autouse=True)
+def _release_version_stamps(monkeypatch):
+    # These tests run from a git checkout, whose generate and sync stamp <version>+g<sha>
+    # (see test_sync_checkout_stamps.py). Stamp the plain version, as a release install does.
+    monkeypatch.setattr(cli, "_local_version_label", lambda: None)
+
 
 CORE_FILE = "src/core/NGArgumentParser.py"
 FRAMEWORK_FILES = [
@@ -17,6 +26,13 @@ FRAMEWORK_FILES = [
     "scripts/core/build.sh",
     "Makefile",
 ]
+
+
+@pytest.fixture(autouse=True)
+def tool_interpreter(monkeypatch):
+    """Give each tool here an interpreter for the test drive, the test one: a sync that
+    changes framework files stops when the tool has none (test_sync_safety.py)."""
+    monkeypatch.setattr(cli, "_project_python", lambda: sys.executable)
 
 
 def test_fresh_project_leaves_framework_files_untouched(scaffolded_project, sync_args):
@@ -547,7 +563,7 @@ def test_sync_refuses_a_folder_that_is_not_an_ngargparser_tool(in_tmp_dir, sync_
 
     assert cli.sync_command(sync_args()) == 1
 
-    out = strip_ansi(capsys.readouterr().out)
+    out = strip_ansi(capsys.readouterr().err)
     assert "This folder is not an ngargparser tool" in out
     assert all((in_tmp_dir / name).read_text() == text for name, text in files.items())
     assert not (in_tmp_dir / "src" / "core").exists()

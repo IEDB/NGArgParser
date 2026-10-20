@@ -1,5 +1,7 @@
 import subprocess
 
+import pytest
+
 from ngargparser import cli
 
 # The managed block as releases before the ./configure rules wrote it.
@@ -10,6 +12,13 @@ OLD_MANAGED_BLOCK = (
     "*.bak\n"
 )
 CONFIGURE_COMMENT = cli.GITIGNORE_MANAGED_RULES[1][0]
+# The old block once sync has updated it: `.ngargparser/` becomes `.ngargparser/*`, so the
+# hash record below it can be re-included (git cannot re-include a file under an ignored folder).
+MIGRATED_BLOCK = OLD_MANAGED_BLOCK.replace(".ngargparser/\n", ".ngargparser/*\n")
+HASH_RULE_LINES = (
+    "# The framework file hashes stay in git, so cli sync spots local edits in a fresh clone.\n"
+    "!.ngargparser/framework-hashes.json\n"
+)
 
 
 def git_ignores(repo, name):
@@ -27,6 +36,15 @@ class TestFormatProjectName:
 
     def test_plain_name_unchanged(self):
         assert cli.format_project_name("demo") == "demo"
+
+    def test_capitalize_keeps_the_capitals_already_in_each_part(self):
+        assert cli.format_project_name("MyTool", capitalize=True) == "MyTool"
+        assert cli.format_project_name("my-tool", capitalize=True) == "MyTool"
+        assert cli.format_project_name("my_app", capitalize=True) == "MyApp"
+        assert cli.format_project_name("NetMHC-pan", capitalize=True) == "NetMHCPan"
+        # The file-name form is unchanged: only '-' becomes '_'.
+        assert cli.format_project_name("MyTool") == "MyTool"
+        assert cli.format_project_name("my-tool") == "my_tool"
 
 
 class TestNormalizeName:
@@ -71,6 +89,36 @@ class TestParseSemver:
 
 
 class TestWriteScaffoldVersion:
+    # Without a TOML parser (Python 3.9 or 3.10 without tomli), an inline-table or
+    # dotted [tool.ngargparser] used to get a second table appended: invalid TOML.
+    @pytest.mark.parametrize(
+        "content",
+        [
+            '[project]\nname = "demo"\n\n[tool]\nngargparser = { scaffold_version = "0.4.0" }\n',
+            '[project]\nname = "demo"\n\n[tool]\nngargparser.scaffold_version = "0.4.0"\n',
+            '[project]\nname = "demo"\ntool.ngargparser.app_name = "demo"\n',
+            "[tool.ngargparser.extra]\nx = 1\n",
+        ],
+        ids=["inline table", "dotted under tool", "dotted at top", "sub-table"],
+    )
+    def test_no_second_table_without_a_toml_parser(self, tmp_path, monkeypatch, content):
+        monkeypatch.setattr(cli, "_toml_reader", lambda: None)
+        target = tmp_path / "pyproject.toml"
+        target.write_text(content)
+
+        with pytest.raises(ValueError):
+            cli.write_scaffold_version(str(target), "1.0.0")
+        assert target.read_text() == content
+
+    def test_a_file_without_the_table_still_gets_one_without_a_toml_parser(self, tmp_path, monkeypatch):
+        # Control: nothing named ngargparser yet, so the table is added as before.
+        monkeypatch.setattr(cli, "_toml_reader", lambda: None)
+        target = tmp_path / "pyproject.toml"
+        target.write_text('[project]\nname = "demo"\n')
+
+        assert cli.write_scaffold_version(str(target), "1.0.0") is None
+        assert target.read_text().count("[tool.ngargparser]") == 1
+
     def test_missing_file_returns_none_and_creates_nothing(self, tmp_path):
         target = tmp_path / "pyproject.toml"
         assert cli.write_scaffold_version(str(target), "1.0.0") is None
@@ -164,6 +212,12 @@ class TestWriteScaffoldVersion:
         (tmp_path / "pyproject.toml").write_text('[tool.ngargparser]\napp_name = "ours"\n')
         assert cli._project_ngargparser_key("app_name") == "ours"
 
+    def test_project_key_in_a_file_that_is_not_utf8_is_none(self, tmp_path, monkeypatch):
+        # The cli upgrade reminder reads it from any folder; it must not crash there.
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "pyproject.toml").write_bytes(b'[tool.ngargparser]\napp_name = "\xff"\n')
+        assert cli._project_ngargparser_key("app_name") is None
+
 
 class TestUpsertReadmeBadge:
     def test_missing_file_returns_false(self, tmp_path):
@@ -239,8 +293,8 @@ class TestEnsureGitignore:
         gi.write_text(before)
 
         assert cli.ensure_gitignore(str(gi)) == "updated"
-        added = f"{CONFIGURE_COMMENT}\n.env\nsetup_*_env.sh\n"
-        assert gi.read_text() == before.replace(OLD_MANAGED_BLOCK, OLD_MANAGED_BLOCK + added)
+        added = f"{CONFIGURE_COMMENT}\n.env\nsetup_*_env.sh\n" + HASH_RULE_LINES
+        assert gi.read_text() == before.replace(OLD_MANAGED_BLOCK, MIGRATED_BLOCK + added)
         assert cli.ensure_gitignore(str(gi)) == "unchanged"
         assert git_ignores(tmp_path, ".env") and git_ignores(tmp_path, "setup_tc1_env.sh")
 
@@ -257,8 +311,9 @@ class TestEnsureGitignore:
         before = "__pycache__/\n.env\nsetup_*_env.sh\n\n" + OLD_MANAGED_BLOCK
         gi.write_text(before)
 
+        assert cli.ensure_gitignore(str(gi)) == "updated"
+        assert gi.read_text() == "__pycache__/\n.env\nsetup_*_env.sh\n\n" + MIGRATED_BLOCK + HASH_RULE_LINES
         assert cli.ensure_gitignore(str(gi)) == "unchanged"
-        assert gi.read_text() == before
 
     def test_block_appended_without_rules_the_user_already_has(self, tmp_path):
         # pepsysco: its own .env and setup_*_env.sh lines, no managed block.
@@ -267,7 +322,7 @@ class TestEnsureGitignore:
 
         assert cli.ensure_gitignore(str(gi)) == "updated"
         content = gi.read_text()
-        assert content.startswith(".env\nsetup_*_env.sh\n\n" + OLD_MANAGED_BLOCK)
+        assert content == ".env\nsetup_*_env.sh\n\n" + MIGRATED_BLOCK + HASH_RULE_LINES
         assert content.count(".env\n") == 1 and content.count("setup_*_env.sh") == 1
         assert CONFIGURE_COMMENT not in content
 
@@ -278,7 +333,10 @@ class TestEnsureGitignore:
         gi.write_text(before)
 
         assert cli.ensure_gitignore(str(gi)) == "updated"
-        assert gi.read_text() == before + f"{CONFIGURE_COMMENT}\nsetup_*_env.sh\n"
+        assert (
+            gi.read_text()
+            == "**/.env\n\n" + MIGRATED_BLOCK + f"{CONFIGURE_COMMENT}\nsetup_*_env.sh\n" + HASH_RULE_LINES
+        )
 
     def test_rule_the_user_re_includes_is_not_added(self, tmp_path):
         gi = tmp_path / ".gitignore"
@@ -294,3 +352,33 @@ class TestEnsureGitignore:
 
         assert cli.ensure_gitignore(str(gi), dry_run=True) == "updated"
         assert gi.read_text() == OLD_MANAGED_BLOCK
+
+    def test_old_ngargparser_rule_is_replaced_so_git_tracks_the_hash_record(self, tmp_path):
+        # A file under an ignored folder cannot be re-included: `.ngargparser/` has to become `.ngargparser/*`.
+        gi = tmp_path / ".gitignore"
+        before = "notes/\n\n" + cli.GITIGNORE_MANAGED_BLOCK.replace(".ngargparser/*\n", ".ngargparser/\n").replace(
+            HASH_RULE_LINES, ""
+        )
+        gi.write_text(before)
+        assert git_ignores(tmp_path, ".ngargparser/framework-hashes.json")  # control: the old block ignores it
+
+        assert cli.ensure_gitignore(str(gi), dry_run=True) == "updated"
+        assert gi.read_text() == before
+        assert cli.ensure_gitignore(str(gi)) == "updated"
+
+        assert gi.read_text() == before.replace(".ngargparser/\n", ".ngargparser/*\n") + HASH_RULE_LINES
+        assert not git_ignores(tmp_path, ".ngargparser/framework-hashes.json")
+        assert git_ignores(tmp_path, ".ngargparser/sync-backups/x/src/core/app_env.py")
+        assert git_ignores(tmp_path, ".ngargparser/libs-stamp")
+        assert cli.ensure_gitignore(str(gi)) == "unchanged"
+
+    def test_the_users_own_ngargparser_rule_is_left_alone(self, tmp_path):
+        # Only the managed section is rewritten; a rule the developer wrote above it stays as written.
+        gi = tmp_path / ".gitignore"
+        gi.write_text(".ngargparser/\n\n" + OLD_MANAGED_BLOCK)
+
+        assert cli.ensure_gitignore(str(gi)) == "updated"
+
+        content = gi.read_text()
+        assert content.startswith(".ngargparser/\n\n" + MIGRATED_BLOCK)
+        assert content.count(".ngargparser/\n") == 1 and HASH_RULE_LINES in content

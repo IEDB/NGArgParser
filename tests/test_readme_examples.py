@@ -1,9 +1,11 @@
-"""Every pasteable Python example in README.md must work when pasted into a fresh tool.
+"""Every pasteable Python example in README.md, docs/reference.md and
+docs/parser-cookbook.md must work when pasted into a fresh tool.
 
 A newcomer generates a tool and copies README examples into it. The examples drifted
 from the template: one reused a short flag the template already owns (-t), and the
 validator example failed on the template's missing final newline and missing
-`import argparse`. Each example is marked in README.md with a comment on the line
+`import argparse`. Each example is marked in README.md, docs/reference.md or
+docs/parser-cookbook.md (where the README's API details moved) with a comment on the line
 before its fence, `<!-- example: <kind> -->`, and is run here the way it is pasted:
 
   class       a whole parser module, saved as src/ExampleArgumentParser.py
@@ -25,14 +27,21 @@ import pytest
 
 from ngargparser import cli
 
-README = Path(__file__).resolve().parent.parent / "README.md"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DOCS = (REPO_ROOT / "README.md", REPO_ROOT / "docs" / "reference.md", REPO_ROOT / "docs" / "parser-cookbook.md")
 KINDS = ("class", "self", "validators", "imports")
 MARKED = re.compile(r"^<!-- example: (\w+) -->\n```python\n(.*?)^```", re.M | re.S)
 
 
 def readme_examples():
-    text = README.read_text(encoding="utf-8")
-    return [(m.group(1), text.count("\n", 0, m.start()) + 1, m.group(2)) for m in MARKED.finditer(text)]
+    found = []
+    for doc in DOCS:
+        text = doc.read_text(encoding="utf-8")
+        where = doc.relative_to(REPO_ROOT).as_posix()
+        found += [
+            (m.group(1), f"{where}:{text.count(chr(10), 0, m.start()) + 1}", m.group(2)) for m in MARKED.finditer(text)
+        ]
+    return found
 
 
 EXAMPLES = readme_examples()
@@ -116,7 +125,7 @@ def test_readme_has_examples_of_every_kind():
     assert found == set(KINDS), f"README example markers: found {sorted(found)}, expected {sorted(KINDS)}"
 
 
-@pytest.mark.parametrize("kind, line, code", EXAMPLES, ids=[f"README.md:{line}-{kind}" for kind, line, _ in EXAMPLES])
+@pytest.mark.parametrize("kind, line, code", EXAMPLES, ids=[f"{line}-{kind}" for kind, line, _ in EXAMPLES])
 def test_readme_example_works_when_pasted(project, kind, line, code):
     argv = []
     if kind == "class":
@@ -134,4 +143,4 @@ def test_readme_example_works_when_pasted(project, kind, line, code):
 
     proc = run_probe(project, kind, *argv)
 
-    assert proc.returncode == 0, f"README.md:{line} ({kind}) failed when pasted:\n{proc.stderr[-1500:]}"
+    assert proc.returncode == 0, f"{line} ({kind}) failed when pasted:\n{proc.stderr[-1500:]}"

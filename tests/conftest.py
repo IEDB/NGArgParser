@@ -73,10 +73,20 @@ def run_build():
 
     def _run(project_dir, *, expect_ok=True, progress=False, env=None):
         cmd = ["bash", "scripts/core/build.sh"] + (["--progress"] if progress else [])
+        # A local build unless the test says otherwise: GitLab sets CI, and in CI
+        # a build without .venv fails its startup check.
+        outer = {k: v for k, v in os.environ.items() if k not in ("CI", "NGARGPARSER_SKIP_STARTUP_CHECK")}
+        extra = dict(env or {})
+        # A generated project has no .venv and no uv.lock, so the startup check
+        # has no Python and stops the build: skipped, unless the test gives the
+        # project a .venv (fake_venv) or sets CI or the switch itself.
+        no_venv = not (project_dir / ".venv" / "bin" / "python").exists()
+        if no_venv and not {"CI", "NGARGPARSER_SKIP_STARTUP_CHECK"} & extra.keys():
+            extra["NGARGPARSER_SKIP_STARTUP_CHECK"] = "1"
         proc = subprocess.run(
             cmd,
             cwd=project_dir,
-            env={**os.environ, "TOOL_VERSION": BUILD_VERSION, **(env or {})},
+            env={**outer, "TOOL_VERSION": BUILD_VERSION, **extra},
             capture_output=True,
             text=True,
             timeout=120,
@@ -106,6 +116,10 @@ def fake_venv():
     def _make(project_dir):
         python = project_dir / ".venv" / "bin" / "python"
         python.parent.mkdir(parents=True, exist_ok=True)
+        # A uv-made .venv/bin/python links to a shared interpreter: replace the
+        # link, never write through it.
+        if python.is_symlink():
+            python.unlink()
         python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
         python.chmod(0o755)
         return python

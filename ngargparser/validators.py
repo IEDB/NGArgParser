@@ -1,23 +1,21 @@
 # Add any validation logic here. These files can be used along with argument parser.
 # For example, all or most arguments should have a validation function defined here.
 # Then, these functions can be called from add_argument() by setting the 'type'.
-# ex) self.parser_preprocess.add_argument(
-#           "--inputs-dir",
-#           dest="preprocess_inputs_dir",
+# ex) self.parser_predict.add_argument(
+#           "--reference-dir",
+#           dest="reference_dir",
 #           type=validators.validate_directory)
 # ====================================================================================
 # A custom validator raises argparse.ArgumentTypeError for a bad value.
+import core.set_pythonpath  # This automatically configures PYTHONPATH (first, so libs/ imports work)
 import argparse
 
-# Import all core validators (DO NOT MODIFY)
-import core.set_pythonpath  # This automatically configures PYTHONPATH
+# The built-in validators, from core/core_validators.py. The parser uses
+# validators.validate_file, so keep that one.
 from core.core_validators import (
-    get_dependencies_from_paths,
-    create_directory_structure_for_dependencies,
-    validate_file,
-    validate_directory,
-    validate_directory_given_filename,
-    validate_preprocess_dir
+    validate_file,                      # an existing file, not a folder; returns a Path
+    validate_directory,                 # an existing folder; returns a Path
+    validate_directory_given_filename,  # a file path (not a folder) in an existing folder; returns a Path
 )
 
 

@@ -13,21 +13,74 @@ stages:
 variables:
   NGARGPARSER_NO_SELF_UPGRADE: "1"
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  # The uv every job installs, pinned so a new uv release cannot change a
+  # result without a commit here. Raise it with the uv used to write uv.lock.
+  UV_VERSION: "0.11.14"
+  # The shellcheck the shellcheck job and one pytest leg install, from PyPI
+  # (shellcheck-py bundles the binary), pinned for the same reason.
+  SHELLCHECK_PY_VERSION: "0.11.0.1"
+  # The pre-commit the pre-commit job installs, pinned for the same reason.
+  PRE_COMMIT_VERSION: "4.6.2"
 
 # No `cache:` here on purpose: the GitLab cache server (gitlab-cache.lji.org)
 # isn't reachable from these runners, so caching only produces noisy upload
-# failures. `uv sync` re-resolves deps each run instead.
+# failures. Each job installs the dev environment from uv.lock instead;
+# `uv sync --locked` stops the job when uv.lock is out of date with
+# pyproject.toml, instead of rewriting it.
 default:
   image: python:3.12-slim
   before_script:
-    - pip install --quiet uv
-    - uv sync
+    - pip install --quiet "uv==$UV_VERSION"
+    - uv sync --locked
 
 ruff:
   stage: lint
   script:
     - uv run ruff check .
     - uv run ruff format --check .
+    # The templates are left out of the checks above (they hold placeholders
+    # such as CHILDPARSER). Naming them on the command line checks them anyway,
+    # for errors only (F). F401 stays off: the templates import
+    # core.set_pythonpath for its side effect and the placeholder validators.
+    - uv run ruff check --select F --ignore F401 ngargparser/templates
+
+# The shell scripts every generated tool runs: the build, its two user-owned
+# scripts, and the two the deploy runs. shellcheck comes from PyPI
+# (shellcheck-py bundles the binary), pinned (SHELLCHECK_PY_VERSION above), so
+# a new shellcheck release or another Debian image cannot change the result
+# without a commit here.
+shellcheck:
+  stage: lint
+  before_script:
+    - pip install --quiet "shellcheck-py==$SHELLCHECK_PY_VERSION"
+  script:
+    - shellcheck --version
+    - >-
+      shellcheck -S warning
+      ngargparser/templates/build.sh
+      ngargparser/templates/deploy/install.sh
+      ngargparser/templates/get_libs.sh
+      ngargparser/templates/hooks.sh
+      ngargparser/templates/configure
+
+# The pre-commit hooks no other job runs, from .pre-commit-config.yaml: the
+# whitespace and end-of-file fixers and the YAML, TOML and merge conflict
+# checks. The ruff and mypy hooks are skipped (SKIP), since the ruff and mypy
+# jobs run those tools. A fixer that changes a file fails the job, and
+# --show-diff-on-failure prints the change to make. pre-commit clones each hook
+# repository the config names from github.com, at the rev it pins, and needs
+# git to list the files. Nobody has yet checked that these runners reach
+# github.com, so a failure here shows as a warning and does not stop the
+# pipeline (allow_failure); drop it once a run has passed.
+pre-commit:
+  stage: lint
+  allow_failure: true
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git
+    - pip install --quiet "pre-commit==$PRE_COMMIT_VERSION"
+  script:
+    - pre-commit --version
+    - SKIP=ruff-check,ruff-format,mypy pre-commit run --all-files --show-diff-on-failure
 
 mypy:
   stage: typecheck
@@ -37,15 +90,78 @@ mypy:
 pytest:
   stage: test
   image: "python:$PYVER-slim"
-  # Job-level before_script replaces the default one: the slim images lack git,
-  # which the build.sh exclusion tests need (do-not-distribute.txt is evaluated
-  # with `git check-ignore`). Without it those tests skip silently.
+  # Job-level before_script replaces the default one: the slim images lack git
+  # and make, which the build.sh tests need (.distignore is evaluated with
+  # `git check-ignore`, and tests/test_build_makefile.py runs make). Without
+  # them those tests skip silently.
+  # The 3.11 leg also installs shellcheck, the one the shellcheck job runs,
+  # and sets NGARGPARSER_REQUIRE_SHELLCHECK, so the tests that shellcheck the
+  # setup scripts a generated tool writes fail there without it instead of
+  # skipping.
   before_script:
-    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git
-    - pip install --quiet uv
-    - uv sync
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git make
+    - pip install --quiet "uv==$UV_VERSION"
+    - >-
+      if [ "${NGARGPARSER_REQUIRE_SHELLCHECK:-0}" = 1 ]; then
+      pip install --quiet "shellcheck-py==$SHELLCHECK_PY_VERSION" && shellcheck --version; fi
+    - uv sync --locked
   parallel:
     matrix:
-      - PYVER: ["3.9", "3.11", "3.12"]
+      - PYVER: ["3.9", "3.10", "3.12", "3.13", "3.14"]
+      - PYVER: ["3.11"]
+        NGARGPARSER_REQUIRE_SHELLCHECK: ["1"]
   script:
     - uv run pytest
+
+# The jobs above run as root, where tests that need a permission error (such
+# as test_preprocess_parsing.py's unwritable folders) skip. This job runs the
+# suite as an ordinary user, so they run too, on the oldest and the newest
+# Python the package supports and on the default image's.
+pytest-non-root:
+  stage: test
+  image: "python:$PYVER-slim"
+  parallel:
+    matrix:
+      - PYVER: ["3.9", "3.12", "3.14"]
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git make
+    - pip install --quiet "uv==$UV_VERSION"
+    - useradd --create-home tester
+    - chown -R tester "$CI_PROJECT_DIR"
+  script:
+    - runuser -u tester -- env HOME=/home/tester sh -c 'uv sync --locked && uv run pytest'
+
+# Tests that need the real uv (uv lock and uv sync against a real cache),
+# switched on with NGARGPARSER_REAL_UV=1, run here with the pinned uv. They
+# have real_uv in their names. The deploy test needs the Python 3.11 that
+# generated tools ask for, found without a download, so the job runs on 3.11.
+# A skipped test fails the job: a test this job exists to run must run here.
+# -rs lists each skip as a SKIPPED line in pytest's summary. When no test
+# matches, pytest exits 5, which the job accepts with a note.
+#
+# The tests run uv offline, from its cache, which is empty on a fresh runner,
+# so they would skip. The last before_script line fills it: a throwaway tool
+# from this checkout's cli generate, locked and synced online, then locked
+# again for requires-python >=3.9, the range the tests' own projects ask for,
+# so the packages older Pythons need (tomli, exceptiongroup) are cached too.
+pytest-real-uv:
+  stage: test
+  image: python:3.11-slim
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git
+    - pip install --quiet "uv==$UV_VERSION"
+    - uv sync --locked
+    - >-
+      warm=$(mktemp -d) && cd "$warm" &&
+      uv run --project "$CI_PROJECT_DIR" cli generate warmup && cd warmup &&
+      uv lock && uv sync --locked &&
+      sed -i 's/^requires-python = .*/requires-python = ">=3.9"/' pyproject.toml &&
+      uv lock && cd "$CI_PROJECT_DIR"
+  script:
+    - uv --version
+    - >-
+      rc=0; NGARGPARSER_REAL_UV=1 uv run pytest -q -rs -k real_uv > real-uv.log 2>&1 || rc=$?;
+      cat real-uv.log;
+      if [ "$rc" -eq 5 ]; then echo "No test matches real_uv."; rc=0; fi;
+      if grep -q '^SKIPPED' real-uv.log; then echo "ERROR: a real_uv test was skipped; this job must run them all."; rc=1; fi;
+      [ "$rc" -eq 0 ]

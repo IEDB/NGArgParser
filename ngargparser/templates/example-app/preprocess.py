@@ -20,13 +20,32 @@ from pathlib import Path
 
 from core.NGArgumentParser import JobDescriptionParams
 
+# The list of the files this preprocess wrote into a folder (--inputs-dir and
+# --params-dir), kept in that folder. A rerun deletes only the files listed
+# there, so other files in a folder you name stay.
+WRITTEN_FILES_LIST = '.aa-counter-preprocess-files'
+
 
 def read_json(jfile):
     with open(jfile, 'r') as f:
         content = json.load(f)
 
     return json.dumps(content)
-    
+
+
+def remove_files_written_before(folder):
+    '''Delete the files a previous run listed in WRITTEN_FILES_LIST in `folder`,
+    and the list itself. Every other file in `folder` stays.'''
+    written_list = folder / WRITTEN_FILES_LIST
+    if not written_list.is_file():
+        return
+    for name in written_list.read_text().splitlines():
+        # Only a plain file name in this folder, never a path to another place.
+        if name and name == Path(name).name and (folder / name).is_file():
+            (folder / name).unlink()
+    written_list.unlink()
+
+
 def split_by_length(jdata, input_dir_path, param_dir_path):
     data = json.loads(jdata)
     peptides = data['peptide']
@@ -58,14 +77,13 @@ def split_by_length(jdata, input_dir_path, param_dir_path):
     # STEP 2. Create temp dir where the splitted jobs can be stored
     # -------------------------------------------------------------------
         
-    '''Clean old files'''
-    for file in input_dir_path.iterdir():
-        # Delete the file
-        if file.is_file(): file.unlink()  
+    '''Clean old files: only the ones a previous run wrote, as its
+    WRITTEN_FILES_LIST says, so a file of yours in --inputs-dir or --params-dir stays.'''
+    for folder in (input_dir_path, param_dir_path):
+        remove_files_written_before(folder)
 
-    for file in param_dir_path.iterdir():
-        # Delete the file
-        if file.is_file(): file.unlink()
+    # The names written into each folder (one folder, when both flags name it).
+    written = {input_dir_path.resolve(): [], param_dir_path.resolve(): []}
 
     for i in range(len(splitted_input_params)):
         abs_path_seqs_tmpfile = None
@@ -73,12 +91,17 @@ def split_by_length(jdata, input_dir_path, param_dir_path):
         with tempfile.NamedTemporaryFile(dir=input_dir_path, prefix=f'{i}-', suffix='.txt', mode='w', delete=False) as tmpfile:
             tmpfile.write('\n'.join(splitted_input_seqs[i]))
             abs_path_seqs_tmpfile = Path(tmpfile.name).resolve()
+        written[input_dir_path.resolve()].append(Path(tmpfile.name).name)
 
         # Update peptide_file_path
         splitted_input_params[i]['peptide_file_path'] = str(abs_path_seqs_tmpfile)
 
         with tempfile.NamedTemporaryFile(dir=param_dir_path, prefix=f'{i}-', suffix='.json', mode='w', delete=False) as tmpfile:
             json.dump(splitted_input_params[i], tmpfile, indent=4)
+        written[param_dir_path.resolve()].append(Path(tmpfile.name).name)
+
+    for folder, names in written.items():
+        (folder / WRITTEN_FILES_LIST).write_text(''.join(f'{name}\n' for name in names))
 
 
 def write_job_descriptions(**kwargs):
@@ -102,8 +125,13 @@ def write_job_descriptions(**kwargs):
     EXEC_FILE_PATH = str(Path(__file__).parent) + '/run_aa_counter.py'
     files_with_ctime = []
 
+    # Only the files split_by_length wrote, as its WRITTEN_FILES_LIST says: a
+    # file of yours in --params-dir is no job, even one made just before this run.
+    written_list = Path(params_dir) / WRITTEN_FILES_LIST
+    written = set(written_list.read_text().splitlines()) if written_list.is_file() else None
+
     for file_path in Path(params_dir).iterdir():
-        if file_path.is_file():
+        if file_path.is_file() and file_path.name != WRITTEN_FILES_LIST and (written is None or file_path.name in written):
             # Get the creation time of the file
             creation_time = file_path.stat().st_ctime
 

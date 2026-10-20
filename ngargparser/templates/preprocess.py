@@ -9,6 +9,10 @@
 #     * Each description will contain a command that runs single prediction (utilizes 'predict' subcommand).
 #     * Note that the last command in the description file will use 'postprocess' subcommand.
 
+import os
+import sys
+
+
 def run(**kwargs):
-    # ADD CODE LOGIC TO SPLIT INPUTS
-    pass
+    # ADD CODE LOGIC TO SPLIT INPUTS, in place of the sys.exit line below.
+    sys.exit(f"preprocess is not implemented yet: edit src/{os.path.basename(__file__)}")

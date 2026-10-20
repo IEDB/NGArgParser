@@ -1,20 +1,49 @@
-# .distignore — paths excluded from the distributed tarball.
-# (Lives at the project root, next to .gitignore.)
+# .distignore: paths excluded from the distributed tarball.
+# (Lives at the top of the tool folder, next to .gitignore.)
 #
-# The rules apply to the project's own files. Dependencies fetched by
+# The rules apply to the tool's own files. Dependencies fetched by
 # scripts/get_libs.sh into libs/ ship as get_libs.sh left them; trim those in get_libs.sh.
 #
 # Syntax: EXACT .gitignore semantics (evaluated with `git check-ignore`).
 # Paste .gitignore content verbatim: wildcards, dir-only `name/`, `!` negation,
-# `/` anchoring, and `**` all work, at every depth of the project tree.
+# `/` anchoring, and `**` all work, at every depth of the tool folder. A
+# whitelist (`*`, then `!*/` and the files to ship) works too: the build's own
+# folders below never ship, whatever a `!` rule says.
+# A rule without a `/`, or with only a trailing one, matches at every depth:
+# `*.sh` would also drop src/tools/run.sh. A leading `/` anchors a rule to the
+# top of the tool folder: `/Makefile` matches only the top-level Makefile.
 #
 # Built-in rules applied by scripts/core/build.sh (not listed here):
-#   .*                       hidden files/dirs are excluded by default — LOWEST
+#   .*                       hidden files/dirs are excluded by default; LOWEST
 #                            precedence, re-include with a `!` rule below
-#   .git/  build/            the project-root .git and build dirs are ALWAYS
-#                            excluded (a `!` rule cannot bring them back)
-#   README  deploy/install.sh  ALWAYS included — the deploy orchestrator
-#                            requires them at the tarball top level
+#   .git/  build/  .venv/  .ngargparser/
+#                            the top-level git repository, build output,
+#                            virtualenv and build state are ALWAYS excluded
+#                            (a `!` rule cannot bring them back); so are
+#                            venv/, env/ and .virtualenv/ when they hold a
+#                            virtualenv (pyvenv.cfg), and any top-level
+#                            folder that holds a conda environment
+#                            (conda-meta/). The deploy host makes its own
+#                            .venv with uv sync.
+#   .git at any depth        a nested repository (a clone in src/, a
+#                            submodule) is ALWAYS excluded too, since its
+#                            config can hold a token; the build names one a
+#                            `!` rule would ship in a notice.
+#   *.ngargparser-restore  .<name>.<8 characters>.tmp  .<name>.<8 characters>.ngargparser-sync
+#                            temporary files a stopped cli command (such as
+#                            cli sync) left, at any depth, are ALWAYS
+#                            excluded too; the build names them in a notice.
+#   README  deploy/install.sh  .python-version
+#                            ALWAYS included at the top level: the deploy
+#                            orchestrator requires README and install.sh, and
+#                            uv on the target host reads .python-version. A
+#                            rule that would exclude one of them only prints a
+#                            notice. Other files in deploy/ follow the rules here.
+#
+# The build fails when a rule here excludes pyproject.toml, uv.lock, configure,
+# paths.py or a framework file in src/core/: deploy/install.sh needs them on
+# the target host.
+# `make build` lists what this file excluded; `make build-verbose` lists all of it.
 #
 # Re-including hidden things:
 #   !.env                    ship a hidden file
@@ -26,11 +55,21 @@
 #   .streamlit/*
 #   !.streamlit/config.toml
 #
-# This file is USER-OWNED — `cli sync` never overwrites it.
+# This file is USER-OWNED: `cli sync` never overwrites it.
 
+# Build-time files at the top of the tool folder: make build runs them, a deploy does not.
+/Makefile
+/scripts/
+# Notes for the tool's developers; its users get README, which always ships. A
+# tool whose pyproject.toml has a [build-system] and readme = "README.md" may
+# need it on the deploy host (hatchling and uv_build read it there; setuptools
+# only warns): delete this rule then.
+/README.md
+# Written on each host by ./configure.
+/setup_*_env.sh
+# The tool's own tests.
+/tests/
 __pycache__/
-build.sh
-build.md
-Makefile
-*.sh
+# Package metadata a build or an editable install writes.
+*.egg-info/
 *.bak

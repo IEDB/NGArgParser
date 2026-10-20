@@ -8,6 +8,13 @@ import pytest
 from ngargparser import cli
 
 
+@pytest.fixture(autouse=True)
+def tool_folder(in_tmp_dir):
+    """Every test here runs in a tool's top folder: cli deps refuses any other folder."""
+    (in_tmp_dir / "pyproject.toml").write_text('[project]\nname = "demo"\n\n[tool.ngargparser]\napp_name = "demo"\n')
+    return in_tmp_dir
+
+
 def test_add_creates_file_with_blocks(in_tmp_dir):
     added = cli.add_deps_to_paths("paths.py", ["mhci", "mhcii"])
     assert added == 2
@@ -197,7 +204,7 @@ def test_add_refuses_a_name_that_starts_with_a_digit(in_tmp_dir, capsys):
     assert (
         "Not added: '2fold' becomes '2fold', which starts with a digit, so '2fold_path' is not a valid Python name. "
         "Pick a name that starts with a letter."
-    ) in capsys.readouterr().out
+    ) in capsys.readouterr().err
 
 
 def test_add_of_a_digit_name_leaves_an_existing_paths_file_alone(in_tmp_dir):
@@ -255,7 +262,7 @@ def test_first_run_menu_refuses_names_configure_cannot_see(in_tmp_dir, monkeypat
     content = (in_tmp_dir / "paths.py").read_text()
     assert "peer_path=None" in content
     assert "foo_venv" not in content
-    assert "Not added: 'foo_venv' becomes 'foo_venv', which ends in '_venv'" in capsys.readouterr().out
+    assert "Not added: 'foo_venv' becomes 'foo_venv', which ends in '_venv'" in "".join(capsys.readouterr())
 
 
 # The interactive menu (`cli deps` with no names) exits 1 when it changed nothing
@@ -281,7 +288,7 @@ def test_menu_without_a_terminal_stops_with_exit_1(in_tmp_dir, monkeypatch, caps
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))  # a script or CI job: not a terminal
 
     assert deps(None) == 1
-    assert "needs a terminal" in capsys.readouterr().out
+    assert "needs a terminal" in "".join(capsys.readouterr())
     assert not (in_tmp_dir / "paths.py").exists()
 
 

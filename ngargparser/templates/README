@@ -1,15 +1,17 @@
-{TOOL_NAME_CAP} ({TOOL_NAME}) - version TOOL_VERSION
+{TOOL_NAME_CAP} - version TOOL_VERSION
 ============================================================
 
 Quick Install
 -------------
 
-    curl -LsSf https://astral.sh/uv/install.sh | sh   # if uv is not installed yet
-    uv sync
+    curl -LsSf https://astral.sh/uv/0.11.14/install.sh | sh   # if uv is not installed yet
+    uv sync --frozen --no-dev
     ./configure
 
-uv sync creates ./.venv with Python 3.11 and the locked dependencies. See
-"Usage" to run the tool and "Installation" for a shared install.
+uv sync creates ./.venv with Python 3.11 and the locked dependencies:
+--frozen installs exactly the versions in uv.lock, and --no-dev leaves out
+the developer packages. See "Usage" to run the tool and "Installation" for a
+shared install.
 
 Introduction
 ------------
@@ -46,7 +48,7 @@ Single-user install (default)
 2. Install the dependencies into ./.venv, then write the .env file that the
 tool reads at run time:
 
-    uv sync
+    uv sync --frozen --no-dev
     ./configure
 
 Multi-user / shared install
@@ -60,27 +62,30 @@ at world-readable folders before uv sync. An admin creates /apps/uv once.
     export UV_CACHE_DIR=/apps/uv/cache
     export UV_PYTHON_PREFERENCE=only-managed
     umask 0022
-    uv sync
+    uv sync --frozen --no-dev
     ./configure
 
 Usage
 -----
 
-The commands below start with uv run, which runs them in ./.venv without
-activating it. To type plain python instead, run source .venv/bin/activate
-first.
+Run the commands below from the tool folder. They start with
+.venv/bin/python, the Python that uv sync set up, not uv run: uv run first
+installs the developer packages a deploy leaves out, and fails in a shared
+install you cannot write to. To type plain python instead, run
+source .venv/bin/activate first.
 
 List the subcommands, then the options of predict. Each subcommand takes -h.
 
-    uv run python src/run_{TOOL_EXEC_NAME}.py -h
-    uv run python src/run_{TOOL_EXEC_NAME}.py predict -h
+    .venv/bin/python src/run_{TOOL_EXEC_NAME}.py -h
+    .venv/bin/python src/run_{TOOL_EXEC_NAME}.py predict -h
 
 Run a prediction on a JSON input file. -o sets the output prefix, and -f sets
-the format: tsv (the default) or json. <Replace the example input with a real
-one, and describe the output.>
+the format: tsv (the default) or json. In a shared install, write input.json
+and the output in a folder of your own, and give their full paths. <Replace
+the example input with a real one, and describe the output.>
 
     echo '{"<parameter>": "<value>"}' > input.json
-    uv run python src/run_{TOOL_EXEC_NAME}.py predict -j input.json -o output/result
+    .venv/bin/python src/run_{TOOL_EXEC_NAME}.py predict -j input.json -o output/result
 
 For batch runs, preprocess splits an input into jobs and postprocess merges
 their results. <Describe the batch workflow for {TOOL_NAME}, or delete this

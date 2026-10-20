@@ -15,6 +15,10 @@ class ChildArgumentParser(NGArgumentParser):
         Developers can choose to further customize other parameters of ArgumentParser()
         from here:
         https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser
+
+        Recipes for this file (add an option, check a value with a validator, change
+        a framework option, group options in the help, test the parser):
+        https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser/-/blob/master/docs/parser-cookbook.md
         '''
         # ADD program details by setting params, such as
         # prog, usage, description, epilog, etc.
@@ -27,12 +31,15 @@ class ChildArgumentParser(NGArgumentParser):
         # ADD subparser prediction descriptions
         # -----------------------------------------------------
         self.parser_predict = self.add_predict_subparser(
-            help='',
+            help='Run one prediction.',
             description=''
         )
 
         # Set the display order of subcommands in help output
         self.set_subcommand_order(['predict', 'preprocess', 'postprocess'])
+
+        # ADD a subcommand of your own with self.add_subcommand, and a branch for it in main() of the run script:
+        #   self.parser_list_alleles = self.add_subcommand('list-alleles', help='List the alleles.')
 
         # ADD tool-specific params 
         # -----------------------------------------------------

@@ -73,7 +73,7 @@ def test_missing_file_is_rejected_by_argparse(scaffolded_project, argv):
     result = run_script(scaffolded_project, "run_demo.py", *argv)
 
     assert result.returncode == 2
-    assert "is not a valid file" in result.stderr
+    assert f"'{argv[-1]}' does not exist." in result.stderr
 
 
 def test_file_arguments_parse_to_paths(scaffolded_project, tmp_path):
@@ -120,7 +120,8 @@ def test_example_app_preprocess_writes_job_descriptions(example_project):
     assert result.returncode == 0, result.stderr
 
     jobs = json.loads((example_project / "out" / "job_descriptions.json").read_text())
-    params = sorted((example_project / "out" / "predict-inputs" / "params").iterdir())
+    # Leave out the list of the files preprocess wrote (.aa-counter-preprocess-files).
+    params = sorted(p for p in (example_project / "out" / "predict-inputs" / "params").iterdir() if p.suffix == ".json")
     predict, final = jobs[:-1], jobs[-1]
     assert len(predict) == len(params) > 0
     assert all(j["job_type"] == "prediction" and " predict -j " in j["shell_cmd"] for j in predict)
@@ -199,3 +200,104 @@ def test_example_postprocess_input_dir_with_results_dir(example_project, example
 
     assert result.returncode == 0, result.stderr
     assert (example_project / ".." / "final" / "final-result.json").exists()
+
+
+# postprocess -o used to require its folder to exist ("... is not a valid
+# directory."), while predict -o creates missing folders when it writes. Both
+# now create them when the result is written.
+
+
+def test_example_postprocess_output_prefix_creates_missing_folders(example_project, example_results):
+    result = run_script(
+        example_project,
+        "run_aa_counter.py",
+        "postprocess",
+        "-j",
+        "../jobs/job_descriptions.json",
+        "-o",
+        "../runs/nonexist/dir/prefix",
+    )
+
+    assert result.returncode == 0, result.stderr
+    written = example_project / ".." / "runs" / "nonexist" / "dir" / "prefix.json"
+    assert json.loads(written.read_text())["results"][0]["table_data"]
+    assert "Wrote ../runs/nonexist/dir/prefix.json" in result.stderr
+
+
+def test_postprocess_output_prefix_into_a_missing_folder_parses_to_text(scaffolded_project, tmp_path):
+    # Text, as predict gives -o (postprocess gave a Path), and nothing is created while parsing.
+    jd = tmp_path / "job_descriptions.json"
+    jd.write_text("[]")
+
+    parsed = parsed_namespace(
+        scaffolded_project,
+        "DemoArgumentParser",
+        "DemoArgumentParser",
+        "postprocess",
+        "-j",
+        str(jd),
+        "-o",
+        "missing/dir/prefix",
+    )
+
+    assert "'output_prefix': 'str'" in parsed
+    assert not (scaffolded_project / "missing").exists()
+
+
+# The sample app's -a had no validator, so `predict -t src/example.tsv -a '('`
+# crashed with "re.error: missing ), unterminated subpattern". Its parser also
+# imported core.core_validators directly, while the scaffold imports
+# src/validators.py, where a tool's own validators go.
+
+
+def test_example_app_refuses_a_bad_amino_acid_pattern(example_project):
+    result = run_script(example_project, "run_aa_counter.py", "predict", "-t", "src/example.tsv", "-a", "(")
+
+    assert result.returncode == 2
+    assert result.stderr.splitlines()[-1] == (
+        "run_aa_counter.py predict: error: argument --amino-acid/-a: '(' is not a valid regular expression: "
+        "missing ), unterminated subpattern at position 0"
+    )
+
+
+# predict -j src/example.json -a P counted L, the amino acid the JSON names, and
+# said nothing about -a.
+
+
+def test_example_app_refuses_a_with_a_json_input(example_project):
+    refused = run_script(example_project, "run_aa_counter.py", "predict", "-j", "src/example.json", "-a", "P")
+    empty = run_script(example_project, "run_aa_counter.py", "predict", "-j", "src/example.json", "-a", "")
+    # Control: -a with -t, and -j alone, still count.
+    tsv = run_script(example_project, "run_aa_counter.py", "predict", "-t", "src/example.tsv", "-a", "P")
+    json_alone = run_script(example_project, "run_aa_counter.py", "predict", "-j", "src/example.json")
+
+    message = (
+        "run_aa_counter.py predict: error: -a sets the amino acid for -t input; a -j input carries its own amino_acid"
+    )
+    assert (refused.returncode, refused.stdout, refused.stderr.splitlines()[-1:]) == (2, "", [message])
+    assert (empty.returncode, empty.stderr.splitlines()[-1:]) == (2, [message])
+    assert tsv.returncode == 0 and tsv.stdout.startswith("peptide\tlength\tAAcount(P)\n")
+    assert json_alone.returncode == 0 and json_alone.stdout.startswith("peptide\tlength\tAAcount(L)\n")
+
+
+def test_example_app_parser_imports_its_own_validators(example_project):
+    parser = (example_project / "src" / "AACounterArgumentParser.py").read_text()
+
+    assert "\nimport validators\n" in parser
+    assert "core.core_validators" not in parser
+    assert "def validate_amino_acid(" in (example_project / "src" / "validators.py").read_text()
+
+
+def test_example_app_reports_a_setup_error_in_one_line(example_project):
+    parser = example_project / "src" / "AACounterArgumentParser.py"
+    parser.write_text(
+        parser.read_text() + '\n        self.parser_predict.update_arguments("--amino-acd", default="L")\n'
+    )
+    line = len(parser.read_text().splitlines())
+
+    result = run_script(example_project, "run_aa_counter.py", "--help")
+
+    assert result.returncode == 2
+    assert result.stderr == (
+        f"src/AACounterArgumentParser.py:{line}: No option --amino-acd in predict; did you mean --amino-acid?\n"
+    )

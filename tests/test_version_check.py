@@ -1,4 +1,5 @@
-"""Unit tests for the release check that `cli --version` and `cli --help` run on every invocation.
+"""Unit tests for the release check that `cli --version` runs on every invocation, and for the
+update notice, which a help screen reads from its cache only.
 
 The remote lookup `_latest_release_tag` is replaced in every test and the cache
 directory is redirected to a temp dir, so nothing contacts GitLab or touches the
@@ -29,6 +30,7 @@ def _isolated(monkeypatch, tmp_path):
     monkeypatch.delenv("NGARGPARSER_NO_UPDATE_CHECK", raising=False)
     # Pin the installed version so the comparisons don't depend on the release under test.
     monkeypatch.setattr(cli, "__version__", INSTALLED)
+    monkeypatch.setattr(cli, "_HELP_SHOWN", False, raising=False)  # main() runs once per process; here, per test
 
 
 def _cache_file(tmp_path):
@@ -71,6 +73,7 @@ def test_passive_notice_text_unchanged(monkeypatch, tmp_path, capsys):
     _seed_cache(tmp_path, "v9.9.9")
     _lookup_must_not_run(monkeypatch)  # the cache is fresh, so no lookup
     monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
+    monkeypatch.delenv("NO_COLOR", raising=False)  # a terminal without NO_COLOR gets the colour codes
 
     cli._maybe_notify_update("generate")
 
@@ -103,7 +106,29 @@ def test_version_lookup_is_strict_and_non_interactive(monkeypatch, capsys):
     _run_cli(monkeypatch, capsys)
     args, kwargs = calls[0]
     assert args == (cli.BASE_REPO_URL[len("git+") :],)
-    assert kwargs == {"timeout": cli.RELEASE_CHECK_TIMEOUT, "strict": True, "prompt": False}
+    assert kwargs == {"timeout": kwargs["timeout"], "strict": True, "prompt": False}
+    # Shorter than the wait of a dry run's lookup: GitLab answers in 1.5 to 3.1 s when it is there.
+    assert (
+        kwargs["timeout"] == getattr(cli, "VERSION_CHECK_TIMEOUT", None)
+        and kwargs["timeout"] < cli.RELEASE_CHECK_TIMEOUT
+    )
+
+
+def test_version_says_when_gitlab_did_not_answer_in_time(monkeypatch, capsys):
+    waited = []
+
+    def slow(*a, **k):
+        waited.append(k["timeout"])
+        try:
+            raise subprocess.TimeoutExpired(["git", "ls-remote"], k["timeout"])
+        except subprocess.TimeoutExpired as e:
+            raise cli._RemoteUnavailable(str(e)) from e
+
+    monkeypatch.setattr(cli, "_latest_release_tag", slow)
+    code, out, err = _run_cli(monkeypatch, capsys)
+    assert code == 0 and out == f"cli {INSTALLED}\n"
+    # A slow answer is not an unreachable GitLab.
+    assert err == f"⚠ Couldn't check for a newer ngargparser (GitLab did not answer within {waited[0]} s).\n"
 
 
 def test_version_never_reads_cache(monkeypatch, tmp_path, capsys):
@@ -141,6 +166,16 @@ def test_version_reports_when_installed_is_ahead(monkeypatch, capsys):
     code, _, err = _run_cli(monkeypatch, capsys)
     assert code == 0
     assert err == f"ℹ Installed ngargparser {INSTALLED} is ahead of the latest release tag v0.0.1.\n"
+    assert NOTICE not in err
+
+
+def test_version_reports_a_pre_release_ahead_of_the_latest_tag(monkeypatch, capsys):
+    # 0.4.2rc1 sorts after 0.4.1 (PEP 440); the X.Y.Z parser could not read it and
+    # reported an update to the older tag.
+    monkeypatch.setattr(cli, "__version__", "0.4.2rc1")
+    _lookup_returning(monkeypatch, "v0.4.1")
+    _, _, err = _run_cli(monkeypatch, capsys)
+    assert err == "ℹ Installed ngargparser 0.4.2rc1 is ahead of the latest release tag v0.4.1.\n"
     assert NOTICE not in err
 
 
@@ -232,6 +267,7 @@ def test_version_notice_plain_when_not_a_tty(monkeypatch, capsys):
 def test_version_notice_colored_on_a_tty(monkeypatch, capsys):
     _lookup_returning(monkeypatch, "v999.0.0")
     monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
+    monkeypatch.delenv("NO_COLOR", raising=False)
     _, _, err = _run_cli(monkeypatch, capsys)
     assert f"\033[33m⬆  {NOTICE}" in err
 
@@ -295,83 +331,60 @@ def test_release_notes_url_quotes_the_tag():
     assert cli._release_notes_url("v1.2.4+build.5").endswith("/-/blob/v1.2.4%2Bbuild.5/CHANGELOG.md")
 
 
-# --- `cli --help` runs the same live check ---------------------------------
+# --- A help screen never contacts the remote ----------------------------------
+# `cli --help` used to run the live check (2 to 3 s); a help screen now reads only the cache.
 
 
-def test_help_notifies_when_newer_tag(monkeypatch, capsys):
-    _lookup_returning(monkeypatch, "v999.0.0")
-    code, out, err = _run_cli(monkeypatch, capsys, flag="--help")
-    assert code == 0
-    assert out.startswith("usage: cli ")
-    assert NOTICE in err
-    assert "/-/blob/v999.0.0/CHANGELOG.md" in err
+def _stale_cache(tmp_path, latest):
+    path = _cache_file(tmp_path)
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"checked_at": time.time() - 2 * cli.UPDATE_CHECK_TTL, "latest": latest}))
+    return path
 
 
-def test_help_short_flag_h(monkeypatch, capsys):
-    _lookup_returning(monkeypatch, "v999.0.0")
-    code, out, err = _run_cli(monkeypatch, capsys, flag="-h")
-    assert code == 0
-    assert out.startswith("usage: cli ")
-    assert NOTICE in err
-
-
-def test_help_notifies_on_every_run(monkeypatch, capsys):
-    calls = _lookup_returning(monkeypatch, "v999.0.0")
-    for _ in range(2):
-        _, _, err = _run_cli(monkeypatch, capsys, flag="--help")
-        assert NOTICE in err
-    assert len(calls) == 2
-
-
-def test_help_never_touches_cache(monkeypatch, tmp_path, capsys):
-    path = _seed_cache(tmp_path, "v500.0.0")
-    before = path.read_bytes()
-    calls = _lookup_returning(monkeypatch, "v999.0.0")
-    _, _, err = _run_cli(monkeypatch, capsys, flag="--help")
-    assert len(calls) == 1  # the fresh cache did not stand in for the lookup
-    assert "v999.0.0" in err and "v500.0.0" not in err
-    assert path.read_bytes() == before
-
-
-def test_help_silent_when_up_to_date(monkeypatch, capsys):
-    _lookup_returning(monkeypatch, f"v{INSTALLED}")
-    code, out, err = _run_cli(monkeypatch, capsys, flag="--help")
-    assert code == 0
-    assert out.startswith("usage: cli ")
-    assert err == ""
-
-
-def test_help_reports_unreachable_remote(monkeypatch, capsys):
-    def boom(*a, **k):
-        raise cli._RemoteUnavailable("network down")
-
-    monkeypatch.setattr(cli, "_latest_release_tag", boom)
-    code, out, err = _run_cli(monkeypatch, capsys, flag="--help")
-    assert code == 0
-    assert out.startswith("usage: cli ")
-    assert UNREACHABLE in err
-
-
-def test_help_skips_check_in_ci(monkeypatch, capsys):
-    monkeypatch.setenv("CI", "true")
+@pytest.mark.parametrize("argv", [["--help"], ["-h"], ["sync", "--help"], ["deps", "add", "-h"], ["generate", "-h"]])
+def test_help_never_contacts_the_remote_even_when_the_cache_is_stale(monkeypatch, tmp_path, capsys, argv):
+    cache = _stale_cache(tmp_path, "v999.0.0")
+    before = cache.read_bytes()
     _lookup_must_not_run(monkeypatch)
-    code, out, err = _run_cli(monkeypatch, capsys, flag="--help")
-    assert code == 0
-    assert out.startswith("usage: cli ")
-    assert err == ""
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: True)  # where the notice may look up
+    monkeypatch.setattr(sys, "argv", ["cli", *argv])
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    cli._notify_at_exit()  # what atexit runs as the process ends
+
+    captured = capsys.readouterr()
+    assert exc.value.code == 0
+    assert captured.out.startswith("usage: cli")
+    # The cached release is still news: it is shown, from the cache.
+    assert f"{INSTALLED} → v999.0.0" in captured.err
+    assert cache.read_bytes() == before  # not looked up, so not rewritten
 
 
-def test_help_skips_check_when_opted_out(monkeypatch, capsys):
-    monkeypatch.setenv("NGARGPARSER_NO_UPDATE_CHECK", "1")
+def test_help_without_a_cache_is_silent_and_another_command_still_looks_up(monkeypatch, tmp_path, capsys):
     _lookup_must_not_run(monkeypatch)
-    code, _, err = _run_cli(monkeypatch, capsys, flag="--help")
-    assert code == 0
-    assert err == ""
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
+    code, out, err = _run_cli(monkeypatch, capsys, flag="--help")
+    cli._notify_at_exit()
+    assert code == 0 and out.startswith("usage: cli ")
+    assert err == "" and capsys.readouterr().err == ""
+
+    # Control: the notice of a command that is not a help screen keeps its one lookup a day.
+    monkeypatch.setattr(cli, "_HELP_SHOWN", False)
+    _stale_cache(tmp_path, "v1.0.0")
+    calls = _lookup_returning(monkeypatch, "v999.0.0")
+    monkeypatch.setattr(sys, "argv", ["cli", "deps", "list"])
+
+    cli._notify_at_exit()
+
+    assert len(calls) == 1 and calls[0][1] == {"timeout": 4}
+    assert f"{INSTALLED} → v999.0.0" in capsys.readouterr().err
 
 
 def test_help_lists_both_flags(monkeypatch, capsys):
     # The hand-registered -h/--help keeps argparse's stock wording and position.
-    _lookup_returning(monkeypatch, f"v{INSTALLED}")
+    _lookup_must_not_run(monkeypatch)
     _, out, _ = _run_cli(monkeypatch, capsys, flag="--help")
     assert out.splitlines()[0].startswith("usage: cli [-h] [-v] ")
     assert "-h, --help" in out and "show this help message and exit" in out

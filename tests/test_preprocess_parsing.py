@@ -100,7 +100,7 @@ def test_params_dir_outside_output_must_exist(project):
     out = preprocess(project, "-j", "in.json", "-o", "out", "--params-dir", "elsewhere/params")
 
     assert out["code"] == 2
-    assert "argument --params-dir: 'elsewhere/params' is not a valid directory." in out["stderr"]
+    assert "argument --params-dir: 'elsewhere/params' does not exist." in out["stderr"]
 
 
 def test_existing_params_dir_outside_output_is_accepted(project):
@@ -195,7 +195,7 @@ def test_missing_named_folder_leaves_no_folders(project, flag, value):
     out = preprocess(project, "-j", "in.json", "-o", "out", flag, value)
 
     assert out["code"] == 2
-    assert f"argument {flag}: '{value}' is not a valid directory." in out["stderr"]
+    assert f"argument {flag}: '{value}' does not exist." in out["stderr"]
     assert not (project / "out").exists()
     assert "Creating directory" not in out["stdout"]
 
@@ -210,3 +210,23 @@ def test_layout_folder_of_a_dependency_is_accepted(project):
 
     assert out["code"] == 0, out["stderr"]
     assert out["args"]["preprocess_parameters_dir"][1] == "out/tcell_class_i/predict-inputs/params"
+
+
+# preprocess -o was described as "prediction result output directory", while it is
+# the folder of the whole job: preprocess puts its folder layout there, and the
+# tool's preprocess.py writes job_descriptions.json there.
+
+
+def test_output_dir_help_describes_the_job_folder(project):
+    proc = subprocess.run(
+        [sys.executable, "src/run_demo.py", "preprocess", "--help"], cwd=project, capture_output=True, text=True
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    help_text = " ".join(proc.stdout.split())
+    # Python 3.13 lists the flags as "--output-dir, -o OUTPUT_DIR", older ones repeat the metavar.
+    assert (
+        "-o OUTPUT_DIR Output folder of the job: job_descriptions.json and the "
+        "predict-inputs/ folder layout go here (created if missing)."
+    ) in help_text
+    assert "prediction result output directory" not in help_text
