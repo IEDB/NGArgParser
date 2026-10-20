@@ -162,6 +162,8 @@ def self_upgrading_sync(scaffolded_project, monkeypatch, sync_args):
     """A sync that starts with the self-upgrade: no NGARGPARSER_NO_SELF_UPGRADE, and not run from a checkout."""
     monkeypatch.delenv("NGARGPARSER_NO_SELF_UPGRADE", raising=False)
     monkeypatch.setattr(cli, "_local_checkout", lambda: None)
+    # Stamped older than the 0.4.x versions the tests install, whatever the real version is.
+    cli.write_scaffold_version(str(scaffolded_project / "pyproject.toml"), "0.4.0")
     return lambda **overrides: cli.sync_command(sync_args(upgrade=True, **overrides))
 
 

@@ -1,6 +1,6 @@
 # ngargparser
 
-[![ngargparser](https://img.shields.io/badge/ngargparser-0.4.1-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
+[![ngargparser](https://img.shields.io/badge/ngargparser-0.5.0-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
 
 ngargparser is a framework for IEDB command-line tools that run on HPC (high-performance computing) clusters. It gives you a `cli` command that generates and updates tools, and a base class, `NGArgumentParser`, that gives every tool the same `preprocess`, `predict` and `postprocess` commands.
 
@@ -27,13 +27,13 @@ Install the current release with `uv tool install`, which puts `cli` on your PAT
 
 ```bash
 # A release tag, over SSH (needs your SSH key on GitLab):
-uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.4.1'
+uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.5.0'
 
 # The same release over HTTPS (needs a GitLab access token):
-uv tool install 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.4.1'
+uv tool install 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.5.0'
 ```
 
-`cli --version` prints `cli 0.4.1`, then checks GitLab for a newer release ([Update notice](docs/reference.md#update-notice)). An SSH install that fails with `Permission denied (publickey...)` needs your key on GitLab ([SSH install fails](docs/reference.md#ssh-install-fails)).
+`cli --version` prints `cli 0.5.0`, then checks GitLab for a newer release ([Update notice](docs/reference.md#update-notice)). An SSH install that fails with `Permission denied (publickey...)` needs your key on GitLab ([SSH install fails](docs/reference.md#ssh-install-fails)).
 
 ## Quickstart
 
