@@ -33,7 +33,7 @@ uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-d
 uv tool install 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.4.1'
 ```
 
-`cli --version` prints `cli 0.4.1`. It then checks GitLab for a newer release, for up to 4 seconds, and prints any notice on stderr; `NGARGPARSER_NO_UPDATE_CHECK=1` turns the check off ([Update notice](docs/reference.md#update-notice)). An SSH install that fails with `Permission denied (publickey...)` needs your key on GitLab ([SSH install fails](docs/reference.md#ssh-install-fails)).
+`cli --version` prints `cli 0.4.1`, then checks GitLab for a newer release ([Update notice](docs/reference.md#update-notice)). An SSH install that fails with `Permission denied (publickey...)` needs your key on GitLab ([SSH install fails](docs/reference.md#ssh-install-fails)).
 
 ## Quickstart
 
@@ -148,7 +148,7 @@ input file ──► preprocess ──► job_descriptions.json, plus one parame
                     postprocess ──► one combined result
 ```
 
-`job_descriptions.json` lists one job per job unit, then the `postprocess` job ([fields](docs/reference.md#job-description-fields)). Before it calls your `run()`, `preprocess` creates `predict-inputs/`, `predict-outputs/`, `aggregate/` and `results/` under `-o` ([layout](docs/reference.md#preprocess-layout)). When `paths.py` sets the path of a dependency, these go in `my-app/` under `-o`, and each such dependency gets them too, without `results/`, in a folder of its own, such as `pepx/`.
+`job_descriptions.json` lists one job per job unit, then the `postprocess` job ([fields](docs/reference.md#job-description-fields)). Before it calls your `run()`, `preprocess` creates `predict-inputs/`, `predict-outputs/`, `aggregate/` and `results/` under `-o` ([layout](docs/reference.md#preprocess-layout)).
 
 `run()` gets every argument as a keyword, such as `output_dir` ([arguments](docs/reference.md#built-in-preprocess-arguments)). Until you replace its `sys.exit(...)` line, it prints `preprocess is not implemented yet: edit src/preprocess.py` and exits 1, as `postprocess` does.
 
@@ -167,7 +167,7 @@ The [parser cookbook](docs/parser-cookbook.md) has a recipe for each change, wit
 | Test the parser with `uv run pytest` | [Test the parser](docs/parser-cookbook.md#test-the-parser) |
 | Test what `predict` prints | [Test the predict branch](docs/parser-cookbook.md#test-the-predict-branch) |
 | Run another tool and keep its result | [Call a dependency](docs/parser-cookbook.md#call-a-dependency) |
-| Add a subcommand of your own | `self.add_subcommand('list-alleles')` in the parser, and an `elif args.subcommand == 'list-alleles':` branch in `main()`; without the branch, the tool exits 1 with `list-alleles has no branch in src/run_my_app.py: add one in main()` |
+| Add a subcommand of your own, such as `list-alleles` | [Add a subcommand](docs/parser-cookbook.md#add-a-subcommand) |
 
 ## Dependencies
 
@@ -190,7 +190,7 @@ cli deps add pepx                          # writes a stub block to paths.py
 ./configure --pepx-path=/opt/tools/pepx    # sets the path, then writes .env and setup_pepx_env.sh
 ```
 
-The stub block holds four settings, all `None`; only `pepx_path` is required. A program that is not an ngargparser tool also needs `--pepx-entry=<path>`, its entry script, as an absolute path or one relative to `pepx_path`. `./configure` keeps the previous `paths.py` as `paths.py.bak`, and only warns about a path that does not exist yet. `cli deps list` shows the dependencies, and `cli deps remove pepx` drops one. Keep your settings in `paths.py`: `./configure` rewrites `.env` from it each time ([flags and .env](docs/reference.md#configure-flags-and-env)).
+The stub block holds four settings, all `None`; only `pepx_path` is required. A program that is not an ngargparser tool also needs `--pepx-entry=<path>`, its entry script, as an absolute path or one relative to `pepx_path`. `cli deps list` shows the dependencies, and `cli deps remove pepx` drops one. Keep your settings in `paths.py`: `./configure` rewrites `.env` from it each time ([flags and .env](docs/reference.md#configure-flags-and-env)).
 
 ### Code in `libs/`: `scripts/get_libs.sh`
 
@@ -201,18 +201,18 @@ The stub block holds four settings, all `None`; only `pepx_path` is required. A 
 vendor 'v0.5.4' "iedb/tools/tools-redesign/global-dependencies/allele-validator"
 ```
 
-`vendor` clones with the `TOOLS_DEPLOY_TOKEN` CI/CD variable when it is set, and with your SSH key otherwise. The CI image has no SSH key, so a CI job without the token stops. Write into the current folder, never into `libs/`. Then run `make libs`, so the tool can import that code when you run it from its folder. A deploy installs only the packages in `pyproject.toml`, so add each package the fetched code imports with `uv add`. A build fetches the same way, but only when the script or `TOOL_VERSION` changes, or a fetched entry is missing or edited ([get_libs internals](docs/internals.md#get_libs-internals)).
+`vendor` clones with the `TOOLS_DEPLOY_TOKEN` CI/CD variable when it is set, and with your SSH key otherwise. The CI image has no SSH key, so a CI job without the token stops. Write into the current folder, never into `libs/`. Then run `make libs`, so the tool can import that code when you run it from its folder. A deploy installs only the packages in `pyproject.toml`, so add each package the fetched code imports with `uv add`. A build fetches the same way ([get_libs internals](docs/internals.md#get_libs-internals)).
 
 ## Call another tool
 
-Once `./configure` knows a dependency's path, your tool can run it. From Python, `core.app_env.dependency_command("pepx", ...)` returns the command and its environment for `subprocess` ([Call a dependency](docs/parser-cookbook.md#call-a-dependency)). It raises `DependencyError` when pepx is not declared, configured or deployed, and the generated entry script then prints the message and exits 1 ([Run a dependency from Python](docs/reference.md#run-a-dependency-from-python)). In a shell, source the setup script `./configure` wrote, then call its `run_<dep>` function:
+Once `./configure` knows a dependency's path, your tool can run it. From Python, `core.app_env.dependency_command("pepx", ...)` returns the command and its environment for `subprocess` ([Call a dependency](docs/parser-cookbook.md#call-a-dependency)). In a shell, source the setup script `./configure` wrote, then call its `run_<dep>` function:
 
 ```bash
 . ./setup_pepx_env.sh
 run_pepx predict -j job.json -o out
 ```
 
-`run_pepx` runs pepx's entry script, with pepx's Python for a Python script, and returns pepx's exit code. Until pepx is deployed and configured, it says so on stderr and returns 127 ([Run a dependency from a shell](docs/reference.md#run-a-dependency-from-a-shell)).
+`run_pepx` runs pepx's entry script, with pepx's Python for a Python script, and returns pepx's exit code ([Run a dependency from a shell](docs/reference.md#run-a-dependency-from-a-shell)).
 
 ## Build and run
 
@@ -256,7 +256,7 @@ cli sync
 
 The [CLI cheatsheet](docs/reference.md#cli-cheatsheet) lists every option and alias, such as `cli sync --no-upgrade` and `cli upgrade --ref <version>`.
 
-`cli sync` upgrades ngargparser first. It then copies each framework file that differs to `.ngargparser/sync-backups/<time>/`, overwrites it, and warns when you had edited it. It also sets the `README.md` badge and the `scaffold_version` in `pyproject.toml` to the installed version. When a help screen of your tool that worked before fails after, it restores every file. Other files you own, such as `README`, stay as they are ([cli sync](docs/reference.md#cli-sync)).
+`cli sync` upgrades ngargparser first. It then copies each framework file that differs to `.ngargparser/sync-backups/<time>/`, overwrites it, and warns when you had edited it. When a help screen of your tool that worked before fails after, it restores every file. Other files you own, such as `README`, stay as they are ([cli sync](docs/reference.md#cli-sync)).
 
 `cli upgrade` and `cli sync` look up and install releases over HTTPS. Without HTTPS access to GitLab, `cli upgrade` stops with `⚠ Couldn't reach the remote ...` and exit code 2, and `cli sync` syncs from the installed version. To upgrade over SSH, set `NGARGPARSER_UPGRADE_URL` to the SSH URL of a release tag for that one command:
 
