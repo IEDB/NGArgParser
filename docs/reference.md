@@ -97,7 +97,7 @@ When you run `cli`, it sometimes prints a short notice that a newer version is a
 
 | Result | Extra output |
 |---|---|
-| Installed version is current | None: `cli --version` prints only `cli 0.4.1` |
+| Installed version is current | None: `cli --version` prints only `cli 0.5.0` |
 | Installed version is behind | The update notice, with a link to the release notes |
 | Installed version is ahead of the latest tag | `ℹ Installed ngargparser 0.4.2rc1 is ahead of the latest release tag v0.4.1.` |
 | GitLab does not answer in 4 s | `⚠ Couldn't check for a newer ngargparser (GitLab did not answer within 4 s).` |
@@ -1270,7 +1270,7 @@ From another folder, the line names the tool folder: `This tool needs its virtua
 
 ## cli sync
 
-`cli sync` upgrades ngargparser first, unless you pass `--no-upgrade` or `--dry-run`, or ngargparser is a local checkout (an editable install). From a local checkout, it says `ℹ Using your local checkout at <path> (no upgrade). To install the latest release first: cli upgrade, then cli sync.` When the installed version is the latest release, it says so and syncs from it: `ℹ Installed ngargparser 0.4.1 is the latest release (v0.4.1); not reinstalling it.`
+`cli sync` upgrades ngargparser first, unless you pass `--no-upgrade` or `--dry-run`, or ngargparser is a local checkout (an editable install). From a local checkout, it says `ℹ Using your local checkout at <path> (no upgrade). To install the latest release first: cli upgrade, then cli sync.` When the installed version is the latest release, it says so and syncs from it: `ℹ Installed ngargparser 0.5.0 is the latest release (v0.5.0); not reinstalling it.`
 
 Before it changes a framework file, a real sync runs your tool's help screens, and runs them again after the update: the [test drive](internals.md#test-drive). When a screen that worked before fails after, sync puts back every file it wrote. A build and a sync never run at once in one tool folder ([Sync lock](internals.md#sync-lock)).
 
@@ -1466,7 +1466,7 @@ The README's [Troubleshooting](../README.md#troubleshooting) covers the messages
 ### SSH install fails
 
 ```
-  × Failed to download and build `ngargparser @ git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.4.1`
+  × Failed to download and build `ngargparser @ git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.5.0`
   ├─▶ Git operation failed
 ...
       git@gitlab.lji.org: Permission denied (publickey,gssapi-keyex,gssapi-with-mic,password).

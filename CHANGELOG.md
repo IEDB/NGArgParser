@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-20
+
 ### Added
 - `docs/internals.md`: the build pipeline, its preflight stops, the build lock, the lock check, the
   startup check, the `libs/` stamp, the order of `./configure`'s writes, the sync's lock, safety
