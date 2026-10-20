@@ -9,7 +9,8 @@ stages:
   - lint
   - typecheck
   - test
-  # The full test suite (pytest, pytest-non-root), only in a tag pipeline.
+  # The full test suite (pytest, pytest-non-root, pytest-real-uv), only in a
+  # tag pipeline.
   - full-test
 
 variables:
@@ -98,9 +99,9 @@ mypy:
 # A quick test on every push, on the default image (Python 3.12): 11 fast
 # test files that cover the cli entry point, the parser, the validators,
 # cli generate, a generated tool running the README examples, the result
-# writer and deps. The full suite runs in a tag pipeline (pytest and
-# pytest-non-root below). The job installs git, which test_helpers.py and
-# test_scaffold.py run; none of these files need make.
+# writer and deps. The full suite runs in a tag pipeline (pytest,
+# pytest-non-root and pytest-real-uv below). The job installs git, which
+# test_helpers.py and test_scaffold.py run; none of these files need make.
 pytest-fast:
   stage: test
   before_script:
@@ -179,8 +180,11 @@ pytest-non-root:
 # from this checkout's cli generate, locked and synced online, then locked
 # again for requires-python >=3.9, the range the tests' own projects ask for,
 # so the packages older Pythons need (tomli, exceptiongroup) are cached too.
+# Like pytest, it runs only in a tag pipeline.
 pytest-real-uv:
-  stage: test
+  stage: full-test
+  rules:
+    - if: $CI_COMMIT_TAG
   image: python:3.11-slim
   before_script:
     - apt-get update -qq && apt-get install -y -qq --no-install-recommends git
