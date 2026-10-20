@@ -1,0 +1,69 @@
+# GitLab CI for {TOOL_NAME}: a starter made by `cli generate`. It is yours to
+# edit; `cli sync` never changes it.
+#
+# The test job runs the tool's tests; the build job, in the next stage, runs
+# only when they pass. The build job packs build/IEDB_NG_<NAME>-<ref>.tar.gz
+# and keeps it as a job artifact. The nxg-tools-deployments orchestrator
+# downloads that exact file from the job named "build" at the ref it deploys,
+# so keep the job name and TOOL_VERSION as they are.
+
+stages:
+  - test
+  - build
+
+variables:
+  # The uv every job installs, pinned so a new uv release cannot change a
+  # result without a commit here. Raise it with the uv you lock uv.lock with.
+  UV_VERSION: "0.11.14"
+
+default:
+  # Match requires-python in pyproject.toml; uv downloads another Python if needed.
+  image: python:3.11-slim
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y -qq --no-install-recommends make git ca-certificates
+    - pip install --quiet "uv==$UV_VERSION"
+
+test:
+  stage: test
+  script:
+    # --locked stops the job when uv.lock is out of date with pyproject.toml,
+    # instead of rewriting it.
+    - uv sync --locked
+    # The tests need the .env that ./configure writes. ./configure stops (and
+    # the job with it) when paths.py leaves a dependency's path as None: set
+    # it in paths.py, or give it here, e.g. ./configure --pepx-path=/opt/pepx
+    # (a path that does not exist on the runner only warns). Tests that import
+    # code scripts/get_libs.sh fetches into libs/ need a make libs first.
+    - ./configure
+    - uv run pytest
+
+build:
+  stage: build
+  variables:
+    # The branch or tag name becomes the version: tag v1.2.0 builds
+    # build/IEDB_NG_<NAME>-v1.2.0.tar.gz.
+    TOOL_VERSION: $CI_COMMIT_REF_NAME
+  script:
+    # The build takes only letters, digits, '.', '_', '+' and '-' in the
+    # version, so every other character a branch name may hold ('/', '#', '@',
+    # ',', '(' and the rest) becomes '-', and a leading '-' is dropped. A tag
+    # such as v1.2.0 keeps its name.
+    - export TOOL_VERSION="$(printf '%s' "$TOOL_VERSION" | LC_ALL=C sed -e 's/[^A-Za-z0-9._+-]/-/g' -e 's/^-*//')"
+    # A name with no letter, digit, '.', '_' or '+' ('#', '@@', 'ü', '-')
+    # maps to nothing, and the build would quietly use the version "local":
+    # the job stops instead.
+    - 'if [ -z "$TOOL_VERSION" ]; then echo "ERROR: the branch or tag name $CI_COMMIT_REF_NAME has no letter, digit, dot, underscore or plus sign (leading dashes are dropped), so it names no version: rename it, or run the pipeline with a TOOL_VERSION variable." >&2; exit 1; fi'
+    # make build checks that the tool starts, in a venv uv makes without the
+    # dev group; in CI it fails when uv cannot make one. --locked stops the
+    # job when uv.lock is out of date with pyproject.toml, instead of
+    # rewriting it.
+    - uv sync --locked
+    # A scripts/get_libs.sh that clones private repositories needs a CI/CD
+    # variable such as TOOLS_DEPLOY_TOKEN (Settings > CI/CD > Variables).
+    - make build
+  artifacts:
+    name: "{TOOL_NAME}-$CI_COMMIT_REF_SLUG"
+    paths:
+      - build/*.tar.gz
+    expire_in: 1 month

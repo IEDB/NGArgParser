@@ -1,10 +1,12 @@
 # Run: uvx pre-commit install   (once, to enable git hooks)
 #      uvx pre-commit run --all-files
 #
-# Scaffold payload under ngargparser/templates/ and the two vendored parser
-# modules use `core.*` imports that only resolve inside a generated project, so
-# they are excluded from lint/format/typecheck here.
-exclude: '^(ngargparser/templates/|build/|test/|ngargparser/(NGArgumentParser|NGChildArgumentParser|validators)\.py$)'
+# Scaffold payload under ngargparser/templates/ and the vendored parser
+# modules use `core.*` imports that only resolve inside a generated project,
+# and keep their own formatting, so the lint, format and whitespace hooks
+# leave them out (the payload exclude below). The mypy hook checks the files
+# [tool.mypy] in pyproject.toml names, payload included.
+exclude: '^(build/|test/)'
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -12,23 +14,28 @@ repos:
     hooks:
       - id: ruff-check
         args: [--fix]
+        exclude: &payload '^(ngargparser/templates/|ngargparser/(NGArgumentParser|NGChildArgumentParser|validators)\.py$)'
       - id: ruff-format
+        exclude: *payload
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.2
+    rev: v1.19.1
     hooks:
       - id: mypy
-        files: '^ngargparser/(cli|core_validators|result_writer)\.py$'
+        # The same files as [tool.mypy] in pyproject.toml, which the hook reads.
+        files: '^ngargparser/(cli|core_validators|result_writer|app_env|NGArgumentParser|NGChildArgumentParser|templates/configure)\.py$'
         additional_dependencies: ["python-dotenv"]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    # v5.0.0 and later use the stage names pre-commit 3.2 introduced; v4.6.0
+    # made pre-commit warn that it "uses deprecated stage names".
+    rev: v6.0.0
     hooks:
-      # Don't touch bundled license text — it's a legal document.
+      # Don't touch bundled license text: it's a legal document. Nor the payload.
       - id: trailing-whitespace
-        exclude: '(?i)licen[sc]e.*\.txt$'
+        exclude: '(?i)licen[sc]e.*\.txt$|^(ngargparser/templates/|ngargparser/(NGArgumentParser|NGChildArgumentParser|validators)\.py$)'
       - id: end-of-file-fixer
-        exclude: '(?i)licen[sc]e.*\.txt$'
+        exclude: '(?i)licen[sc]e.*\.txt$|^(ngargparser/templates/|ngargparser/(NGArgumentParser|NGChildArgumentParser|validators)\.py$)'
       - id: check-yaml
       - id: check-toml
       - id: check-merge-conflict

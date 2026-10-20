@@ -1,686 +1,306 @@
 # ngargparser
 
-> Framework for building IEDB-style command-line scientific tools — standardized argument parsing, dependency wiring, and reproducible tarball builds.
-
 [![ngargparser](https://img.shields.io/badge/ngargparser-0.4.1-blue.svg)](https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser)
 
-After installing the framework, you get a `cli` command and a Python class (`NGArgumentParser`) that together produce well-shaped scientific CLI apps:
+ngargparser is a framework for IEDB command-line tools that run on HPC (high-performance computing) clusters. It gives you a `cli` command that generates and updates tools, and a base class, `NGArgumentParser`, that gives every tool the same `preprocess`, `predict` and `postprocess` commands.
 
-- A standardized `preprocess → predict → postprocess` workflow shared across every app
-- A reproducible build that emits a self-contained tarball for HPC distribution
-- Two-tier dependency management: `uv` for Python packages, `cli deps` + `paths.py` for external binaries / HPC modules / library paths
-- A clean ownership boundary: framework files live in `core/` subdirectories and get sync-managed; everything else is yours
+In this README, a *tool* is what `cli generate` creates, and the *tool folder* is its top folder. The [parser cookbook](docs/parser-cookbook.md) has recipes for the parser and the predict code. The [reference](docs/reference.md) lists the API, the settings, the messages and a [Glossary](docs/reference.md#glossary), and the [internals](docs/internals.md) show how the build, `./configure` and `cli sync` work.
 
 ## Prerequisites
 
-ngargparser uses [`uv`](https://github.com/astral-sh/uv) to manage Python versions and virtual environments. Install it first:
+| You need | For | Check with |
+|---|---|---|
+| [uv](https://github.com/astral-sh/uv) | Installing ngargparser, Python 3.11 and each tool's `.venv/` | `uv --version` |
+| git | Installing from GitLab, and `make build` | `git --version` |
+| make | `make build` and `make clean` | `make --version` |
+| SSH access to gitlab.lji.org | The SSH install, and SSH clones in `scripts/get_libs.sh` | `ssh -T git@gitlab.lji.org` |
+
+Install uv first:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-You don't need to create a Python venv yourself — `uv` creates a `.venv/` for each scaffolded app and downloads the right Python version on demand. Skip the usual `python -m venv` step.
-
 ## Install
 
-### Straight from GitLab (framework users)
+Install the current release with `uv tool install`, which puts `cli` on your PATH:
 
 ```bash
-# Best option: install as an isolated uv tool, `cli` on PATH globally.
-# Using SSH (recommended for IEDB devs with SSH keys configured):
-uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git'
-
-# Using HTTPS (requires token-based auth for private repos):
-uv tool install 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git'
-
-# Pin to a tag for reproducibility (SSH form shown; HTTPS works the same way):
+# A release tag, over SSH (needs your SSH key on GitLab):
 uv tool install 'git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.4.1'
 
-# Upgrade later (either works)
-cli upgrade                 # self-update to the latest release tag on GitLab
-uv tool upgrade ngargparser
+# The same release over HTTPS (needs a GitLab access token):
+uv tool install 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.4.1'
 ```
 
-### From a local clone (framework contributors)
+`cli --version` prints `cli 0.4.1`. It then checks GitLab for a newer release, for up to 4 seconds, and prints any notice on stderr; `NGARGPARSER_NO_UPDATE_CHECK=1` turns the check off ([Update notice](docs/reference.md#update-notice)). An SSH install that fails with `Permission denied (publickey...)` needs your key on GitLab ([SSH install fails](docs/reference.md#ssh-install-fails)).
+
+## Quickstart
+
+These steps create a tool named `my-app`, give it a working `predict`, and build its tarball. Start in a folder outside any other tool.
+
+1. Generate the tool and install its packages:
+
+   ```bash
+   cli generate my-app
+   cd my-app
+   uv sync
+   ```
+
+2. Write the predict logic. In `src/run_my_app.py`, the `predict` branch prints `predict is not implemented yet: edit src/run_my_app.py` and exits 1. Replace the whole branch, its `sys.exit(...)` line included, with this code:
+
+   ```python
+       if args.subcommand == 'predict':
+           import json
+           from core.result_writer import write_results
+
+           if args.input_json:
+               with open(args.input_json) as f:
+                   peptides = json.load(f)["peptide"]
+           else:
+               with open(args.input_tsv) as f:
+                   peptides = [line.split("\t")[0] for line in f.read().splitlines()[1:]]
+           result = {
+               "warnings": [],
+               "errors": [],
+               "results": [{
+                   "type": "peptide_table",
+                   "table_columns": ["peptide", "length"],
+                   "table_data": [[p, len(p)] for p in peptides],
+               }],
+           }
+           write_results(result, args.output_prefix, args.output_format)
+   ```
+
+   Exactly one of `args.input_json` (`-j`) and `args.input_tsv` (`-t`) is set. `write_results` prints the table as TSV, or writes a file for `-o` ([Write the results](docs/parser-cookbook.md#write-the-results)).
+
+3. Create your inputs outside the tool folder, because `make build` ships the files in it, such as `src/example.json`, the sample input `cli generate` wrote. Then run `predict`, with the tool's `.venv`:
+
+   ```bash
+   mkdir -p ../my-app-runs
+   echo '{"peptide": ["ADMGHLKY", "ELDDTLKY", "FMDHVLRYP"]}' > ../my-app-runs/input.json
+   printf 'peptide\nADMGHLKY\nELDDTLKY\nFMDHVLRYP\n' > ../my-app-runs/input.tsv
+   uv run python src/run_my_app.py predict -j ../my-app-runs/input.json
+   ```
+
+   Output:
+
+   ```
+   peptide	length
+   ADMGHLKY	8
+   ELDDTLKY	8
+   FMDHVLRYP	9
+   ```
+
+   `-t ../my-app-runs/input.tsv` prints the same table. `-o ../my-app-runs/result` writes `../my-app-runs/result.tsv`, creating missing folders, and prints `Wrote ...` on stderr; `-f json` writes JSON. Since `-o` takes a prefix, a value that ends in `.tsv` or `.json`, names a folder or is empty stops with exit code 2 and a hint ([predict arguments](docs/reference.md#built-in-predict-arguments)).
+
+4. Build the tarball:
+
+   ```bash
+   make build
+   ```
+
+   The build copies the tool into `build/ng_my-app-local/`, checks that it starts there with the packages a deploy installs, and packs `build/IEDB_NG_MY-APP-local.tar.gz`. Until you fill in the template text, it prints a `Notice:` line for `README` and one for the description in `pyproject.toml`.
+
+### Try the sample app
+
+`cli generate example` creates `aa-counter/`, a finished tool whose `README.md` walks through all three commands. Run it outside `my-app/`:
 
 ```bash
-uv pip install -e .
-pip install .
+cd ..
+cli generate example
+cd aa-counter
+uv sync
+uv run python src/run_aa_counter.py predict -j src/example.json
 ```
 
-## Quickstart (5 minutes)
+## Files you edit
 
-```bash
-cli generate my-app                                  # scaffold
-cd my-app
-uv sync                                              # install Python deps
-uv run python src/run_my_app.py predict --help       # see what your app does
-make build                                           # build/IEDB_NG_MY-APP-local.tar.gz
-```
+| File | What goes in it |
+|---|---|
+| `src/run_my_app.py` | The entry script, with your predict logic in its `predict` branch |
+| `src/MyAppArgumentParser.py` | The tool description and the `predict` options |
+| `src/preprocess.py`, `src/postprocess.py` | `run()`: split the input into job units; combine their results |
+| `src/validators.py`, `tests/test_parser.py` | Your argument checks; tests of your parser |
+| `pyproject.toml` | Python packages; `entry` under `[tool.ngargparser]` names the entry script |
+| `README`, `README.md` | The end-user README, which ships in the tarball; notes for the tool's developers, which do not |
+| `paths.py` | Where other tools live on each host; `cli deps add` creates it |
+| `scripts/get_libs.sh` | Outside code that `make libs` and `make build` fetch into `libs/` |
+| `scripts/hooks.sh` | Optional: steps the build runs on its copy of the tool ([Build hook](docs/reference.md#build-hook)) |
+| `scripts/core/build.conf` | Build settings: `TOOL_NAME`, `TOOL_VERSION` and `TARBALL_PREFIX` ([Build settings](docs/reference.md#build-settings)); the one file in `scripts/core/` that `cli sync` never overwrites |
+| `.distignore` | Files to keep out of the tarball |
+| `deploy/install.sh` | The script a deploy runs on the host, where you can add `./configure --<dep>-path=...`; `cli sync` creates it only when it is missing |
+| `.gitlab-ci.yml` | The CI jobs: the tests, then `make build` |
 
-What just happened:
+Leave `src/core/`, `scripts/core/build.sh`, `Makefile` and `configure` alone: `cli sync` overwrites them ([File ownership](docs/reference.md#file-ownership)).
 
-- **`cli generate`** scaffolded a fresh project tree at `my-app/`. Non-interactive: no prompts, scriptable.
-- **`uv sync`** read `pyproject.toml`, locked deps into `uv.lock`, installed them into `.venv/`.
-- **`uv run python …`** ran the entry script through the project venv. Out of the box your app understands `preprocess`, `predict`, and `postprocess` subcommands.
-- **`make build`** ran the build pipeline (copy + symlink, run hooks, tarball). Output ships to HPC.
+## Workflow: preprocess, predict, postprocess
 
-When you need an external tool dep:
-
-```bash
-cli deps add mhci-predictor pepx                    # writes stub blocks to paths.py
-./configure --mhci-predictor-path=/opt/tools/mhci   # fill in paths (or edit paths.py by hand)
-./configure                                          # generate per-tool setup_<name>_env.sh + .env
-```
-
-See [Configuring tool paths](#configuring-tool-paths-configure) for the full set of flags.
-
-## Project layout
+A tool splits a large job into *job units*, so a cluster can run `predict` on them in parallel:
 
 ```
-my-app/
-├── Makefile                    # framework-owned (sync overwrites)
-├── configure                   # framework-owned executable
-├── pyproject.toml              # Python deps + project metadata + scaffold_version stamp
-├── uv.lock                     # locked deps (commit this)
-├── README                      # your app's user-facing README
-├── license-LJI.txt
-├── .distignore                 # tarball exclusions — .gitignore syntax (yours)
-├── paths.py                    # declares external tool deps (yours; created by `cli deps add`)
-├── src/
-│   ├── core/                   # framework-owned (sync overwrites) — DO NOT EDIT
-│   │   ├── NGArgumentParser.py
-│   │   ├── core_validators.py
-│   │   ├── configure.py
-│   │   └── set_pythonpath.py
-│   ├── run_my_app.py           # entry script (yours)
-│   ├── MyAppArgumentParser.py  # subclass of NGArgumentParser (yours)
-│   ├── preprocess.py           # your input prep logic
-│   ├── postprocess.py          # your aggregation logic
-│   └── validators.py           # your custom validators
-├── scripts/
-│   ├── core/                   # framework-owned (sync overwrites)
-│   │   └── build.sh            # build pipeline
-│   ├── build.conf              # build knobs (yours)
-│   └── hooks.sh                # imperative build hook (yours)
-└── deploy/
-    └── install.sh              # imperative deploy hook (yours, runs on target host)
+input file ──► preprocess ──► job_descriptions.json, plus one parameter file per job unit
+                                   │
+                                   ▼
+                    predict, once per job unit (in parallel)
+                                   │
+                                   ▼
+                    postprocess ──► one combined result
 ```
 
-**Ownership rule:** anything inside a `core/` subdirectory is framework-owned — `cli sync` overwrites those files when you upgrade. Everything else is yours; sync never touches it.
+`job_descriptions.json` lists one job per job unit, then the `postprocess` job ([fields](docs/reference.md#job-description-fields)). Before it calls your `run()`, `preprocess` creates `predict-inputs/`, `predict-outputs/`, `aggregate/` and `results/` under `-o` ([layout](docs/reference.md#preprocess-layout)). When `paths.py` sets the path of a dependency, these go in `my-app/` under `-o`, and each such dependency gets them too, without `results/`, in a folder of its own, such as `pepx/`.
 
-## The three-stage workflow
+`run()` gets every argument as a keyword, such as `output_dir` ([arguments](docs/reference.md#built-in-preprocess-arguments)). Until you replace its `sys.exit(...)` line, it prints `preprocess is not implemented yet: edit src/preprocess.py` and exits 1, as `postprocess` does.
 
-Every generated app supports three subcommands out of the box:
+## Add arguments and predict logic
 
-```bash
-python src/run_my_app.py preprocess  -j input.json -o output-dir/
-python src/run_my_app.py predict     -j input.json -o output-file
-python src/run_my_app.py postprocess -j job_descriptions.json -p final-results/
-```
+The [parser cookbook](docs/parser-cookbook.md) has a recipe for each change, with the error you are most likely to hit:
 
-| Stage | Role | Where you customize |
-|---|---|---|
-| `preprocess` | Validate inputs, split work into job units, emit `job_descriptions.json` | `src/preprocess.py` |
-| `predict` | Run the core analysis on a single job unit | `src/MyAppArgumentParser.py` (args) + `src/run_my_app.py` (logic) |
-| `postprocess` | Merge per-job results into a single output | `src/postprocess.py` |
-
-All three subparsers come with built-in arguments so you don't redefine them: `preprocess`/`postprocess` bring input/output paths and validation flags, and `predict` brings the output arguments (`--output-prefix/-o`, `--output-format/-f`). `predict` is where you add your tool-specific **input** options.
-
-## Customizing your app
-
-The argument parser for your app lives in `src/MyAppArgumentParser.py` and subclasses `NGArgumentParser`:
-
-```python
-import textwrap
-import argparse
-from core.NGArgumentParser import NGArgumentParser
-
-class MyAppArgumentParser(NGArgumentParser):
-    def __init__(self):
-        super().__init__()
-        self.description = textwrap.dedent("""
-            One-line description of your app.
-        """)
-
-        self.parser_predict = self.add_predict_subparser(
-            help='Run a single prediction.',
-            description='Multi-line help that survives formatting.',
-            formatter_class=argparse.RawDescriptionHelpFormatter,
-        )
-
-        # --output-prefix/-o and --output-format/-f are already provided by the
-        # base class — add your tool-specific *input* args here instead.
-        self.parser_predict.add_argument(
-            "--threshold", "-t",
-            dest="threshold",
-            help="Score threshold",
-            metavar="THRESHOLD",
-            group="prediction options",   # same group label clusters args in --help
-        )
-```
-
-Common patterns:
-
-- **Argument grouping** — pass `group="<label>"` to any `add_argument` call.
-- **Custom validators** — define a function in `src/validators.py` that raises `argparse.ArgumentTypeError` on bad input, then pass it as `type=...` on `add_argument`.
-- **Updating inherited arguments** — to change a default or help text on an argument from the parent class, call `parser.update_arguments(...)` instead of redefining.
-
-The full parser API is in [Reference](#reference) at the bottom.
+| To | Recipe |
+|---|---|
+| See what each generated line does | [Read the generated parser](docs/parser-cookbook.md#read-the-generated-parser) |
+| Add an option to `predict` | [Add an option](docs/parser-cookbook.md#add-an-option) |
+| Check a value before predict runs | [Check a value with a validator](docs/parser-cookbook.md#check-a-value-with-a-validator) |
+| Change the default of `-f`, or replace `-o` or `-f` | [Change or remove a framework option](docs/parser-cookbook.md#change-or-remove-a-framework-option) |
+| List an option with the inputs, or in a section of its own | [Group options in the help](docs/parser-cookbook.md#group-options-in-the-help) |
+| Write the result as TSV or JSON | [Write the results](docs/parser-cookbook.md#write-the-results) |
+| Test the parser with `uv run pytest` | [Test the parser](docs/parser-cookbook.md#test-the-parser) |
+| Test what `predict` prints | [Test the predict branch](docs/parser-cookbook.md#test-the-predict-branch) |
+| Run another tool and keep its result | [Call a dependency](docs/parser-cookbook.md#call-a-dependency) |
+| Add a subcommand of your own | `self.add_subcommand('list-alleles')` in the parser, and an `elif args.subcommand == 'list-alleles':` branch in `main()`; without the branch, the tool exits 1 with `list-alleles has no branch in src/run_my_app.py: add one in main()` |
 
 ## Dependencies
 
-ngargparser separates two kinds of dependencies and uses different tools for each:
-
-| Kind | Manage with | Manifest |
-|---|---|---|
-| Python packages (numpy, pandas, …) | `uv` | `pyproject.toml` + `uv.lock` |
-| External binaries / HPC modules / `LD_LIBRARY_PATH` | `cli deps` + `./configure` | `paths.py` |
-
-### Python packages (`uv`)
+### Python packages
 
 ```bash
-uv sync                                          # install locked deps into .venv/
-uv add pandas                                    # add a dep, update pyproject.toml + uv.lock
-uv remove pandas                                 # remove
-uv run python src/run_my_app.py --help           # run inside the project venv
+uv add pandas      # add a package; updates pyproject.toml and uv.lock
+uv remove pandas   # remove it
+uv sync            # install the locked packages into .venv/
 ```
 
-Commit `uv.lock` so deploys are reproducible.
+Commit `uv.lock`, so every deploy installs the same versions. When `uv.lock` no longer matches `pyproject.toml`, `make build` stops and tells you to run `uv lock` ([Lock check](docs/internals.md#lock-check)).
 
-### External tool deps (`cli deps`)
+### Other tools: `cli deps` and `./configure`
+
+A *dependency* is another tool, or any program, that your tool runs. Declare it, then set its path on each host:
 
 ```bash
-cli deps add mhci-predictor pepx       # write stub blocks to paths.py
-cli deps remove pepx                    # remove (alias: rm)
-cli deps list                           # show declared deps + which paths are filled in (alias: ls)
-cli deps                                # bare → interactive add/remove menu
+cli deps add pepx                          # writes a stub block to paths.py
+./configure --pepx-path=/opt/tools/pepx    # sets the path, then writes .env and setup_pepx_env.sh
 ```
 
-`cli deps add` writes a stub: `<name>_path = None`, `<name>_venv = None`, `<name>_module = None`, `<name>_lib_path = None`. Fill those in with `./configure --<name>-path=…` (or by editing `paths.py` directly), then run `./configure` to regenerate `setup_<name>_env.sh` shell scripts and the project's `.env`.
+The stub block holds four settings, all `None`; only `pepx_path` is required. A program that is not an ngargparser tool also needs `--pepx-entry=<path>`, its entry script, as an absolute path or one relative to `pepx_path`. `./configure` keeps the previous `paths.py` as `paths.py.bak`, and only warns about a path that does not exist yet. `cli deps list` shows the dependencies, and `cli deps remove pepx` drops one. Keep your settings in `paths.py`: `./configure` rewrites `.env` from it each time ([flags and .env](docs/reference.md#configure-flags-and-env)).
 
-`cli deps remove` accepts the original name (`mhci-predictor`), the display form (`Mhci Predictor`), or the var-name form (`mhci_predictor`).
+### Code in `libs/`: `scripts/get_libs.sh`
 
-### Configuring tool paths (`./configure`)
-
-Run from the project root. It reads `paths.py` and regenerates two things: the project's `.env`, and one `setup_<name>_env.sh` per declared dependency.
-
-`./configure -h` lists a flag for every field of every dependency you've declared, along with what each is currently set to:
-
-```
-usage: ./configure [-h] [--mhci-path MHCI_PATH] [--mhci-venv MHCI_VENV]
-                   [--mhci-module MHCI_MODULE] [--mhci-lib-path MHCI_LIB_PATH]
-                   ...
-  --mhci-path MHCI_PATH
-                        Set mhci_path (currently: None).
-```
-
-Those flags set values without hand-editing `paths.py`, and they **persist** into it:
+`scripts/get_libs.sh` downloads the code and data your tool reads from `libs/`. To clone a GitLab repository, uncomment the `vendor` function in its Example 1, then call it:
 
 ```bash
-./configure --mhci-path=/opt/tools/mhci          # writes mhci_path into paths.py
-./configure --mhci-venv=/home/me/.pyenv/versions/3.11.3/envs/myenv
-./configure --mhci-module=python/3.11            # optional: environment module
-./configure --mhci-lib-path=/opt/lib             # optional: prepended to LD_LIBRARY_PATH
+# scripts/get_libs.sh runs in an empty temp dir; each top-level entry it leaves lands in libs/
+vendor 'v0.5.4' "iedb/tools/tools-redesign/global-dependencies/allele-validator"
 ```
 
-A flag only exists for a dependency `cli deps add` has already declared — a typo'd or undeclared name is rejected rather than silently creating something.
+`vendor` clones with the `TOOLS_DEPLOY_TOKEN` CI/CD variable when it is set, and with your SSH key otherwise. The CI image has no SSH key, so a CI job without the token stops. Write into the current folder, never into `libs/`. Then run `make libs`, so the tool can import that code when you run it from its folder. A deploy installs only the packages in `pyproject.toml`, so add each package the fetched code imports with `uv add`. A build fetches the same way, but only when the script or `TOOL_VERSION` changes, or a fetched entry is missing or edited ([get_libs internals](docs/internals.md#get_libs-internals)).
 
-#### Virtualenv resolution
+## Call another tool
 
-Three sources, tried in order. The first hit wins:
-
-| Order | Source | Notes |
-|---|---|---|
-| 1 | `<name>_venv` in `paths.py` | An explicit setting always wins; nothing else is consulted |
-| 2 | `APP_VENV` in `{tool_path}/.env` | What the dependency publishes about itself |
-| 3 | A conventional virtualenv directory inside `{tool_path}` | `.venv`, `venv`, `env`, `.virtualenv`, in that order |
-
-Nothing found is not an error, but it is now said out loud, because the tool will run under whatever Python happens to be active.
-
-So a tool that bundles its own `.venv` (anything built by `uv sync`, which is every ngargparser project) needs no venv configuration at all:
-
-```
-* mhci: using virtualenv found at /opt/tools/mhci/.venv
-```
-
-Four things worth knowing:
-
-- **Every project publishes its own virtualenv.** When exactly one conventional virtualenv sits in the project root, `./configure` writes `APP_VENV` into that project's `.env`, alongside `APP_ROOT` and `APP_NAME`. That is what step 2 reads, so a tool whose virtualenv lives somewhere unusual only has to be configured once, in its own project, rather than again in every project that depends on it.
-- **A dependency's `paths.py` is never read.** It is a Python module, loaded by executing it, so reading another project's copy would run its code inside your `./configure`. `.env` is plain key/value text and is parsed, never executed.
-- **Convention, not discovery.** Only those four directory names are tried, and only when the candidate holds both `pyvenv.cfg` and `bin/activate`. Anything else, `pyenv virtualenv 3.11.3 myenv`, a conda env, or a `myenv/` inside the tool's own directory, must be set with `--<name>-venv=`. When two candidates match, neither is adopted: the run says which it found and asks you to pick, rather than binding the tool to whichever the filesystem listed first.
-- **Steps 2 and 3 are never written to `paths.py`.** Because they're re-derived on every run, the same `paths.py` works unchanged on your laptop, on dev, and on SDSC, each resolving locally. Persisting one would freeze a single host's absolute path — and would go stale the moment `<name>_path` moved.
-
-#### Warnings and rewrites
-
-A configured directory that doesn't exist warns but never blocks — `.env` and the shell scripts are still written, so a path that's valid on the deploy target but absent on the machine running `./configure` is fine:
-
-```
-⚠  pepx_path = '/opt/tools/pepx' does not exist. 'pepx' may fail until this is corrected.
-```
-
-A dependency that ends up with no virtualenv at all warns for the same reason, since the alternative is finding out at prediction time:
-
-```
-⚠  pepx has no virtualenv. It will run under whatever Python is active. Set one with './configure --pepx-venv=<path>' if it needs its own.
-```
-
-`.env` is rewritten only when its content actually changes; an otherwise identical run reports `* .env file unchanged`.
-
-
-## Building
+Once `./configure` knows a dependency's path, your tool can run it. From Python, `core.app_env.dependency_command("pepx", ...)` returns the command and its environment for `subprocess` ([Call a dependency](docs/parser-cookbook.md#call-a-dependency)). It raises `DependencyError` when pepx is not declared, configured or deployed, and the generated entry script then prints the message and exits 1 ([Run a dependency from Python](docs/reference.md#run-a-dependency-from-python)). In a shell, source the setup script `./configure` wrote, then call its `run_<dep>` function:
 
 ```bash
-make build          # produce build/IEDB_NG_<TOOL>-<VERSION>.tar.gz
-make build-verbose  # same, with full build output (no progress bar)
-make clean          # remove build/
+. ./setup_pepx_env.sh
+run_pepx predict -j job.json -o out
 ```
 
-Building requires `git` on the machine running `make build` (the exclusion rules are evaluated with `git check-ignore`, and git deps in `requirements.txt` are vendored via clone).
+`run_pepx` runs pepx's entry script, with pepx's Python for a Python script, and returns pepx's exit code. Until pepx is deployed and configured, it says so on stderr and returns 127 ([Run a dependency from a shell](docs/reference.md#run-a-dependency-from-a-shell)).
 
-Pipeline (under the hood, `scripts/core/build.sh`):
-
-1. Set up `build/<TOOL>-<VERSION>/`
-2. Evaluate `.distignore` (exact `.gitignore` semantics, see below)
-3. Copy or symlink the source tree into the build dir, skipping excluded paths (symlink by default; copy items listed in `EXCLUDE_FROM_BUILD_SYMLINK` — defaults to `libs run_*.py`)
-4. Run `scripts/hooks.sh` (your imperative hook)
-5. Tar it up
-
-### `.distignore` — tarball exclusions
-
-Lists paths that must not ship in the tarball (or the staged `build/` tree). Lives at the project root, next to `.gitignore`. The file has **exact `.gitignore` semantics** — you can paste `.gitignore` content verbatim: wildcards, dir-only `name/`, `!` negation, `/` anchoring, and `**` all match at every depth of the project tree.
-
-> **Legacy alias:** projects scaffolded before the rename use `scripts/do-not-distribute.txt`. `build.sh` still honors that name, so those projects keep working untouched. If both exist, root `.distignore` wins. New scaffolds write `.distignore`.
-
-Built-in rules layered around your file by `build.sh`:
-
-- `.*` — hidden files and directories are excluded by default. This is the *lowest*-precedence rule, so a `!` line in your file re-includes them:
-
-  ```gitignore
-  !.env              # ship a hidden file
-  !.streamlit/       # ship a hidden dir and everything in it
-  ```
-
-  `.env` is shown only as a syntax example — **don't actually ship it.** Its `APP_ROOT` is an
-  absolute path on the build machine, so a shipped `.env` points every target host at a directory
-  that doesn't exist there. `./configure` regenerates it correctly at install time; see
-  [What ships in the tarball](#what-ships-in-the-tarball).
-
-  To ship only one file from a hidden dir, re-include the dir first (gitignore cannot re-include a file whose parent dir is excluded), then re-exclude the rest:
-
-  ```gitignore
-  !.streamlit/
-  .streamlit/*
-  !.streamlit/config.toml
-  ```
-
-- `.git/` and `build/` (project root) are **always** excluded — no `!` rule can bring them back.
-- `README` and `deploy/install.sh` are **always** included — the deploy orchestrator requires them at the tarball top level, so exclusion rules (including the default `*.sh`) cannot strip them.
-
-One caveat: a directory that is itself a symlink is treated as a single file by the matcher, and `tar -h` dereferences it wholesale — exclusion rules do not reach inside symlinked directories.
-
-### `scripts/hooks.sh` — the build hook
-
-This is your imperative escape hatch. It runs after the source tree is in place but before the tarball is created. Working dir: `build/<TOOL>/libs/`. Available env vars: `BUILD_DIR`, `PROJECT_ROOT`, `APP_NAME`, `TOOL_NAME`, `TOOL_VERSION`, `TOOL_DIR`, `SRC_DIR`.
-
-Use it for: vendoring git deps, downloading archives, copying local binaries, code generation, patching files, signing, validation — anything `bash` can do.
-
-### `scripts/build.conf` — declarative knobs
+## Build and run
 
 ```bash
-# Items to COPY instead of symlink (glob-matched). Default: "libs run_*.py".
-EXCLUDE_FROM_BUILD_SYMLINK="libs run_*.py"
-
-# Tarball filename prefix.
-TARBALL_PREFIX="IEDB_"
+make build                      # build the tarball; shows a progress bar
+make build-verbose              # the same, printing each step
+make libs                       # fetch libs/ only, as a build does
+make clean                      # remove build/, unless a build runs; libs/ stays
+TOOL_VERSION=1.0.0 make build   # build version 1.0.0 instead of "local"
 ```
 
-`build.conf` is user-owned — sync never touches it.
-
-## Deploying
-
-`make build` produces a tarball; **`nxg-tools-deployments`** (an internal IEDB orchestrator at `gitlab.lji.org/iedb/tools/tools-redesign/nxg-tools-deployments`) takes it from there. The full lifecycle:
-
-```
-developer                    GitLab CI                 target server
-─────────                    ─────────                 ─────────────
-git push  ──────────────►   make build  ──────►       (tarball lands here)
-                            tarball as
-                            CI artifact
-                                │
-                                │ nxg-tools-deployments fetches
-                                ▼
-                            (extract tarball)  ──►    bash deploy/install.sh
-                            (flip `current` symlink on success)
-```
+The build copy is `build/ng_<name>-<version>/`, and the tarball is `build/IEDB_NG_<NAME>-<version>.tar.gz`, with `<NAME>` in capitals. Run and debug in the tool folder, with `uv run python src/run_my_app.py ...`; the files in `build/` are read-only. [Build pipeline](docs/internals.md#build-pipeline) lists every step and check.
 
 ### What ships in the tarball
 
-`make build` produces `build/IEDB_NG_<TOOL>-<VERSION>.tar.gz`. The orchestrator's only contract: the tarball top-level must contain `deploy/install.sh` and a `README` file. Both are scaffolded by `cli generate` and pass through the build pipeline unchanged.
+Every file in the tool folder ships, `libs/` included, except hidden files (`.env` among them), `build/`, `.venv/` and what `.distignore` excludes. The default `.distignore` keeps out the top-level `Makefile`, `README.md`, `scripts/` and `tests/`, among its 8 rules. `README` and `deploy/install.sh` always ship.
 
-**`.env` never ships** — hidden files are excluded by default, and that's deliberate: `APP_ROOT` is machine-absolute (see [`.distignore`](#distignore--tarball-exclusions)). An extracted tarball is therefore *unconfigured* until `./configure` regenerates `.env` in place. `deploy/install.sh` does that for you, so an orchestrator-driven deploy needs no extra step. Extracting a tarball by hand does — run `uv sync && source .venv/bin/activate && ./configure` before invoking anything under `src/`. Skip it and the entry script exits 1 at import time:
+Each build lists what `.distignore` excluded ([rules](docs/reference.md#distignore-rules)), and stops when a file a deploy needs is missing or excluded ([Files a deploy needs](docs/reference.md#files-a-deploy-needs)).
 
-```
-This project has not been configured yet — '.env' is missing or incomplete.
-Run './configure' from the project root (/path/to/ng_my-app-1.0.0), then re-run this command.
-```
+### Build in CI
 
-### `deploy/install.sh` — the deploy hook
+`cli generate` writes a `.gitlab-ci.yml`: its `test` job runs the tests, then its `build` job runs `make build` with `TOOL_VERSION` set to the branch or tag name. The orchestrator downloads the tarball from the `build` job, so keep its name ([Build in CI](docs/reference.md#build-in-ci)).
 
-Runs on the target host **after** the tarball is extracted. Working dir is the extracted tarball. The default scaffold installs uv if needed, runs `uv sync` to materialize the `.venv`, then runs `./configure` if present.
+## Deploy
 
-The orchestrator passes five env vars (`IEDB_STANDALONE_NAME`, `IEDB_VERSION`, `IEDB_VERSION_DIR`, `IEDB_STANDALONE_DIR`, `IEDB_PREVIOUS_VERSION_DIR`) — most install scripts ignore them and resolve everything from `${BASH_SOURCE[0]}`. The phbr install.sh is the exception: it uses `IEDB_STANDALONE_DIR` to validate and wire in peer tools (`tcell_mhci`, `tcell_mhcii`).
+[nxg-tools-deployments](https://gitlab.lji.org/iedb/tools/tools-redesign/nxg-tools-deployments), the IEDB deploy orchestrator, takes the tarball from the CI job. On the target host, it extracts the tarball and runs `deploy/install.sh`, which runs `uv sync --frozen --no-dev` and `./configure`. Run a deployed copy with `.venv/bin/python src/run_my_app.py ...`: `uv run` would install the `dev` group the deploy left out, and fails in a read-only folder.
 
-**Do not hardcode `UV_PYTHON_INSTALL_DIR` / `UV_CACHE_DIR` / `UV_PYTHON_PREFERENCE` in install.sh.** Those come from the target's `install_shell_init` snippet (sourced by the orchestrator before invoking install.sh) and let the cluster share a single `/apps/uv/` cache across users. Hardcoding them locks cluster paths into every release tarball and breaks dev-laptop installs.
+Set each host's dependency paths with `./configure --<dep>-path=...`, by hand or in `deploy/install.sh`. A tarball you extract by hand needs `bash deploy/install.sh` before anything under `src/` runs ([Deploy](docs/reference.md#deploy)).
 
-### Build hook vs. deploy hook
+## Upgrade
 
-The two `*.sh` user-owned files are easy to confuse. They run at different times in different places:
-
-| | `scripts/hooks.sh` | `deploy/install.sh` |
-|---|---|---|
-| When | Build time (developer / CI) | Deploy time (target server) |
-| Invoked by | `scripts/core/build.sh` | nxg-tools-deployments orchestrator |
-| Purpose | Pull stuff INTO the tarball (vendor git deps, codegen, patch source) | Set up the extracted tarball ON the server (uv sync, configure, edit paths.py) |
-
-## Upgrading the framework
-
-Two commands, two different targets — **`cli upgrade` updates the tool; `cli sync` updates a project.**
-
-| You want to… | Run | Where |
-|---|---|---|
-| Update the `cli` tool itself (to get the latest, or before `cli generate`-ing a new project) | `cli upgrade` | anywhere |
-| Bring **one project's** framework files up to the installed tool's version | `cli sync` | inside that project |
-
-They overlap in exactly one spot: `cli sync` **self-upgrades the tool first** (unless `--no-upgrade`), so the common "get my project on the latest framework" flow is a single command. That convenience is the *only* reason the two look similar — `cli upgrade` is still the only way to update the tool **without** being in (and rewriting) a project, and it's also what `--check` / `--ref <version>` hang off of.
-
-After a successful `cli upgrade`, it reminds you to run `cli sync` — because `cli upgrade` updates the CLI, not your projects. Run from inside a project that's behind, it names both versions ("You upgraded the CLI to Y, but this project is still on X — run `cli sync` here to update this project to Y"), even when the tool itself was already current. Run from anywhere else, it prints a generic reminder to `cli sync` your projects.
-
-- **`cli upgrade`** — self-updates the installed `ngargparser` tool (the `cli` itself) to the latest
-  release tag on GitLab. **This is the one command to update the CLI** (0.2.4+) — it auto-detects how
-  ngargparser was installed (uv tool, pip venv, or a pip-less uv venv) and runs the right installer, so
-  you never type a long `git+https://…` command. Works from **any** directory and touches no project
-  files. Add `--check` to see installed-vs-latest without installing.
-
-  ```bash
-  cli upgrade --check        # is a newer release available?
-  cli upgrade                # update the cli to the latest tag (alias: u)
-  ```
-
-  > **Upgrading from a pre-0.2.4 version (one-time bootstrap).** `cli upgrade` didn't exist before
-  > 0.2.4, so to get onto it the first time, reinstall the package directly with whatever installed it
-  > (you only do this once — after that it's just `cli upgrade`):
-  >
-  > ```bash
-  > # uv tool install:
-  > uv tool install --force --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.4'
-  > # pip venv:
-  > pip install --upgrade --force-reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.4'
-  > # pip-less uv venv:
-  > uv pip install --reinstall 'git+https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@v0.2.4'
-  > ```
-
-  **Update notifier.** You don't have to remember to check — when you run `cli`, it occasionally prints a
-  one-line "a newer version is available" notice (throttled to one remote check per day, shown only in an
-  interactive terminal, never in CI/pipelines). Silence it with `NGARGPARSER_NO_UPDATE_CHECK=1`; set it
-  to `0` or `false`, or unset it, to turn the notice back on.
-
-  **`cli --version` and `cli --help` always check.** Each prints its usual output, then looks up the
-  latest release tag on GitLab on every run, with no daily limit and no cache. If the installed version
-  is behind, it prints the notice each time, with a link to the release notes. If the installed version
-  is ahead of the latest tag, it says that instead. If GitLab can't be reached, it says so in one line.
-  The lookup is skipped in CI/pipelines and when `NGARGPARSER_NO_UPDATE_CHECK=1` is set. Subcommand
-  help (`cli sync --help`) and bare `cli` keep the once-a-day notice.
-
-  **Install from a local checkout (contributors).** `cli upgrade --ref .` installs ngargparser from your
-  current working tree instead of a release tag — handy while developing the framework itself. Pass `.`
-  (run from the repo) or a path to a checkout; `--check` dry-runs it:
-
-  ```bash
-  cli upgrade --ref .                 # install the working tree (run from the ngargparser repo)
-  cli upgrade --ref /path/to/repo     # same, from anywhere
-  cli upgrade --ref . --check         # show what it would install, install nothing
-  ```
-
-- **`cli sync`** — refreshes the **framework-owned files inside a project** to match the installed
-  version (and self-upgrades first, unless `--no-upgrade`). Run it from inside an existing project:
+`cli upgrade` updates the installed ngargparser. `cli sync`, run in a tool folder, brings that tool's framework files up to it:
 
 ```bash
-cd path/to/your-app
+cli upgrade --check     # is a newer release available? installs nothing
+cli upgrade             # install the latest release tag
+cd path/to/your-tool
+cli sync --dry-run      # show what would change; write nothing
 cli sync
 ```
 
-`cli sync` only touches **framework-owned** files. It refreshes:
+The [CLI cheatsheet](docs/reference.md#cli-cheatsheet) lists every option and alias, such as `cli sync --no-upgrade` and `cli upgrade --ref <version>`.
 
-- `src/core/*.py`
-- `scripts/core/build.sh`
-- the root `Makefile`
-- the `[tool.ngargparser] scaffold_version` stamp in `pyproject.toml`
-- the README badge (flips to green to mark "synced")
+`cli sync` upgrades ngargparser first. It then copies each framework file that differs to `.ngargparser/sync-backups/<time>/`, overwrites it, and warns when you had edited it. It also sets the `README.md` badge and the `scaffold_version` in `pyproject.toml` to the installed version. When a help screen of your tool that worked before fails after, it restores every file. Other files you own, such as `README`, stay as they are ([cli sync](docs/reference.md#cli-sync)).
 
-It never overwrites `validators.py`, `<App>ArgumentParser.py`, `paths.py`, `hooks.sh`, `build.conf`, or anything else in user-owned space. It also migrates legacy filenames from older framework versions (e.g., `scripts/build.sh` → `scripts/core/build.sh`, `scripts/dependencies.sh` → `scripts/hooks.sh`) on first run.
+`cli upgrade` and `cli sync` look up and install releases over HTTPS. Without HTTPS access to GitLab, `cli upgrade` stops with `⚠ Couldn't reach the remote ...` and exit code 2, and `cli sync` syncs from the installed version. To upgrade over SSH, set `NGARGPARSER_UPGRADE_URL` to the SSH URL of a release tag for that one command:
 
-### Sync safety checks
-
-`cli sync` does not leave a broken project behind. Each run ends in one of four ways:
-
-| Outcome | When | Exit code |
-|---|---|---|
-| Synced and verified | The project's help screens worked before the sync and still work after | 0 |
-| Synced, could not verify | The project did not start even before the sync, has no `.venv` interpreter, or has several `src/run_*.py` | 0 |
-| Stopped, nothing changed | The project has code this framework version is known to break | 1 |
-| Rolled back | A help screen that worked before fails after, or sync hit an error. Every file is restored | 1 |
-
-How it works:
-
-- **Known clashes.** Before writing anything, sync reads your project's `src/*ArgumentParser.py` for
-  code a framework release is known to break, and stops with the file, the line numbers and the fix.
-  `cli sync --dry-run` reports the same findings. The list holds one entry today: declaring
-  `--output-prefix` or `--output-format` on `predict`, or reusing `-o` or `-f` there, which the base
-  class has owned since 0.3.0. A break that is not on the list is left to the test drive.
-- **Test drive.** When a framework file is about to change, sync runs your entry script with
-  `--help`, `predict --help`, `preprocess --help` and `postprocess --help`, before and after, using
-  the project's own `.venv` interpreter. This executes your project's code. It runs only when
-  `src/` holds exactly one `run_*.py`; with several, sync cannot tell which is the entry script and
-  runs none of them.
-- **Undo.** If a screen that worked before fails after, or sync is interrupted or hits an error,
-  sync puts back every file it touched, including moved, created and edited ones and files reached
-  through a symlink, and prints the error your project raised.
-
-`cli sync --no-verify` skips the known-clash check and the test drive, and says so. Undo on error
-still applies. Setting `NGARGPARSER_SYNC_NO_VERIFY=1` has the same effect.
-
-The test drive proves the project still starts. It cannot prove that a full `predict`, `preprocess`
-or `postprocess` run still gives the right result, so run your own tests after a sync.
-
-### What sync can't do
-
-For breaking changes — file layouts shifting, schema changes, removed APIs — sync keeps your core files current but won't transform user-edited content. The right move there: read the release notes, scaffold a fresh project with the new framework, and port your application code over.
-
----
-
-## Reference
-
-### CLI cheatsheet
-
-```
-cli --version                 # installed version; checks GitLab for a newer release on every run
-cli --help                    # usage; same release check on every run
-
-cli generate <name>           # scaffold a new project (alias: g)
-cli generate example          # scaffold the aa-counter example app
-
-cli deps                      # interactive add/remove menu (alias: d)
-cli deps add <name> ...       # add stub blocks to paths.py
-cli deps remove <name> ...    # remove blocks (alias: rm)
-cli deps list                 # show declared deps + status (alias: ls)
-
-cli sync                      # pull latest framework files into a project (alias: s)
-
-cli upgrade                   # self-update the cli to the latest release tag (alias: u)
-cli upgrade --check           # report installed vs latest without installing
+```bash
+NGARGPARSER_UPGRADE_URL='git+ssh://git@gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser.git@vX.Y.Z' cli upgrade
 ```
 
-Run from inside a project (not a `cli` subcommand — it's a script in the project root):
+## Troubleshooting
+
+The reference's [Troubleshooting](docs/reference.md#troubleshooting) has more, such as an invalid tool name or a framework option you reused.
+
+### Not configured yet
+
+A fresh clone of a tool stops with:
 
 ```
-./configure                   # regenerate .env + setup_<name>_env.sh from paths.py
-./configure -h                # list the flags available for your declared deps
-./configure --<name>-path=…   # set a dependency's path (also -venv, -module, -lib-path)
+This tool has not been configured yet: '.env' is missing or incomplete.
+Run './configure' in the tool folder (/path/to/tool), then re-run this command.
 ```
 
-### NGArgumentParser API
+`.env` holds one machine's paths, so git leaves it out. Create it with `uv sync && ./configure`. `uv run pytest` runs `./configure` itself when `.env` is missing ([Test the parser](docs/parser-cookbook.md#test-the-parser)).
 
-`NGArgumentParser` auto-creates three subparsers: `preprocess`, `predict`, `postprocess`. All three come with built-in arguments. `predict`'s output arguments (`--output-prefix/-o`, `--output-format/-f`) are framework-owned; you add the tool-specific input arguments in your subclass.
-
-#### Built-in `preprocess` arguments
+### Configured in another folder
 
 ```
---input-json / -j  JSON_FILE   (required)
---output-dir / -o  DIR         (required)
---params-dir       DIR         (default: $OUTPUT_DIR/predict-inputs/params)
---inputs-dir       DIR         (default: $OUTPUT_DIR/predict-inputs/data)
---assume-valid                 (skip validation)
+This tool was configured in /home/me/my-app but is running from /home/me/my-app-copy.
+Run './configure' in /home/me/my-app-copy, then re-run this command.
 ```
 
-#### Built-in `predict` arguments
+Run `./configure` in the new folder. When a middle line says the `.venv` was made for the old folder, run the command it names first.
+
+### Tool needs its virtualenv
 
 ```
---output-prefix / -o  STR
---output-format / -f  {tsv,json}   (default: tsv)
+This tool needs its virtualenv: run it with 'uv run python src/run_my_app.py ...' (or activate .venv first). Run 'uv sync' if .venv is missing.
 ```
 
-Predict output is serialized by `core.result_writer.write_results` (see **Result output** below): tsv to stdout when no `-o` is given, otherwise `<prefix>.<ext>`. These two arguments come from the base class — add your tool-specific input arguments in the subclass.
+You ran the entry script with another Python, such as `/usr/bin/python3`. Use `uv run python`. A build or deployed copy names `.venv/bin/python` and `bash deploy/install.sh` instead.
 
-#### Built-in `postprocess` arguments
+### A dependency path is None
 
 ```
---job-desc-file / -j     JSON   ─┐ pick exactly one
---input-results-dir / -i DIR    ─┘
---postprocessed-results-dir / -p DIR    (required)
---output-prefix / -o  STR
---output-format / -f  {tsv,json}    (default: json)
+✗ pepx_path is None in paths.py. Set it with './configure --pepx-path=<path>', or run 'cli deps remove pepx' to drop this dependency.
+  Nothing was changed.
 ```
 
-#### `SubparserWrapper`
-
-Every subparser exposes `.help` and `.description` as plain attributes:
-
-```python
-self.parser_preprocess.help = 'Custom preprocess help'
-self.parser_preprocess.description = 'Detailed preprocess instructions'
-```
-
-#### Argument grouping
-
-```python
-self.parser_predict.add_argument(
-    "--threshold", "-t",
-    help="Score threshold",
-    group="prediction options",   # args sharing this label cluster in --help
-)
-```
-
-#### Updating inherited arguments
-
-Some arguments are provided by the base class — notably `predict`'s `--output-prefix/-o`
-and `--output-format/-f`. To tweak one for **your** tool (change its default, help text,
-choices, or group), call `update_arguments(...)` — it edits the inherited argument **in
-place**:
-
-```python
-# e.g. make this tool default to json instead of the framework-wide tsv:
-self.parser_predict.update_arguments(
-    "--output-format", "-f",
-    default="json",
-    help="Updated output format description",
-    group="modified options",
-)
-```
-
-The change is local to your tool and doesn't affect others. An explicit flag on the
-command line (`-f tsv`) still overrides whatever default you set.
-
-> ⚠️ Use `update_arguments` for this — do **not** re-declare an inherited argument with a
-> fresh `add_argument("--output-format", ...)`. That raises `conflicting option strings`.
-> (To replace one entirely, `remove_argument(...)` first, then `add_argument(...)`.)
-
-#### Result output (`core.result_writer`)
-
-Every tool emits the same result envelope and serializes it through the shared,
-framework-owned helper `core.result_writer.write_results` (synced into `src/core/result_writer.py`):
-
-```python
-from core.result_writer import write_results
-
-result = {
-    "warnings": [], "errors": [],
-    "results": [
-        {"type": "peptide_table",
-         "table_columns": ["peptide", "score"],
-         "table_data": [["ADMGHLKY", 0.5]]},
-        # ... more tables ...
-    ],
-}
-write_results(result, args.output_prefix, args.output_format)
-```
-
-- **Format** (`-f`): `tsv` (default) or `json`. tsv is flat and pipeable; json
-  preserves the full envelope (warnings/errors and any extra per-table metadata).
-- **Destination**: no `-o` → stdout; `-o <prefix>` → file(s).
-- **Multiple tables**: on stdout each table is prefixed with a `--- <type> ---`
-  banner; to file each is written as `<prefix>.<type>.tsv`. A single table gets no
-  banner and a single `<prefix>.tsv`.
-- **json** always writes the whole envelope verbatim (`<prefix>.json` or stdout).
-
-`predict` defaults to `tsv`; `postprocess` defaults to `json` because the aggregated
-envelope carries metadata that tsv can't represent. warnings/errors are echoed to
-stderr for tsv so stdout stays a clean data stream.
-
-#### Built-in validators
-
-```python
-from core.core_validators import (
-    validate_file,                     # file exists + readable
-    validate_directory,                # directory exists or can be created
-    validate_directory_given_filename, # parent dir of a path
-    validate_preprocess_dir,           # special preprocessing dir setup
-)
-```
-
-#### Custom validators
-
-```python
-# src/validators.py
-def validate_peptide_length(value):
-    try:
-        length = int(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError("peptide length must be a number")
-    if not 1 <= length <= 50:
-        raise argparse.ArgumentTypeError("peptide length must be 1–50")
-    return length
-
-# src/MyAppArgumentParser.py
-self.parser_predict.add_argument(
-    "--peptide-length",
-    type=validate_peptide_length,
-)
-```
-
-### File ownership
-
-| Path | Ownership |
-|---|---|
-| `src/core/*` | Framework — `cli sync` overwrites |
-| `scripts/core/*` | Framework — `cli sync` overwrites |
-| `Makefile` | Framework — `cli sync` overwrites |
-| `pyproject.toml` `[tool.ngargparser] scaffold_version` | Framework — sync stamps |
-| `pyproject.toml` (everything else) | You |
-| `uv.lock` | You (regenerated by `uv` commands) |
-| `paths.py` | You (`cli deps` writes stubs; `./configure --<name>-…` or a hand edit fills in values) |
-| `scripts/hooks.sh` | You |
-| `scripts/build.conf` | You |
-| `.distignore` | You (`.gitignore` syntax; legacy `scripts/do-not-distribute.txt` still honored) |
-| `deploy/install.sh` | You — sync creates from template if missing, never overwrites |
-| `src/run_*.py`, `src/<App>ArgumentParser.py`, `src/preprocess.py`, `src/postprocess.py`, `src/validators.py` | You |
+Run one of the two commands the message names. With several such paths, one message names them all, with one combined `./configure` command.

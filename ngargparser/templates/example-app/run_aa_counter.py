@@ -1,8 +1,13 @@
+import core.set_pythonpath  # This automatically configures PYTHONPATH
 import json
+import os
 import re
+import sys
 import preprocess
 import postprocess
 from AACounterArgumentParser import AACounterArgumentParser
+from core.NGArgumentParser import ParserSetupError
+from core.app_env import DependencyError
 from core.result_writer import write_results
 
 
@@ -119,13 +124,17 @@ def convert_tsv_to_json(tfile, aa):
         header = f.readline().strip().split('	')
         content = [_.strip().split('	') for _ in f.readlines()]
 
+    # Read the peptide column by its name, wherever it is. validators.py's
+    # validate_input_tsv has made sure the header names a 'peptide' column.
+    peptide_column = header.index('peptide')
+
     content_dict = dict.fromkeys(header)
     content_dict['peptide'] = []
     content_dict['length'] = []
     content_dict['amino_acid'] = aa
 
     for row in content:
-        pep = row[0]
+        pep = row[peptide_column]
         content_dict['peptide'].append(pep)
         content_dict['length'].append(len(pep))
 
@@ -141,7 +150,12 @@ def read_json(jfile):
 
 
 def main():
-    parser = AACounterArgumentParser()
+    try:
+        parser = AACounterArgumentParser()
+    except ParserSetupError as e:
+        # A mistake in the parser code: one line naming the file and line.
+        print(e, file=sys.stderr)
+        sys.exit(2)
     args = parser.parse_args()
 
     if args.subcommand == 'predict':
@@ -149,12 +163,15 @@ def main():
         # Unify inputs into a JSON format.
         if args.input_tsv:
             if not args.aa:
-                raise parser.error("Please specify amino acid using the '-a' flag.")
+                parser.parser_predict.error("Please specify amino acid using the '-a' flag.")
             json_input = convert_tsv_to_json(args.input_tsv, args.aa)
         elif args.input_json:
+            # The JSON input names its amino acid, so -a would be ignored.
+            if args.aa is not None:
+                parser.parser_predict.error("-a sets the amino acid for -t input; a -j input carries its own amino_acid")
             json_input = read_json(args.input_json)
         else:
-            raise parser.error("Counter app accepts only TSV or JSON file format.")
+            parser.parser_predict.error("Counter app accepts only TSV or JSON file format.")
 
         # Update JSON to have peptide list instead of file path
         json_input = update_json_input(json_input)
@@ -178,16 +195,25 @@ def main():
         # when no -o is given, otherwise writes <output_prefix>.<ext>.
         write_results(result_json, args.output_prefix, args.output_format)
 
-    if args.subcommand == 'preprocess':        
-        # Run preprocess logic
+    elif args.subcommand == 'preprocess':
+        # Run preprocess logic (it also writes job_descriptions.json)
         preprocess.run(**vars(args))
-        
-        # Create job description file
-        parser.create_job_descriptions_file(args)
 
-    if args.subcommand == 'postprocess':
+    elif args.subcommand == 'postprocess':
+        # Without a job description file, there is no default place for the result.
+        if args.postprocess_input_dir and not (args.output_prefix or args.postprocess_result_dir):
+            parser.error("with --input-results-dir, give -o <prefix> or -p <folder> for the merged result")
+
         # Run postprocess logic
         postprocess.run(**vars(args))
 
+    else:
+        # A subcommand added with self.add_subcommand needs a branch of its own above.
+        sys.exit(f"{args.subcommand} has no branch in src/{os.path.basename(__file__)}: add one in main()")
+
 if __name__=='__main__':
-    main()
+    try:
+        main()
+    except DependencyError as e:
+        # A dependency that can't run (see core.app_env.dependency_command): one line, exit code 1.
+        sys.exit(str(e))

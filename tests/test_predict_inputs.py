@@ -41,7 +41,9 @@ def test_single_input_still_parses(scaffolded_project, tmp_path):
 
     for flag, value in (("-t", tsv), ("-j", json_file)):
         result = run_predict(scaffolded_project, flag, str(value))
-        assert result.returncode == 0, f"{flag} alone should parse: {result.stderr}"
+        # Parsing passed when the unedited predict stub runs and says so.
+        assert result.returncode == 1, f"{flag} alone should parse: {result.stderr}"
+        assert "predict is not implemented yet" in result.stderr, result.stderr
 
 
 def test_help_still_lists_both_inputs(scaffolded_project):
