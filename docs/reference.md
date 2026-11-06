@@ -62,7 +62,7 @@ Both also refuse a build or deployed copy (a folder with `.ngargparser-build`) a
 ✗ This folder is inside /home/me/my-app/build/ng_my-app-local, a build or deployed copy of a tool (it has .ngargparser-build), not its source. Nothing was changed. Run cli sync in the tool's source folder: cd /home/me/my-app, then build again.
 ```
 
-`cli upgrade` works from any folder and changes no tool files. Only *release tags* (`vX.Y.Z`) count as the latest: install a pre-release with `--ref v0.4.2-test`, or the tip of master with `--dev`.
+`cli upgrade` works from any folder and changes no tool files. Only *release tags* (`vX.Y.Z`) count as the latest: install a pre-release with `--ref <version>`, or the tip of master with `--dev`.
 
 `./configure` is a script in the tool folder, separate from `cli`:
 
