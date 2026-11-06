@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The generated parser's docstring no longer names the cookbook by URL. The tool's
+  `src/` ships to users, so it carries no internal host. The cookbook is still
+  linked from the generated `README.md`, which does not ship.
+
 ## [0.5.0] — 2026-10-20
 
 ### Added

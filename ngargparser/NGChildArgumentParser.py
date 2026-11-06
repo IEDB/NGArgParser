@@ -15,10 +15,6 @@ class ChildArgumentParser(NGArgumentParser):
         Developers can choose to further customize other parameters of ArgumentParser()
         from here:
         https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser
-
-        Recipes for this file (add an option, check a value with a validator, change
-        a framework option, group options in the help, test the parser):
-        https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser/-/blob/master/docs/parser-cookbook.md
         '''
         # ADD program details by setting params, such as
         # prog, usage, description, epilog, etc.

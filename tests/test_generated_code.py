@@ -330,21 +330,25 @@ def test_older_validators_that_imports_the_dependency_helpers_still_loads(demo):
     assert (demo / "out" / "predict-inputs" / "params").is_dir(), result.stderr
 
 
-# The generated parser points at the cookbook, next to the argparse link.
+# Nothing in a generated tool's shipped files names an internal host: src/ ships
+# to users. The skips below are what the build excludes (.distignore plus hidden
+# files), so this guard covers exactly the files that reach a tarball.
 
-COOKBOOK_URL = (
-    "https://gitlab.lji.org/iedb/tools/tools-redesign/global-dependencies/ngargparser/-/blob/master/"
-    "docs/parser-cookbook.md"
-)
+NOT_SHIPPED = {"Makefile", "README.md", "scripts", "tests"}
 
 
-def test_generated_parser_links_the_cookbook(demo):
+def test_generated_tool_ships_no_internal_host(demo):
+    offenders = []
+    for path in sorted(demo.rglob("*")):
+        rel = path.relative_to(demo)
+        if not path.is_file() or rel.parts[0] in NOT_SHIPPED or rel.parts[0].startswith("."):
+            continue
+        for number, text in enumerate(path.read_text(errors="replace").splitlines(), 1):
+            if "lji.org" in text:
+                offenders.append(f"{rel}:{number}")
+    assert offenders == [], f"internal host in files that ship: {offenders}"
+
+
+def test_generated_parser_keeps_the_argparse_link(demo):
     parser = (demo / "src" / "DemoArgumentParser.py").read_text()
-    readme_root = (Path(cli.__file__).resolve().parent / "templates" / "README.md").read_text()
-
-    assert COOKBOOK_URL in parser
-    assert parser.index("https://docs.python.org/3/library/argparse.html") < parser.index(COOKBOOK_URL)
-    # The same repository URL as the generated README.md gives.
-    assert COOKBOOK_URL.split("/-/blob/", 1)[0] in readme_root
-    # The page it names exists in this repository.
-    assert (Path(__file__).resolve().parents[1] / "docs" / "parser-cookbook.md").is_file()
+    assert "https://docs.python.org/3/library/argparse.html" in parser
